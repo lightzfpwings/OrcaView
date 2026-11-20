@@ -1,0 +1,7 @@
+# Single point in water with the C-PCM continuum model.
+! PBE0 def2-TZVP TightSCF CPCM(water) SP
+* xyz 0 1
+O   0.000000   0.000000   0.000000
+H   0.758602   0.000000   0.586541
+H  -0.758602   0.000000   0.586541
+*

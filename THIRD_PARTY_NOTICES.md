@@ -1,0 +1,21 @@
+# Third-party software in OrcaView 0.1.0a24
+
+The MIT license in this repository applies to OrcaView's own code. The Windows x64 and Linux x86-64 portable packages contain the following separately licensed components. Keep their copyright and license notices when redistributing them.
+
+| Component | Distribution details and source |
+| --- | --- |
+| Qt 6.8.3, PySide6 Essentials 6.8.3 and Shiboken6 6.8.3 | Copyright The Qt Company Ltd. and other contributors. The official Qt for Python community wheels offer LGPL-3.0-only, GPL-2.0-only or GPL-3.0-only. Individual Qt libraries, plugins and tools carry the open-source licenses in their own source files. The release supplies the original Python binding and Qt module sources, build files, library licenses and third-party attributions. [Source and notice bundle](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a24/OrcaView-0.1.0a24-third-party-sources.zip) · [Qt modules and licenses](https://doc.qt.io/qt-6.8/licensing.html) · [Qt for Python notices](https://doc.qt.io/qtforpython-6.8/licenses.html) |
+| Open Babel 3.2.0 | GPL-2.0-only. Each portable package contains the unmodified corresponding source in `ThirdParty/openbabel-3.2.0.tar.gz`, and the upstream COPYING and AUTHORS files in the Open Babel wheel metadata. The source includes the bundled chemistry code and its respective notices. The worker uses Open Babel in a separate process. [Open Babel](https://openbabel.org/) |
+| CPython 3.13.18 | Python Software Foundation License Version 2 and the additional notices in the interpreter's LICENSE.txt. The Python executables come from the 20261110 python-build-standalone distribution. OrcaView selects a subset of the runtime files and installs the application alongside them. The source and notice bundle includes the distributor's corresponding build recipes and component notices. [CPython source](https://github.com/python/cpython/tree/v3.13.18) · [Runtime distribution](https://github.com/astral-sh/python-build-standalone/releases/tag/20261110) |
+| distlib 0.4.0 | The Windows launchers use the distlib launch stubs with application-specific launch data. The license is included in `ThirdParty/distlib-LICENSE.txt`. [distlib source](https://github.com/pypa/distlib/tree/0.4.0) |
+| Runtime dependencies | The source and notice bundle includes ICU, Mesa llvmpipe and other upstream notices, including the Qt source distributions' third-party copyright and attribution files. Microsoft runtime DLLs delivered with the Windows dependencies are subject to Microsoft's applicable redistributable terms. [Microsoft distributable files](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution) |
+
+## Obtaining and rebuilding the libraries
+
+Download the companion source ZIP next to the platform packages on the release page. Open the source archives inside it to read the copyright information specific to each component, including each Qt module's LICENSES directory and its third-party sources. The Qt WebEngine module archive contains the code for the Designer and PDF image-format plugins included in the wheels. The platform bundles contain no QtWebEngineCore library or Chromium web engine executable.
+
+The Qt runtime libraries are dynamically loaded. In the extracted Windows package the bindings and libraries are under `python/Lib/site-packages/PySide6`. On Linux they are under `python/lib/python3.13/site-packages/PySide6`, including the `Qt/lib` subdirectory. You may replace the libraries with ABI-compatible builds, rebuild the bindings, or debug modifications to the libraries. The project build recipe and dependency checksums are in `packaging/desktop/`. Qt source archives include upstream build instructions. [Qt for Python build instructions](https://doc.qt.io/qtforpython-6.8/building_from_source/index.html)
+
+ORCA is an external application with its own licensing and installation procedure. The portable packages do not contain its executable or the Multiwfn engine.
+
+The real ORCA output fixtures retain the program's upstream credits, trademarks and citation notices. The repository's MIT license covers OrcaView's contributions.

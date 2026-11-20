@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.DS_Store
+.presentation-build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local design conversations, working documents and historical machine records.
+/artifacts/*
+!/artifacts/public/
+/docs/development/
+/docs/VALIDATION.md
+/docs/prototype.png
+/docs/structure-workspace.png
+/README.local.md
+

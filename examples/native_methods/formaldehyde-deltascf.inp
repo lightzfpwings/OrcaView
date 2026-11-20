@@ -1,0 +1,12 @@
+# Target one alpha HOMO-to-LUMO promotion from a singlet reference.
+# Compare against the ground-state energy at the same geometry for a vertical gap.
+! UKS PBE def2-TZVP TightSCF DeltaSCF SP
+%scf
+  AlphaConf 0,1
+end
+* xyz 0 1
+C   0.000  0.000  0.000
+O   0.000  0.000  1.210
+H   0.940  0.000 -0.580
+H  -0.940  0.000 -0.580
+*

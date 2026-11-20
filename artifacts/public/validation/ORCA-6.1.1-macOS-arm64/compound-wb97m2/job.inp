@@ -1,0 +1,21 @@
+# ORCA 6.1.1, sections 3.3.5.2.1 and 8.2. Compound workflow for water.
+* xyz 0 1
+O   0.000000   0.000000   0.000000
+H   0.758602   0.000000   0.586541
+H  -0.758602   0.000000   0.586541
+*
+
+%compound
+  Variable finalEnergy;
+  New_Step
+    ! wB97M-V SCNL TightSCF DefGrid2 def2-TZVP def2/J SP
+  Step_End
+  ReadMOs(1);
+  New_Step
+    ! wB97M(2) SCNL NoIter CalcGuessEnergy DefGrid2 def2-TZVP def2/J def2-TZVP/C SP
+    %scf IgnoreConv 1 end
+    %mp2 RI true end
+  Step_End
+  Read finalEnergy = MP2_Total_Energy[2];
+  Print("Water wB97M(2) energy / Eh = %.12lf\n", finalEnergy);
+end

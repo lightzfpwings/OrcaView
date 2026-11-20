@@ -1,0 +1,18 @@
+# Water ORMAS, ORCA 6.1.1 section 3.13.3.8.
+# Each subgroup specifies its orbital count, minimum and maximum
+# electron count. Four electrons are shared across all three groups.
+! def2-SVP TightSCF SP
+%casscf
+  nel 4
+  norb 4
+  mult 1
+  nroots 1
+  refs
+    ORMAS(4: 2 2 4 / 1 0 2 / 1 0 1)
+  end
+end
+* xyz 0 1
+O   0.000000   0.000000   0.000000
+H   0.758602   0.000000   0.586541
+H  -0.758602   0.000000   0.586541
+*

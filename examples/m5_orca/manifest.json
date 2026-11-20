@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "path": "water-sp.out",
+      "classification": "synthetic-parser-fixture",
+      "source": "Handwritten for OrcaView M5. The geometry matches ../water.xyz. The energies, charges, iteration count, and runtime are invented.",
+      "use_scope": "Parser, result association, and project round-trip regression tests.",
+      "program_version_banner": "6.1.1",
+      "size_bytes": 2077,
+      "sha256": "b6df1c4779938d9d33c35d593c364e84ca1da2d2f94d93e912557840d3690e66",
+      "expected": {
+        "job_type": "single-point",
+        "geometry_unit": "angstrom",
+        "atom_order": ["O", "H", "H"],
+        "coordinates": [[0.0, 0.0, 0.0], [0.758602, 0.0, 0.586541], [-0.758602, 0.0, 0.586541]],
+        "charge": 0,
+        "multiplicity": 1,
+        "scf_converged": true,
+        "optimization_converged": null,
+        "normal_termination": true,
+        "final_single_point_energy_hartree": -76.123456789012,
+        "mulliken_atomic_charges_e": [-0.42, 0.2, 0.22]
+      },
+      "source_lines": {
+        "version_banner": 2,
+        "job_type": 17,
+        "angstrom_coordinates": [21, 25],
+        "bohr_cross_check": [28, 33],
+        "charge": 44,
+        "multiplicity": 45,
+        "scf_convergence": 49,
+        "mulliken_charges": [53, 58],
+        "final_energy": 61,
+        "normal_termination": 64
+      },
+      "unavailable": ["process exit code", "geometry optimization", "vibrational data", "trajectory", "wavefunction and grid data"]
+    }
+  ],
+  "external_references": [
+    {
+      "path": "data/ORCA/basicORCA6.1/dvb_sp_hf.out",
+      "classification": "actual-orca-output",
+      "source": "ATenderholt contributed this ORCA single-point test output in cclib PR #1902.",
+      "use_scope": "Read-only compatibility verification against existing output. The source file is hosted upstream and its bytes are not bundled here.",
+      "pull_request": "https://github.com/cclib/cclib/pull/1902",
+      "raw_url": "https://raw.githubusercontent.com/ATenderholt/cclib/52e7481223a5b2cec7f4eef0423cf3537ab0340b/data/ORCA/basicORCA6.1/dvb_sp_hf.out",
+      "git_commit": "52e7481223a5b2cec7f4eef0423cf3537ab0340b",
+      "git_blob_sha1": "cfa58f69cad35ca29c9fdb5b8b916258b98aaa00",
+      "sha256": "9b4665c132da8b199f6ee73d99c26537087954f989f3765f1973ac2f83f4094e",
+      "program_version_banner": "6.1.1",
+      "size_bytes": 194886,
+      "expected": {
+        "job_type": "single-point",
+        "geometry_unit": "angstrom",
+        "atom_order": ["C", "C", "C", "C", "C", "C", "H", "H", "H", "H", "C", "C", "H", "H", "C", "C", "H", "H", "H", "H"],
+        "charge": 0,
+        "multiplicity": 1,
+        "scf_converged": true,
+        "optimization_converged": null,
+        "normal_termination": true,
+        "final_single_point_energy_hartree": -379.768962913243,
+        "mulliken_atomic_charges_e": [
+          0.001813, 0.001813, -0.05965, -0.05965, -0.060447, -0.060447, 0.058704, 0.058704, 0.060599, 0.060599,
+          -0.055241, -0.055241, 0.057635, 0.057635, -0.123891, -0.123891, 0.05902, 0.05902, 0.061458, 0.061458
+        ]
+      },
+      "source_lines": {
+        "version_banner": 54,
+        "job_type": 295,
+        "angstrom_coordinates": [299, 320],
+        "charge": 593,
+        "multiplicity": 594,
+        "scf_convergence": 1344,
+        "mulliken_charges": [2081, 2102],
+        "final_energy": 2869,
+        "normal_termination": 3050
+      },
+      "unavailable": ["process exit code", "independent rerun", "geometry optimization", "vibrational data", "wavefunction and grid files"]
+    },
+    {
+      "path": "data/ORCA/basicORCA6.1/dvb_sp_dft.out",
+      "classification": "actual-orca-output",
+      "source": "ATenderholt contributed this ORCA single-point test output in cclib PR #1902.",
+      "use_scope": "Read-only compatibility verification against existing output. The source file is hosted upstream and its bytes are not bundled here.",
+      "pull_request": "https://github.com/cclib/cclib/pull/1902",
+      "raw_url": "https://raw.githubusercontent.com/ATenderholt/cclib/52e7481223a5b2cec7f4eef0423cf3537ab0340b/data/ORCA/basicORCA6.1/dvb_sp_dft.out",
+      "git_commit": "52e7481223a5b2cec7f4eef0423cf3537ab0340b",
+      "git_blob_sha1": "677cd5c204e24721037944a4aca06e789de1b2de",
+      "sha256": "e3745c19c31453e8b099498dc31214f13392fee37211c6859bc92725b1c6a58e",
+      "program_version_banner": "6.1.1",
+      "size_bytes": 202289,
+      "expected": {
+        "job_type": "single-point",
+        "geometry_unit": "angstrom",
+        "atom_order": ["C", "C", "C", "C", "C", "C", "H", "H", "H", "H", "C", "C", "H", "H", "C", "C", "H", "H", "H", "H"],
+        "charge": 0,
+        "multiplicity": 1,
+        "scf_converged": true,
+        "optimization_converged": null,
+        "normal_termination": true,
+        "final_single_point_energy_hartree": -382.055109247250,
+        "mulliken_atomic_charges_e": [
+          -0.004143, -0.004143, -0.076580, -0.076580, -0.076951, -0.076951, 0.077764, 0.077764, 0.079094, 0.079094,
+          -0.076313, -0.076313, 0.076502, 0.076502, -0.154359, -0.154359, 0.075911, 0.075911, 0.079074, 0.079074
+        ]
+      },
+      "source_lines": {
+        "version_banner": 54,
+        "job_type": 298,
+        "angstrom_coordinates": [302, 323],
+        "bohr_cross_check": [326, 348],
+        "charge": 748,
+        "multiplicity": 749,
+        "scf_convergence": 1496,
+        "mulliken_charges": [2246, 2267],
+        "final_energy": 3039,
+        "normal_termination": 3238
+      },
+      "unavailable": ["process exit code", "independent rerun", "geometry optimization", "vibrational data", "wavefunction and grid files"]
+    }
+  ],
+  "format_references": [
+    "https://www.faccts.de/docs/orca/6.1/tutorials/first_steps/input_output.html#the-output-file",
+    "https://www.faccts.de/docs/orca/6.1/manual/contents/spectroscopyproperties/population.html",
+    "https://www.faccts.de/docs/orca/6.1/manual/contents/structurereactivity/optimizations.html"
+  ]
+}

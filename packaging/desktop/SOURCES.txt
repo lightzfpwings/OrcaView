@@ -1,0 +1,9 @@
+OrcaView @VERSION@
+OrcaView's MIT license is in LICENSE.txt at the top of this package.
+Bundled dependencies are distributed under their own licenses.
+
+This release's corresponding source downloads:
+https://github.com/lightzfpwings/OrcaView/releases/tag/v@VERSION@
+
+Third-party notices and source locations:
+https://github.com/lightzfpwings/OrcaView/blob/v@VERSION@/THIRD_PARTY_NOTICES.md

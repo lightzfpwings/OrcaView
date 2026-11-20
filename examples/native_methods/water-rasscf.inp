@@ -1,0 +1,18 @@
+# Water RASSCF, ORCA 6.1.1 section 3.13.3.7.
+# Four active electrons in four orbitals. RAS1 permits one hole and
+# RAS3 permits one particle. RAS2 has unrestricted occupations.
+! def2-SVP TightSCF SP
+%casscf
+  nel 4
+  norb 4
+  mult 1
+  nroots 1
+  refs
+    RAS(4: 1 1 / 2 / 1 1)
+  end
+end
+* xyz 0 1
+O   0.000000   0.000000   0.000000
+H   0.758602   0.000000   0.586541
+H  -0.758602   0.000000   0.586541
+*

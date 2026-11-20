@@ -1,0 +1,186 @@
+"""Assemble relocatable x86-64 releases using verified target-native runtimes."""
+
+import argparse
+from hashlib import file_digest
+from io import BytesIO
+import json
+import os
+from pathlib import Path
+import py_compile
+import shutil
+import sys
+import tarfile
+from tempfile import TemporaryDirectory
+from urllib.request import urlopen
+from zipfile import ZIP_DEFLATED, ZipFile
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
+LOCK = json.loads((HERE / "dependencies.json").read_text())
+PYTHON = "3.13"
+LINUX_ENTRY = """#!/bin/sh
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
+if [ "$#" -eq 0 ]; then set -- gui; fi
+exec "$root/python/bin/python3" -I -m orcaview "$@"
+"""
+WINDOWS_ENTRY = """import sys
+from orcaview.cli import main
+raise SystemExit(main(sys.argv[1:] or ["gui"]))
+"""
+
+
+def dependency(entry, cache):
+    path = cache / entry["name"]
+    if not path.exists():
+        with TemporaryDirectory(dir=cache) as temp:
+            download = Path(temp) / "download"
+            with urlopen(entry["url"], timeout=180) as response, download.open("wb") as out:
+                shutil.copyfileobj(response, out)
+            verify(download, entry["sha256"])
+            download.replace(path)
+    else:
+        verify(path, entry["sha256"])
+    return path
+
+
+def verify(path, expected):
+    with path.open("rb") as stream:
+        if file_digest(stream, "sha256").hexdigest() != expected:
+            raise ValueError(f"SHA-256 mismatch: {path}")
+
+
+def runtime_member(member):
+    parts = Path(member.name).parts
+    if parts[0] != "python":
+        raise ValueError(f"Unexpected runtime path: {member.name}")
+    # Qt provides the GUI. Exclude compiler headers, pip, Tk tooling and tests.
+    if any(p in {"__pycache__", "test", "tests", "tkinter", "idlelib",
+                 "tcl", "include", "ensurepip", "site-packages", "pkgconfig", "terminfo"} for p in parts):
+        return False
+    if parts[:2] == ("python", "bin"):
+        return len(parts) == 2 or parts[-1] in {"python", "python3", "python3.13"}
+    return True
+
+
+def install_wheel(path, site):
+    with ZipFile(path) as wheel:
+        for info in wheel.infolist():
+            # All locked wheels use the site-packages layout directly.
+            target = Path(wheel.extract(info, site))
+            if info.external_attr >> 16 & 0o111 and not target.is_dir():
+                target.chmod(0o755)
+
+
+def windows_launchers(bundle, launcher_wheel):
+    with ZipFile(launcher_wheel) as wheel:
+        (bundle / "ThirdParty/distlib-LICENSE.txt").write_bytes(
+            wheel.read("distlib-0.4.0.dist-info/LICENSE.txt"))
+        archive = BytesIO()
+        with ZipFile(archive, "w") as z:
+            z.writestr("__main__.py", WINDOWS_ENTRY)
+        for name, stub, interpreter in (
+            ("OrcaView.exe", "w64.exe", "pythonw.exe"),
+            ("OrcaView-cli.exe", "t64.exe", "python.exe"),
+        ):
+            shebang = f"#!<launcher_dir>\\python\\{interpreter} -I\n".encode("ascii")
+            (bundle / name).write_bytes(wheel.read("distlib/" + stub) + shebang + archive.getvalue())
+
+
+def install_app(site):
+    source = ROOT / "src/orcaview"
+    # A checked source hash and a stable filename make bytecode independent of
+    # the build directory. Sibling .pyc modules also work in a read-only install.
+    if len(list((source / "languages").glob("*.json"))) < 4:
+        raise ValueError("Expected the four release language packs")
+    for path in sorted(source.rglob("*")):
+        if not path.is_file() or "__pycache__" in path.parts:
+            continue
+        dest = site / "orcaview" / path.relative_to(source)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if path.suffix == ".py":
+            py_compile.compile(str(path), str(dest.with_suffix(".pyc")),
+                               "orcaview/" + path.relative_to(source).as_posix(),
+                               doraise=True, invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
+        elif path.suffix in {".json", ".png"}:
+            shutil.copyfile(path, dest)
+
+
+def assemble(target, bundle, cache, version):
+    runtime, *wheels = [dependency(entry, cache) for entry in LOCK[target]]
+    third_party = bundle / "ThirdParty"
+    third_party.mkdir(parents=True)
+    shutil.copyfile(ROOT / "LICENSE", bundle / "LICENSE.txt")
+    sources = (HERE / "SOURCES.txt").read_text(encoding="utf-8").replace("@VERSION@", version)
+    (third_party / "SOURCES.txt").write_bytes(sources.encode("utf-8"))
+    for entry in LOCK["shared"]:
+        shutil.copyfile(dependency(entry, cache), third_party / entry["name"])
+    with tarfile.open(runtime) as tar:
+        tar.extractall(bundle, members=(m for m in tar if runtime_member(m)), filter="data")
+    if target == "windows":
+        site = bundle / "python/Lib/site-packages"
+        windows_launchers(bundle, wheels.pop())
+    else:
+        site = bundle / "python/lib/python3.13/site-packages"
+        entry = bundle / "OrcaView"
+        entry.write_text(LINUX_ENTRY, encoding="utf-8")
+        entry.chmod(0o755)
+    site.mkdir(parents=True, exist_ok=True)
+    for wheel in wheels:
+        install_wheel(wheel, site)
+    if target == "windows":
+        # The official wheel looks for force-field files in the Unix-style
+        # share path, although it installs its Windows data next to obabel.exe.
+        babel = site / "openbabel"
+        shutil.copytree(babel / "bin/data", babel / "share/openbabel/3.2.0", dirs_exist_ok=True)
+    install_app(site)
+
+
+def release_member(member):
+    """Keep the build machine's user and group out of public archives."""
+    member.uid = member.gid = 0
+    member.uname = member.gname = ""
+    return member
+
+
+def build(target, output, cache):
+    sys.path.insert(0, str(ROOT / "src"))
+    from orcaview import __version__
+    dest = output / target / __version__
+    dest.mkdir(parents=True, exist_ok=True)
+    label, ext = ("Windows-x64", ".zip") if target == "windows" else ("Linux-x86_64", ".tar.gz")
+    name = f"OrcaView-{__version__}-{label}"
+    final = dest / (name + ext)
+    with TemporaryDirectory(dir=dest) as temp:
+        work = Path(temp)
+        bundle = work / name
+        assemble(target, bundle, cache, __version__)
+        archive = work / final.name
+        if target == "windows":
+            with ZipFile(archive, "w", ZIP_DEFLATED, compresslevel=6) as z:
+                for path in sorted(bundle.rglob("*")):
+                    if path.is_file():
+                        z.write(path, path.relative_to(work).as_posix())
+        else:
+            with tarfile.open(archive, "w:gz", compresslevel=6) as tar:
+                tar.add(bundle, arcname=name, filter=release_member)
+        os.replace(archive, final)
+    print(final, flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("target", choices=("windows", "linux", "both"))
+    parser.add_argument("--output", type=Path, default=ROOT / "dist")
+    parser.add_argument("--cache", type=Path, help="Reuse verified downloads in this directory")
+    args = parser.parse_args()
+    if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 13):
+        parser.error(f"Use CPython {PYTHON} to match the target's bytecode format.")
+    with TemporaryDirectory() as temp:
+        cache = args.cache or Path(temp)
+        cache.mkdir(parents=True, exist_ok=True)
+        for target in (("linux", "windows") if args.target == "both" else (args.target,)):
+            build(target, args.output, cache)
+
+
+if __name__ == "__main__":
+    main()

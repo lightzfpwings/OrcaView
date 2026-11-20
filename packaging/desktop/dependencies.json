@@ -1,0 +1,58 @@
+{
+  "linux": [
+    {
+      "name": "cpython-3.13.18+20261110-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "sha256": "f2d2199eb25880e07863b391cf7124e7ffa1338b0d65600dfcec117c4223a7fb"
+    },
+    {
+      "name": "PySide6_Essentials-6.8.3-cp39-abi3-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/f0/b2/3205336262bf88d57f01503df81ede2a0b1eecbb2a7d58978a5e5625f7c1/PySide6_Essentials-6.8.3-cp39-abi3-manylinux_2_28_x86_64.whl",
+      "sha256": "fd57fa0c886ef99b3844173322c0023ec77cc946a0c9a0cdfbc2ac5c511053c1"
+    },
+    {
+      "name": "shiboken6-6.8.3-cp39-abi3-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/76/a1/f1958c9d00176044ab00464cd89b6969ef3a7d2ed12d316ff1eda3dec88f/shiboken6-6.8.3-cp39-abi3-manylinux_2_28_x86_64.whl",
+      "sha256": "295a003466ca2cccf6660e2f2ceb5e6cef4af192a48a196a32d46b6f0c9ec5cb"
+    },
+    {
+      "name": "openbabel-3.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/f6/a2/9ca362d4e6749c088acf7c6f6d537851be181cd0bd303b67a6365a9de1e2/openbabel-3.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "7049c5d90b8941b75bf91d177d9b16cf19a52e72c75550184a7fbd5e5ea45660"
+    }
+  ],
+  "windows": [
+    {
+      "name": "cpython-3.13.18+20261110-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "sha256": "2e0fed09d48989f64c9305da9ff2d37a41c0d13ab2aa6283405b2b620dfbf805"
+    },
+    {
+      "name": "PySide6_Essentials-6.8.3-cp39-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/8e/0f/5d8c6da7586e57ee032643e0c0e62335ef1a1add1a980160ddd1654f1d8d/PySide6_Essentials-6.8.3-cp39-abi3-win_amd64.whl",
+      "sha256": "3c0fae5550aff69f2166f46476c36e0ef56ce73d84829eac4559770b0c034b07"
+    },
+    {
+      "name": "shiboken6-6.8.3-cp39-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/aa/29/e77f3fba5337f2d98f977eece0fd24cda6cf7d83be2699514d2ca1d34f6c/shiboken6-6.8.3-cp39-abi3-win_amd64.whl",
+      "sha256": "bca3a94513ce9242f7d4bbdca902072a1631888e0aa3a8711a52cc5dbe93588f"
+    },
+    {
+      "name": "openbabel-3.2.0-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/4c/ce/7a4651eb32860bb3d47b056e508d69df600724899e79b0d57063aa14937c/openbabel-3.2.0-cp313-cp313-win_amd64.whl",
+      "sha256": "c147a52d35aa566fe0c4f3481776678758028cd19a900250710f1d2eb6ae11b0"
+    },
+    {
+      "name": "distlib-0.4.0-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/33/6b/e0547afaf41bf2c42e52430072fa5658766e3d65bd4b03a563d1b6336f57/distlib-0.4.0-py2.py3-none-any.whl",
+      "sha256": "9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16"
+    }
+  ],
+  "shared": [
+    {
+      "name": "openbabel-3.2.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/29/67/7e1c86fa3a932bba8d8c9dcef040687f1bce1f2903a29acd4fb5337bbea8/openbabel-3.2.0.tar.gz",
+      "sha256": "332e6038146e0b69f9c32b8d71d6de153a095d98dce4663972c4a45e55449d01"
+    }
+  ]
+}
