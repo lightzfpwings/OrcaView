@@ -12,8 +12,11 @@ OrcaView 是面向 ORCA 的开源桌面前后处理工具。可以打开分子�
 |---|---|
 | Windows x64 | [下载 Windows ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a24/OrcaView-0.1.0a24-Windows-x64.zip)，完整解压后双击 `OrcaView.exe`。 |
 | Linux x86-64 | [下载 Linux tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a24/OrcaView-0.1.0a24-Linux-x86_64.tar.gz)，解压后进入程序目录，在图形桌面中运行 `./OrcaView`。 |
+| macOS（Apple Silicon，arm64） | [下载 macOS DMG](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a24/OrcaView-0.1.0a24-macOS-arm64.dmg)，打开后将 `OrcaView.app` 拖入「应用程序」。 |
 
-两个便携包均内置 Python、Qt 和 Open Babel。浏览结构、生成输入及查看已有计算结果可直接离线使用。运行新的量子化学计算需另行安装 ORCA。Windows 版支持生成和导出输入，应用内的本地作业运行器当前使用 POSIX 进程控制。[发行页](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a24)
+三个平台的发行包均内置 Python、Qt 和 Open Babel。浏览结构、生成输入及查看已有计算结果可直接离线使用。运行新的量子化学计算需另行安装 ORCA。Windows 版支持生成和导出输入，应用内的本地作业运行器当前使用 POSIX 进程控制。[发行页与 SHA-256 校验清单](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a24)
+
+macOS 试用版使用临时签名，未经 Apple 公证。首次打开下载的应用时如出现系统提示，请参阅 [Apple 的打开说明](https://support.apple.com/zh-cn/102445)。
 
 ### 在 Windows 上试用
 
@@ -52,6 +55,13 @@ python -m orcaview gui
 python -m orcaview preview examples/water.xyz --job OPT_FREQ
 python tools/run_tests.py -q
 python packaging/desktop/build.py both
+```
+
+在 Apple Silicon Mac 的 arm64 CPython 3.13 虚拟环境中，可用以下命令生成同版本的 `.app` 和 DMG。成品位于 `dist/macos/0.1.0a24/`。
+
+```shell
+python -m pip install '.[gui]' 'PyInstaller==6.22.3'
+python packaging/macos/build.py
 ```
 
 ## 开源许可

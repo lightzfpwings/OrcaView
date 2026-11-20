@@ -1,5 +1,7 @@
 from pathlib import Path
+from importlib.metadata import distribution
 import sys
+import sysconfig
 
 from PyInstaller.utils.hooks import collect_submodules, copy_metadata, get_package_paths
 
@@ -16,16 +18,29 @@ babel_plugins = babel / "lib" / "openbabel" / "3.2.0"
 if not babel_plugins.is_dir():
     raise RuntimeError("The macOS trial build requires the official openbabel 3.2.0 wheel.")
 babel_data = babel / "share" / "openbabel"
+pyinstaller = distribution("PyInstaller")
+bootloader_license = next(pyinstaller.locate_file(p) for p in pyinstaller.files if p.name == "COPYING.txt")
+repo = source.parent
+notices = [
+    (str(repo / "LICENSE"), "ThirdParty/OrcaView"),
+    (str(repo / "THIRD_PARTY_NOTICES.md"), "ThirdParty"),
+    (str(packaging_dir / "DEPENDENCY_LICENSES.txt"), "ThirdParty"),
+    (str(Path(sysconfig.get_path("stdlib")) / "LICENSE.txt"), "ThirdParty/CPython"),
+    (str(bootloader_license), "ThirdParty/PyInstaller"),
+]
 
 analysis = Analysis(
     [str(packaging_dir / "launcher.py")],
     pathex=[str(source)],
     datas=[(str(source / "orcaview" / "gui" / "assets" / "orcaview.png"), "orcaview/gui/assets"),
            (str(source / "orcaview" / "languages" / "*.json"), "orcaview/languages"),
-           (str(babel_data), "openbabel/share/openbabel"), *copy_metadata("openbabel")],
+           (str(babel_data), "openbabel/share/openbabel"), *copy_metadata("openbabel"), *notices],
     binaries=[(str(babel_plugins / "*.so"), "openbabel/lib/openbabel/3.2.0")],
     hiddenimports=[*collect_submodules("orcaview"), "openbabel.openbabel", "openbabel._openbabel"],
 )
+# pip records the local install URL even when the wheel is byte-identical to PyPI.
+analysis.datas = [entry for entry in analysis.datas
+                  if entry[0] != "openbabel-3.2.0.dist-info/direct_url.json"]
 archive = PYZ(analysis.pure)
 executable = EXE(
     archive, analysis.scripts, [],
