@@ -1,8 +1,8 @@
 """Browse calculation results and their corresponding molecular geometries."""
 
-from PySide6.QtCore import QAbstractTableModel, QItemSelectionModel, QModelIndex, QSignalBlocker, Qt
+from PySide6.QtCore import QAbstractTableModel, QItemSelectionModel, QModelIndex, QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QFrame, QHeaderView, QLabel, QPlainTextEdit,
+    QAbstractItemView, QFrame, QHeaderView, QLabel, QPlainTextEdit, QPushButton,
     QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTabWidget,
     QTableView, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
@@ -86,6 +86,8 @@ class _LogTableModel(QAbstractTableModel):
 
 
 class FoundationPanel(QWidget):
+    design_requested = Signal(object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("foundationPanel")
@@ -143,6 +145,12 @@ class FoundationPanel(QWidget):
         self.viewport.setMinimumWidth(220)
         self.viewport.setObjectName("foundationViewport")
         scene.addWidget(self.viewport, 1)
+        self.design_button = QPushButton(tr("用此结构设计"))
+        self.design_button.setObjectName("designResultGeometry")
+        self.design_button.setToolTip(tr("将显示的几何带入设计，可撤销此次替换。"))
+        self.design_button.setEnabled(False)
+        self.design_button.clicked.connect(self._request_design)
+        scene.addWidget(self.design_button, alignment=Qt.AlignmentFlag.AlignCenter)
         splitter.addWidget(self.geometry_pane)
         right = QWidget()
         table_layout = QVBoxLayout(right)
@@ -207,11 +215,11 @@ class FoundationPanel(QWidget):
         splitter.setSizes([column_width] * splitter.count())
         # If a manually narrowed workspace is too small for the three panes,
         # let their content scroll while the tab and its header keep fitting.
-        contents = QScrollArea()
-        contents.setFrameShape(QFrame.Shape.NoFrame)
-        contents.setWidgetResizable(True)
-        contents.setWidget(splitter)
-        layout.addWidget(contents, 1)
+        self.result_contents = QScrollArea()
+        self.result_contents.setFrameShape(QFrame.Shape.NoFrame)
+        self.result_contents.setWidgetResizable(True)
+        self.result_contents.setWidget(splitter)
+        layout.addWidget(self.result_contents, 1)
         self.datasets.currentItemChanged.connect(self._dataset_changed)
         self.spectra.currentItemChanged.connect(self._spectrum_changed)
         self.atoms.itemSelectionChanged.connect(self._table_selected)
@@ -238,6 +246,13 @@ class FoundationPanel(QWidget):
         previous_dataset = self._dataset_id
         self.document = document
         head = next(snapshot for snapshot in reversed(snapshots) if snapshot.ref.frame_id is None)
+        has_atoms = bool(head.molecule.atoms)
+        self.result_contents.setVisible(has_atoms)
+        self.result_contents.setEnabled(has_atoms)
+        if not has_atoms:
+            self._clear_empty_design()
+            return
+        self.title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._rebuild_results(snapshots, datasets)
         if self._log_selection is not None:
             self._show_log_selection(*self._log_selection)
@@ -251,6 +266,26 @@ class FoundationPanel(QWidget):
             self._dataset_id = None
             self._show_snapshot(head, retain_selection=True)
 
+    def _clear_empty_design(self):
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title.setText(tr("当前设计没有原子。"))
+        self.title.setToolTip("")
+        self._dataset_id = self.selected_snapshot = self._log_snapshot = self._log_selection = None
+        self._dataset_items.clear()
+        self._series_items = []
+        self._merged_series.clear()
+        self._series = ()
+        with QSignalBlocker(self.datasets), QSignalBlocker(self.spectra), QSignalBlocker(self.atoms):
+            self.datasets.setRowCount(0)
+            self.spectra.clear()
+            self.atoms.setRowCount(0)
+        self.viewport.set_molecule(None)
+        self._select_ids(())
+        self.spectrum_preview.set_spectrum(None)
+        self.log_model.set_table((), ())
+        self.details.clear()
+        self.evidence.clear()
+
     def refresh_document(self):
         if self.document is not None:
             self.set_document(self.document)
@@ -262,6 +297,8 @@ class FoundationPanel(QWidget):
         self._report = report
         self._standalone = report is not None and standalone
         self._log_selection = None
+        if self.document is not None and not self.document.head.molecule.atoms:
+            return
         records = self.document.records() if self.document is not None and not self._standalone else ((), ())
         self._rebuild_results(*records)
         if self._dataset_id in self._dataset_items:
@@ -380,6 +417,7 @@ class FoundationPanel(QWidget):
             self.geometry_pane.hide()
         self._dataset_id = None
         self._log_selection = kind, index
+        self.design_button.setEnabled(snapshot is not None)
         if kind == "spectrum":
             data = self._report.spectra[index]
             self._preview_index = index
@@ -413,7 +451,7 @@ class FoundationPanel(QWidget):
                                  tuple((p.value, p.unit, report_text(p.context), p.line) for p in series))
 
     def view_geometry(self, ref):
-        if self._standalone:
+        if self._standalone or not self.result_contents.isEnabled():
             return
         snapshot = self.document.resolve(ref)
         self._dataset_id = None
@@ -424,7 +462,7 @@ class FoundationPanel(QWidget):
         self._show_snapshot(snapshot)
 
     def view_dataset(self, dataset_id):
-        if self._standalone:
+        if self._standalone or not self.result_contents.isEnabled():
             return
         data = self.document.dataset(dataset_id)
         snapshot = self.document.resolve(data.geometry)
@@ -554,6 +592,7 @@ class FoundationPanel(QWidget):
     def _select_ids(self, atom_ids, *, reveal_measurement=False):
         self._selected_ids = list(atom_ids)
         context = self.selection_context
+        self.design_button.setEnabled(context is not None)
         snapshot = self.selected_snapshot
         rows = context.indices(snapshot) if context is not None else ()
         with QSignalBlocker(self.atoms):
@@ -576,3 +615,8 @@ class FoundationPanel(QWidget):
         else:
             self.bond_length.clear()
         self.bond_length.setVisible(len(rows) == 2)
+
+    def _request_design(self):
+        context = self.selection_context
+        if context is not None:
+            self.design_requested.emit(context.geometry)

@@ -8,7 +8,9 @@ import tempfile
 
 from orcaview import (
     ADVANCED_PROJECT_SCHEMA_VERSION, DOCUMENT_PROJECT_SCHEMA_VERSION, LEGACY_PROJECT_SCHEMA_VERSION,
-    BLOCK_PROJECT_SCHEMA_VERSION, PROJECT_SCHEMA_VERSION, __version__,
+    BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION,
+    LOG_REPORT_PROJECT_SCHEMA_VERSION,
+    TOPOLOGY_PROJECT_SCHEMA_VERSION, __version__,
     SOLVATION_PROJECT_SCHEMA_VERSION, STATE_PROJECT_SCHEMA_VERSION,
 )
 from orcaview.core.methods import PATH_JOBS
@@ -17,9 +19,20 @@ from orcaview.core.snapshots import GeometryRef
 from orcaview.orca.input import render_input
 from ._project_format import (
     check_fields, has_advanced_settings, has_calculation_parameters, read_calculation,
-    read_document, read_log_report, read_molecule, write_calculation,
+    read_document, read_log_report, read_molecule, trim_molecule_fields, write_calculation,
 )
 from .session import Session
+
+
+def _validate_project_head(molecule, spec, version):
+    if version >= EMPTY_DRAFT_PROJECT_SCHEMA_VERSION and not molecule.atoms:
+        # Snapshot creation validates the draft topology, charge and multiplicity.
+        # A draft has no ORCA input to generate.
+        return
+    if version >= STATE_PROJECT_SCHEMA_VERSION:
+        render_input(molecule, spec)
+    else:
+        molecule.validate()
 
 
 def _payload(session, target):
@@ -28,8 +41,16 @@ def _payload(session, target):
     if not isinstance(session.source_path, str):
         raise ValueError("项目来源路径必须是字符串")
     document = session.tracked_document
-    if session.log_report is not None:
-        version = PROJECT_SCHEMA_VERSION
+    records = document.records() if document is not None else None
+    molecules = [s.molecule for s in records[0]] if records is not None else [session.molecule]
+    if any(not molecule.atoms for molecule in molecules):
+        version = EMPTY_DRAFT_PROJECT_SCHEMA_VERSION
+    elif any(b.style != "plain" for molecule in molecules for b in molecule.bonds):
+        version = BOND_STYLE_PROJECT_SCHEMA_VERSION
+    elif any(m.bonds_explicit for m in molecules):
+        version = TOPOLOGY_PROJECT_SCHEMA_VERSION
+    elif session.log_report is not None:
+        version = LOG_REPORT_PROJECT_SCHEMA_VERSION
     elif spec.solvation_model != "Gas" or spec.job_type in PATH_JOBS:
         version = SOLVATION_PROJECT_SCHEMA_VERSION
     elif spec.block_options:
@@ -51,23 +72,25 @@ def _payload(session, target):
     if version == LEGACY_PROJECT_SCHEMA_VERSION:
         session.molecule.validate()
         payload["molecule"] = asdict(session.molecule)
+        trim_molecule_fields(payload["molecule"], version)
     else:
         if document is None:
             # Reject an invalid first parameterized save before allocating document IDs.
-            render_input(session.molecule, spec)
+            _validate_project_head(session.molecule, spec, version)
             snapshots, datasets = session.document.records()
         else:
-            snapshots, datasets = document.records()
+            snapshots, datasets = records
             head = next(s for s in reversed(snapshots) if s.ref.frame_id is None)
-            if version >= STATE_PROJECT_SCHEMA_VERSION:
-                render_input(head.molecule, spec)
-            else:
-                head.molecule.validate()
+            _validate_project_head(head.molecule, spec, version)
         payload.update(
             contract_version=GeometryRef.contract_version,
             document={"coordinate_unit": "angstrom", "snapshots": [asdict(s) for s in snapshots],
                       "datasets": [asdict(d) for d in datasets]},
         )
+        for snapshot in payload["document"]["snapshots"]:
+            trim_molecule_fields(snapshot["molecule"], version)
+        if version >= TOPOLOGY_PROJECT_SCHEMA_VERSION:
+            payload["log_report"] = None
         if session.log_report is not None:
             if session.document.artifact(session.log_report.source.artifact_id) != session.log_report.source:
                 raise ValueError("项目的日志与结构来源不一致")
@@ -127,30 +150,28 @@ def load_project(path: Path) -> Session:
     if type(version) is not int or version not in (
             LEGACY_PROJECT_SCHEMA_VERSION, DOCUMENT_PROJECT_SCHEMA_VERSION,
             STATE_PROJECT_SCHEMA_VERSION, ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION,
-            SOLVATION_PROJECT_SCHEMA_VERSION, PROJECT_SCHEMA_VERSION):
+            SOLVATION_PROJECT_SCHEMA_VERSION, LOG_REPORT_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION,
+            BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION):
         raise ValueError("不支持此项目版本；需要显式迁移")
     common = {"schema_version", "software_version", "calculation", "source_path"}
     extra = {"molecule"} if version == LEGACY_PROJECT_SCHEMA_VERSION else {"contract_version", "document"}
-    if version == PROJECT_SCHEMA_VERSION:
+    if version >= LOG_REPORT_PROJECT_SCHEMA_VERSION:
         extra.add("log_report")
     check_fields(data, common | extra, "项目")
     if not isinstance(data["software_version"], str) or not isinstance(data["source_path"], str):
         raise ValueError("软件版本和来源路径必须是字符串")
     spec = read_calculation(data["calculation"], version)
     if version == LEGACY_PROJECT_SCHEMA_VERSION:
-        molecule = read_molecule(data["molecule"])
+        molecule = read_molecule(data["molecule"], version)
         molecule.validate()
         artifact = ArtifactRef.from_bytes(raw, "orcaview.schema1", str(source))
         return Session.from_schema1(molecule, spec, data["source_path"], artifact, data["software_version"])
     if type(data["contract_version"]) is not int or data["contract_version"] != GeometryRef.contract_version:
         raise ValueError("不支持此公共契约版本")
-    document = read_document(data["document"])
-    if version >= STATE_PROJECT_SCHEMA_VERSION:
-        render_input(document.head.molecule, spec)
-    else:
-        document.head.molecule.validate()
+    document = read_document(data["document"], version)
+    _validate_project_head(document.head.molecule, spec, version)
     session = Session.from_document(document, spec, data["source_path"])
-    if version == PROJECT_SCHEMA_VERSION:
+    if version == LOG_REPORT_PROJECT_SCHEMA_VERSION or data.get("log_report") is not None:
         report = read_log_report(data["log_report"])
         if document.artifact(report.source.artifact_id) != report.source:
             raise ValueError("项目的日志与结构来源不一致")

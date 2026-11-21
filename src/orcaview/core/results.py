@@ -107,6 +107,8 @@ class ResultDataset(Versioned):
     def validate_geometry(self, snapshot: GeometrySnapshot) -> None:
         if self.geometry != snapshot.ref:
             raise ValueError("结果与实际几何引用不一致")
+        if not snapshot.atom_ids:
+            raise ValueError("分子至少需要一个原子")
         atoms = set(snapshot.atom_ids)
         for axis in self.axes:
             if axis.kind == "atom" and not atoms.issuperset(axis.ids):

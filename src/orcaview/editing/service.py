@@ -7,17 +7,25 @@ from typing import Optional, Tuple
 
 from orcaview.application.document import MoleculeDocument, StaleRevisionError
 from orcaview.core._validation import Versioned, identifiers, require_tuple
-from orcaview.core.models import Bond, Molecule
+from orcaview.core.models import Bond, DIRECTIONAL_STYLES, Molecule
+from orcaview.core.geometry import display_bonds
 from orcaview.core.provenance import Provenance, new_id
 from orcaview.core.snapshots import GeometryRef, GeometrySnapshot, SelectionContext
 
-from .commands import (AddAtoms, DeleteAtoms, GeometryEditCommand, ReorderAtoms,
-                       ReplaceElement, SetDistance, SetElectronicState)
-from .coordinates import edit_distance
+from .commands import (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, GeometryEditCommand, InsertRing, MoveAtom,
+                       OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength, SetDistance,
+                       SetElectronicState, UseResultGeometry)
+from .coordinates import bond_moving_atoms, edit_distance
+from .hydrogens import attached_hydrogen
+from .rings import insert_ring
 
 
 class EditStateError(ValueError):
     """The requested transition is not valid for this editor's pending/history state."""
+
+
+class _UnchangedEdit(ValueError):
+    """A preview reproduced the current geometry and atom identities."""
 
 
 @dataclass(frozen=True)
@@ -84,6 +92,8 @@ class EditResult(Versioned):
 
 
 def _state_error(molecule: Molecule) -> Optional[str]:
+    if not molecule.atoms:
+        return None
     try:
         molecule.validate()
     except ValueError as exc:
@@ -95,22 +105,76 @@ def _subset(base: GeometrySnapshot, order: Tuple[str, ...]):
     """Remap explicit bonds through stable IDs; never infer chemical bonds."""
     indices = tuple(base.index_of(atom_id) for atom_id in order)
     old_to_new = {old: new for new, old in enumerate(indices)}
-    bonds = tuple(Bond(old_to_new[b.a], old_to_new[b.b], b.order)
+    bonds = tuple(replace(b, a=old_to_new[b.a], b=old_to_new[b.b])
                   for b in base.molecule.bonds if b.a in old_to_new and b.b in old_to_new)
-    return replace(base.molecule, atoms=tuple(base.molecule.atoms[i] for i in indices), bonds=bonds)
+    return replace(base.molecule, atoms=tuple(base.molecule.atoms[i] for i in indices), bonds=bonds,
+                   bonds_explicit=not order or base.molecule.bonds_explicit or bool(base.molecule.bonds and not bonds))
 
 
-def _apply(base: GeometrySnapshot, command: GeometryEditCommand):
+def _result_atom_ids(document, target, live_ids):
+    active = set(live_ids)
+    mapped = [atom_id if atom_id in active else None for atom_id in target.atom_ids]
+    if None not in mapped:
+        return tuple(mapped)
+    # A prior adoption may have assigned a fresh ID to a deleted atom.
+    # Reuse that ID only while it is live and its original source is recorded.
+    for snapshot in reversed(document.records()[0]):
+        origin = snapshot.provenance
+        if (origin.producer != "orcaview.editing" or len(mapped) != len(snapshot.atom_ids)
+                or dict(origin.parameters).get("result_geometry_snapshot_id") != target.ref.snapshot_id):
+            continue
+        for i, old in enumerate(snapshot.atom_ids):
+            if mapped[i] is None and old in active:
+                mapped[i] = old
+        if None not in mapped:
+            break
+    return tuple(mapped)
+
+
+def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: GeometryEditCommand):
     op, molecule, ids = command.operation, base.molecule, base.atom_ids
+    if isinstance(op, (OptimizeCoordinates, AddHydrogens)):
+        bonds = display_bonds(molecule)
+        if op.perceived_bonds is not None:
+            old_edges = {tuple(sorted((b.a, b.b))) for b in bonds}
+            new_edges = {tuple(sorted((b.a, b.b))) for b in op.perceived_bonds}
+            if molecule.bonds_explicit or molecule.bonds or new_edges != old_edges:
+                raise ValueError("优化返回的连接表无效")
+            bonds = op.perceived_bonds
+        if isinstance(op, AddHydrogens):
+            atoms = tuple(atom for _, atom in op.attachments)
+            anchors = {atom_id: index for index, atom_id in enumerate(ids)}
+            if any(parent not in anchors for parent, _ in op.attachments):
+                raise ValueError("当前快照不存在该原子 ID")
+            added = tuple(Bond(anchors[parent], i) for i, (parent, _) in enumerate(op.attachments, len(ids)))
+            return replace(molecule, atoms=molecule.atoms + atoms, bonds=bonds + added,
+                           bonds_explicit=True), ids + (None,) * len(atoms)
+        if len(op.coordinates) != len(ids):
+            raise ValueError("优化坐标与原子数不一致")
+        atoms = tuple(replace(atom, x=x, y=y, z=z) for atom, (x, y, z) in zip(molecule.atoms, op.coordinates))
+        return replace(molecule, atoms=atoms, bonds=bonds, bonds_explicit=True), ids
     if isinstance(op, AddAtoms):
         return replace(molecule, atoms=molecule.atoms + op.atoms), ids + (None,) * len(op.atoms)
+    if isinstance(op, (AttachAtom, AddHydrogen)):
+        anchor = base.index_of(op.anchor_id)
+        bonds = display_bonds(molecule)
+        if isinstance(op, AddHydrogen):
+            atom = attached_hydrogen(molecule, anchor, bonds)
+            bond = Bond(anchor, len(ids))
+        else:
+            atom = op.atom
+            bond = Bond(anchor, len(ids), op.order, op.style)
+        return replace(molecule, atoms=molecule.atoms + (atom,), bonds=bonds + (bond,),
+                       bonds_explicit=True), ids + (None,)
+    if isinstance(op, InsertRing):
+        anchor = None if op.anchor_id is None else base.index_of(op.anchor_id)
+        updated = insert_ring(molecule, op, anchor)
+        return updated, ids + (None,) * (len(updated.atoms) - len(ids))
     if isinstance(op, DeleteAtoms):
         # Validate every requested ID before deriving the surviving state.
         SelectionContext(base.ref, op.atom_ids).indices(base)
         removed = set(op.atom_ids)
         order = tuple(i for i in ids if i not in removed)
-        if not order:
-            raise ValueError("当前文档至少保留一个原子，不能删除全部原子")
         return _subset(base, order), order
     if isinstance(op, ReorderAtoms):
         if set(op.atom_ids) != set(ids):
@@ -121,10 +185,51 @@ def _apply(base: GeometrySnapshot, command: GeometryEditCommand):
         atoms = tuple(replace(atom, element=op.element) if i == index else atom
                       for i, atom in enumerate(molecule.atoms))
         return replace(molecule, atoms=atoms), ids
+    if isinstance(op, MoveAtom):
+        row = base.index_of(op.atom_id)
+        atoms = list(molecule.atoms)
+        atoms[row] = replace(atoms[row], x=op.x, y=op.y, z=op.z)
+        return replace(molecule, atoms=tuple(atoms)), ids
+    if isinstance(op, SetBond):
+        a, b = base.index_of(op.atom_a), base.index_of(op.atom_b)
+        edge = {a, b}
+        bonds = list(display_bonds(molecule))
+        for i, bond in enumerate(bonds):
+            if {bond.a, bond.b} == edge:
+                if op.order:
+                    if op.style not in DIRECTIONAL_STYLES:
+                        a, b = bond.a, bond.b
+                    bonds[i] = Bond(a, b, op.order, op.style)
+                else:
+                    bonds.pop(i)
+                break
+        else:
+            if not op.order:
+                raise ValueError("所选原子之间没有键")
+            if op.style not in DIRECTIONAL_STYLES:
+                a, b = sorted(edge)
+            bonds.append(Bond(a, b, op.order, op.style))
+        return replace(molecule, bonds=tuple(bonds), bonds_explicit=True), ids
     if isinstance(op, SetElectronicState):
         return replace(molecule, charge=op.charge, multiplicity=op.multiplicity), ids
+    if isinstance(op, UseResultGeometry):
+        target = document.resolve(op.source)
+        chosen = target.molecule
+        if target.ref.frame_id is not None and not (chosen.bonds_explicit or chosen.bonds):
+            # Coordinate-only output frames share their parent's atom identities.
+            parent = document.resolve(target.parent)
+            if parent.molecule.bonds or parent.molecule.bonds_explicit:
+                topology = _subset(parent, target.atom_ids)
+                chosen = replace(chosen, bonds=topology.bonds, bonds_explicit=topology.bonds_explicit)
+        return chosen, _result_atom_ids(document, target, ids)
     if isinstance(op, SetDistance):
-        return edit_distance(base, op.coordinate, op.target, op.moving_atom_ids, op.fixed_atom_ids), ids
+        edited = edit_distance(base, op.coordinate, op.target, op.moving_atom_ids, op.fixed_atom_ids)
+        if isinstance(op, SetBondLength):
+            bonds = display_bonds(molecule)
+            if set(op.moving_atom_ids) != set(bond_moving_atoms(base, op.coordinate, bonds)):
+                raise ValueError("键长编辑必须移动该端的整个基团")
+            edited = replace(edited, bonds=bonds, bonds_explicit=True)
+        return edited, ids
     raise ValueError("不支持的编辑操作")
 
 
@@ -219,10 +324,10 @@ class EditorService:
                 raise ValueError("需要 GeometryEditCommand")
             if command.expected != self._expected:
                 raise StaleRevisionError("命令基准与编辑服务的当前修订不一致")
-            molecule, ids = _apply(base, command)
-            molecule.validate_structure()
+            molecule, ids = _apply(self._document, base, command)
+            molecule.validate_structure(allow_empty=True)
             if molecule == base.molecule and ids == base.atom_ids:
-                raise ValueError("编辑没有改变分子或原子顺序")
+                raise _UnchangedEdit("编辑没有改变分子或原子顺序")
             active = set(ids)
             preview = EditPreview(
                 new_id(), command, base, molecule, AtomMapping(base.atom_ids, ids), self._selection,
@@ -241,13 +346,16 @@ class EditorService:
             self._check_preview(preview)
             self._check_head()
             command = preview.command
-            origin = Provenance("edit", "orcaview.editing", "1", parameters=(
+            parameters = (
                 ("operation", command.operation.kind),
                 ("base_snapshot_id", command.expected.snapshot_id),
                 ("preview_id", preview.preview_id),
                 ("request", json.dumps(asdict(command.operation), ensure_ascii=False, allow_nan=False,
                                        sort_keys=True, separators=(",", ":"))),
-            ))
+            )
+            if isinstance(command.operation, UseResultGeometry):
+                parameters += (("result_geometry_snapshot_id", command.operation.source.snapshot_id),)
+            origin = Provenance("edit", "orcaview.editing", "1", parameters=parameters)
             after = self._document.publish_revision(
                 command.expected, preview.molecule, preview.mapping.target_ids, origin,
                 source_unit="angstrom",
@@ -265,6 +373,16 @@ class EditorService:
         with self._lock:
             self._check_preview(preview)
             self._pending = None
+
+    def use_result_geometry(self, source: GeometryRef) -> Optional[EditResult]:
+        """Adopt the displayed snapshot as one undoable edit, unless it is already active."""
+        with self._lock:
+            command = GeometryEditCommand(self._expected, UseResultGeometry(source))
+            try:
+                preview = self.preview(command)
+            except _UnchangedEdit:
+                return None
+            return self.commit(preview)
 
     def _restore(self, undo: bool) -> EditResult:
         with self._lock:

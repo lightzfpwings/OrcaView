@@ -151,3 +151,26 @@ def edit_distance(snapshot: GeometrySnapshot, definition: CoordinateDefinition,
     molecule = replace(snapshot.molecule, atoms=atoms)
     molecule.validate_structure()
     return molecule
+
+
+def bond_moving_atoms(snapshot, definition, bonds):
+    """Return the moving component after cutting the selected bridge bond."""
+    fixed, moving = (snapshot.index_of(i) for i in definition.atom_ids)
+    neighbors = [set() for _ in snapshot.atom_ids]
+    for bond in bonds:
+        neighbors[bond.a].add(bond.b)
+        neighbors[bond.b].add(bond.a)
+    if moving not in neighbors[fixed]:
+        raise ValueError("所选原子未直接成键，仅显示距离。")
+    neighbors[moving].remove(fixed)
+    neighbors[fixed].remove(moving)
+    component = {moving}
+    pending = [moving]
+    while pending:
+        i = pending.pop()
+        for neighbor in neighbors[i] - component:
+            if neighbor == fixed:
+                raise ValueError("环内键仅支持测距。")
+            component.add(neighbor)
+            pending.append(neighbor)
+    return tuple(snapshot.atom_ids[i] for i in sorted(component))

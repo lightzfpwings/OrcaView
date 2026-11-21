@@ -1,4 +1,4 @@
-Notices for OrcaView 0.1.0a24 for macOS arm64
+Notices for OrcaView for macOS arm64
 
 Qt license texts are from the 6.8.3 distribution. Additional native library notices are from the packages used for the embedded macOS Python runtime. See THIRD_PARTY_NOTICES.md for the corresponding source distributions.
 

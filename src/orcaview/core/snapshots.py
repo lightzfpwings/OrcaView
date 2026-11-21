@@ -44,7 +44,7 @@ class GeometrySnapshot(Versioned):
             raise ValueError("父几何必须是 GeometryRef")
         if not isinstance(self.provenance, Provenance) or self.source_unit not in LENGTH_UNITS:
             raise ValueError("需要有效的几何来源和源长度单位")
-        self.molecule.validate_structure()
+        self.molecule.validate_structure(allow_empty=self.ref.frame_id is None)
         integer(self.molecule.charge, "总电荷")
         integer(self.molecule.multiplicity, "自旋多重度", 1)
         identifiers(self.atom_ids, "原子 ID")

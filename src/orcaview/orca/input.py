@@ -92,7 +92,7 @@ def _render_input(
     electronic_state = f"{molecule.charge} {molecule.multiplicity}"
     if external_xyz is None:
         lines.append(f"* xyz {electronic_state}")
-        lines.extend(f"  {a.element:<2} {a.x: .10f} {a.y: .10f} {a.z: .10f}" for a in molecule.atoms)
+        lines.extend(f"  {a.element:<2} {a.x: .8f} {a.y: .8f} {a.z: .8f}" for a in molecule.atoms)
         lines.append("*")
     else:
         lines.extend([f"* xyzfile {electronic_state} {external_xyz}", ""])

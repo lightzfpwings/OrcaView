@@ -2,8 +2,9 @@
 
 from dataclasses import asdict, fields
 
-from orcaview import (ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION,
-                      SOLVATION_PROJECT_SCHEMA_VERSION, STATE_PROJECT_SCHEMA_VERSION)
+from orcaview import (ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION,
+                      EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
+                      STATE_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION)
 from orcaview.core.block_options import BlockOverride
 from orcaview.core._state_methods import EARLIER_RESPONSE_FUNCTIONALS
 from orcaview.core.methods import EARLIER_METHODS, PATH_JOBS
@@ -30,11 +31,23 @@ def _array(value):
     return value
 
 
-def read_molecule(record):
-    data = dict(_fields_for(record, Molecule))
+def read_molecule(record, version):
+    keys = [f.name for f in fields(Molecule) if version >= TOPOLOGY_PROJECT_SCHEMA_VERSION or f.name != "bonds_explicit"]
+    data = dict(check_fields(record, keys, "Molecule"))
     data["atoms"] = tuple(Atom(**_fields_for(a, Atom)) for a in _array(data["atoms"]))
-    data["bonds"] = tuple(Bond(**_fields_for(b, Bond)) for b in _array(data["bonds"]))
+    if not data["atoms"] and version < EMPTY_DRAFT_PROJECT_SCHEMA_VERSION:
+        raise ValueError("分子至少需要一个原子")
+    bond_fields = ("a", "b", "order", "style") if version >= BOND_STYLE_PROJECT_SCHEMA_VERSION else ("a", "b", "order")
+    data["bonds"] = tuple(Bond(**check_fields(b, bond_fields, "Bond")) for b in _array(data["bonds"]))
     return Molecule(**data)
+
+
+def trim_molecule_fields(record, version):
+    if version < BOND_STYLE_PROJECT_SCHEMA_VERSION:
+        for bond in record["bonds"]:
+            del bond["style"]
+    if version < TOPOLOGY_PROJECT_SCHEMA_VERSION:
+        del record["bonds_explicit"]
 
 
 _BASE_CALCULATION_FIELDS = ("method", "basis", "job_type", "cores", "maxcore_mb")
@@ -117,13 +130,13 @@ def _ref(record):
     return GeometryRef(**_fields_for(record, GeometryRef))
 
 
-def _snapshot(record):
+def _snapshot(record, version):
     data = dict(_fields_for(record, GeometrySnapshot))
     expected_hash = data.pop("content_hash")
     data["ref"] = _ref(data["ref"])
     if data["parent"] is not None:
         data["parent"] = _ref(data["parent"])
-    data["molecule"] = read_molecule(data["molecule"])
+    data["molecule"] = read_molecule(data["molecule"], version)
     data["atom_ids"] = tuple(_array(data["atom_ids"]))
     data["provenance"] = _provenance(data["provenance"])
     snapshot = GeometrySnapshot(**data)
@@ -153,11 +166,11 @@ def _dataset(record):
     return ResultDataset(**data)
 
 
-def read_document(record):
+def read_document(record, version):
     check_fields(record, ("coordinate_unit", "snapshots", "datasets"), "文档")
     if record["coordinate_unit"] != "angstrom":
         raise ValueError("项目科学坐标必须使用 angstrom")
     return MoleculeDocument.restore(
-        tuple(_snapshot(s) for s in _array(record["snapshots"])),
+        tuple(_snapshot(s, version) for s in _array(record["snapshots"])),
         tuple(_dataset(d) for d in _array(record["datasets"])),
     )

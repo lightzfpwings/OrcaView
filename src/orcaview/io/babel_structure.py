@@ -129,6 +129,32 @@ def _read_poscar(raw, name, remove_periodicity):
     return StructureRecord(molecule, removed_periodicity=True)
 
 
+def run_babel_worker(raw, *arguments):
+    """Run one isolated native operation and decode its JSON response."""
+    frozen = getattr(sys, "frozen", False)
+    args = [sys.executable, "--babel-worker"] if frozen else [sys.executable, "-m", "orcaview.io.babel_worker"]
+    args.extend(arguments)
+    env = os.environ.copy()
+    if not frozen:
+        # Also support a source checkout imported by adding src to sys.path.
+        env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(Path(__file__).resolve().parents[2]),
+                                                           env.get("PYTHONPATH"))))
+    try:
+        result = subprocess.run(args, input=raw, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                timeout=90, env=env)
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Open Babel 操作超时") from exc
+    try:
+        payload = json.loads(result.stdout)
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError("Open Babel 未能完成结构处理") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Open Babel 未能完成结构处理")
+    if result.returncode or "error" in payload:
+        raise ValueError(payload.get("error", "Open Babel 未能完成结构处理"))
+    return payload
+
+
 def read_babel_structure(raw, name, format_id, *, remove_periodicity=False):
     if format_id == "xyz":
         return read_xyz_structure(raw, name, remove_periodicity=remove_periodicity)
@@ -139,29 +165,10 @@ def read_babel_structure(raw, name, format_id, *, remove_periodicity=False):
     if format_id == "cif" and not remove_periodicity and re.search(
             rb"(?im)^\s*_(?:cell_length_[abc]|atom_site_fract_[xyz])(?:\s|$)", raw):
         raise PeriodicStructureError("CIF 声明了周期性晶胞。")
-    frozen = getattr(sys, "frozen", False)
-    args = [sys.executable, "--babel-worker"] if frozen else [sys.executable, "-m", "orcaview.io.babel_worker"]
-    args.append(format_id)
-    if remove_periodicity:
-        args.append("--finite")
-    env = os.environ.copy()
-    if not frozen:
-        # Also support a source checkout imported by adding src to sys.path.
-        env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(Path(__file__).resolve().parents[2]),
-                                                           env.get("PYTHONPATH"))))
-    try:
-        result = subprocess.run(args, input=raw, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                timeout=90, env=env)
-    except subprocess.TimeoutExpired as exc:
-        raise ValueError("Open Babel 结构读取或三维构象生成超时") from exc
-    try:
-        payload = json.loads(result.stdout)
-    except (ValueError, UnicodeError) as exc:
-        raise ValueError("Open Babel 未能完成此结构的读取或三维化") from exc
+    arguments = (format_id, "--finite") if remove_periodicity else (format_id,)
+    payload = run_babel_worker(raw, *arguments)
     if payload.get("periodic"):
         raise PeriodicStructureError("该结构包含周期性晶胞。")
-    if result.returncode or "error" in payload:
-        raise ValueError(payload.get("error", "Open Babel 结构读取失败"))
     molecule = Molecule(name, tuple(Atom(*row) for row in payload["atoms"]),
                         tuple(Bond(*row) for row in payload["bonds"]),
                         payload["charge"], payload["multiplicity"])

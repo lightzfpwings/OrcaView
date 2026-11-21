@@ -15,6 +15,23 @@ from .solvation import validate_solvation
 SUPPORTED_METHODS = tuple(METHODS)
 SUPPORTED_BASES = BASES
 
+BOND_STYLES = {
+    1: ("plain", "coordinate", "coordinate_arrow", "wedge", "hashed_wedge", "hollow_wedge",
+        "wavy", "bold", "hashed", "wavy_wedge"),
+    2: ("plain", "aromatic", "crossed", "bold", "dashed"),
+    3: ("plain", "partial_triple"),
+}
+COORDINATE_STYLES = ("coordinate", "coordinate_arrow")
+DIRECTIONAL_STYLES = (*COORDINATE_STYLES, "wedge", "hashed_wedge", "hollow_wedge", "wavy_wedge")
+
+
+def validate_bond_style(order, style):
+    _integer(order, "键级", 1)
+    if order not in BOND_STYLES:
+        raise ValueError("当前原型只接受 1、2、3 键级")
+    if style not in BOND_STYLES[order]:
+        raise ValueError("键型与所选键级不匹配")
+
 
 @dataclass(frozen=True)
 class Atom:
@@ -34,11 +51,24 @@ class Atom:
 
 @dataclass(frozen=True)
 class Bond:
-    """a 和 b 为从零开始的原子索引；启发式推断只生成单键。"""
+    """Indices are zero based. For directional bonds, a is the donor or narrow end."""
 
     a: int
     b: int
     order: int = 1
+    style: str = "plain"
+
+    @property
+    def valence_order(self):
+        if self.style in ("aromatic", "partial_triple"):
+            return self.order - .5
+        return self.order
+
+    def valence_at(self, endpoint):
+        # A donor supplies a lone pair without consuming an extra covalent valence.
+        if self.style in COORDINATE_STYLES and endpoint == self.a:
+            return 0
+        return self.valence_order
 
 
 @dataclass(frozen=True)
@@ -48,19 +78,23 @@ class Molecule:
     bonds: Tuple[Bond, ...] = ()
     charge: int = 0
     multiplicity: int = 1
+    # An intentionally empty bond table must survive editing, saving and reopening.
+    bonds_explicit: bool = False
 
     @property
     def electron_count(self) -> int:
         return sum(ATOMIC_NUMBERS[atom.element] for atom in self.atoms) - self.charge
 
-    def validate_structure(self) -> None:
-        """XYZ 只携带几何，不据此猜测电荷或自旋。"""
+    def validate_structure(self, *, allow_empty: bool = False) -> None:
+        """Validate the topology. Only an editable draft may have no atoms."""
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("分子名称必须是非空字符串")
-        if not self.atoms:
+        if not self.atoms and not allow_empty:
             raise ValueError("分子至少需要一个原子")
         if not isinstance(self.atoms, tuple) or not isinstance(self.bonds, tuple):
             raise ValueError("atoms 和 bonds 必须使用不可变 tuple")
+        if type(self.bonds_explicit) is not bool:
+            raise ValueError("显式连接标记必须是布尔值")
         for atom in self.atoms:
             if not isinstance(atom, Atom):
                 raise ValueError("atoms 中必须是 Atom 对象")
@@ -71,11 +105,9 @@ class Molecule:
                 raise ValueError("bonds 中必须是 Bond 对象")
             _integer(bond.a, "键的起点", 0)
             _integer(bond.b, "键的终点", 0)
-            _integer(bond.order, "键级", 1)
+            validate_bond_style(bond.order, bond.style)
             if bond.a >= len(self.atoms) or bond.b >= len(self.atoms) or bond.a == bond.b:
                 raise ValueError("化学键必须连接两个有效且不同的原子")
-            if bond.order > 3:
-                raise ValueError("当前原型只接受 1、2、3 键级")
             key = tuple(sorted((bond.a, bond.b)))
             if key in seen:
                 raise ValueError("同一对原子不能重复定义化学键")

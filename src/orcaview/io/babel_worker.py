@@ -140,10 +140,17 @@ def _convert(raw, fmt, finite):
 def main(args=None):
     args = sys.argv[1:] if args is None else args
     try:
-        if not args or args[0] not in ("sdf", "mol", "mol2", "pdb", "smi", "inchi", "cif", "cdxml", "cml"):
+        if args and args[0] in ("optimize-2d", "optimize-3d", "perceive-orders"):
+            from orcaview.editing.optimization import optimize_worker
+            result = optimize_worker(json.load(sys.stdin.buffer), args[0])
+        elif args and args[0] in ("sdf", "mol", "mol2", "pdb", "smi", "inchi", "cif", "cdxml", "cml"):
+            result = _convert(sys.stdin.buffer.read(), args[0], "--finite" in args[1:])
+        else:
             raise ValueError("未知的 Open Babel 读取格式")
-        result = _convert(sys.stdin.buffer.read(), args[0], "--finite" in args[1:])
         encoded = json.dumps(result, allow_nan=False)
+    except ImportError:
+        sys.stdout.buffer.write(json.dumps({"error": "无法加载 Open Babel，请安装 OrcaView 桌面依赖或使用内嵌引擎的安装包"}).encode("utf-8"))
+        return 1
     except (ValueError, RuntimeError, OSError) as exc:
         sys.stdout.buffer.write(json.dumps({"error": str(exc)}).encode("utf-8"))
         return 1

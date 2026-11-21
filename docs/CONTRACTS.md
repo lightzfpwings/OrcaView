@@ -1,6 +1,6 @@
 # OrcaView 当前公开契约
 
-软件版本为 `0.1.0a12`。写入时按计算设置、文档历史与日志报告选择能完整表示它们的最早项目格式。基本设置使用 schema 1/2，原有的五个参数化方法使用 schema 3，扩展目录、基组或近似设置使用 schema 4，手动输入块使用 schema 5，溶剂或反应路径设置使用 schema 6，含日志报告的分子项目使用 schema 7。[原始架构基线](DESIGN.md)
+软件版本为 `0.1.0a37`。写入时按计算设置、文档历史与日志报告选择能完整表示它们的最早项目格式。基本设置使用 schema 1/2，原有的五个参数化方法使用 schema 3，扩展目录、基组或近似设置使用 schema 4，手动输入块使用 schema 5，溶剂或反应路径设置使用 schema 6，日志报告自 schema 7 起保存，含显式连接标记的项目至少使用 schema 8，带特殊键型的几何至少使用 schema 9，含零原子草稿的修订历史使用 schema 10。[原始架构基线](DESIGN.md)
 
 ## 核心对象
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | `Atom` | `element, x, y, z` | 标准大小写元素符号；有限实数；长度为 Å |
 | `Bond` | `a, b, order=1` | 原子索引从 0 开始；两个不同原子；键级 1–3 |
-| `Molecule` | `name, atoms, bonds=(), charge=0, multiplicity=1` | 非空结构；总电荷为整数，多重度为正整数 |
+| `Molecule` | `name, atoms, bonds=(), charge=0, multiplicity=1, bonds_explicit=False` | 非空结构；总电荷为整数，多重度为正整数 |
 | `CalculationSpec` | 基本方法、基组、作业类型、核数和每核内存，另有活性空间、目标根数、参考泛函和下列高级选项 | 核数和每核 MB 为正整数，方法决定适用字段。 |
 
 `Molecule.validate_structure()` 检查结构；`Molecule.validate()` 另检查电子数与多重度的相容性。电子数为原子序数之和减去总电荷；检查不证明电子态在化学上合理，也不实现 ECP、ghost、broken-symmetry 或混合基组的完整语义。
@@ -32,8 +32,8 @@ schema 5 在计算记录中增加 `block_options` 数组，按 `{"block":"scf","
 | `orca.input.render_input(molecule, spec)` | 结构化对象 → ORCA 输入字符串 | 完整基础校验未通过为 `ValueError`；不启动程序 |
 | `orca.output.parse_output(text, job_type='SP')` | 单作业文本 → `OutputSummary` | 未知任务类型为 `ValueError`；缺证据不猜测成功 |
 | `application.session.Session.open_xyz(path)` | 替换当前会话结构 | 先解析后提交；失败保留原分子 |
-| `application.project.save_project(session, path)` | 按文档、设置和报告写 schema 1–7 | 校验后原子替换，失败保留旧文件 |
-| `application.project.load_project(path)` | schema 1–7 JSON → `Session` | 拒绝未知版本、未知字段和失效的内部引用 |
+| `application.project.save_project(session, path)` | 按文档、设置和报告写 schema 1–10 | 校验后原子替换，失败保留旧文件 |
+| `application.project.load_project(path)` | schema 1–10 JSON → `Session` | 拒绝未知版本、未知字段和失效的内部引用 |
 | `application.project.migrate_project(source, destination)` | schema 1 → 新路径的 schema 2，并返回会话 | 目标已存在或写入失败时保留现场 |
 
 XYZ 的空注释行可以保留，但第二行必须存在；每原子仅四列，额外列与多帧输入明确拒绝。XYZ 未提供电子态时保留默认电荷 0、多重度 1，不以启发式替用户选择自旋。因此奇电子几何可以查看，但必须修正电子态后才能导出计算输入。
@@ -64,6 +64,14 @@ schema 1 的 JSON 顶层字段为 `schema_version, software_version, molecule, c
 | `doc.artifact(id)`、`doc.records()` | 按 ID 查询已登记的文件来源，或取同一时刻的不可变快照序列与数据集序列。 |
 
 会话由调用端管理。后台生产者可持有文档并以明确的修订或实际帧发布数据。文档内的发布与一致性读取由同一把锁保护。直接赋值 `session.molecule` 兼容原型调用。已跟踪文档中，原子行完全相同的设置修改沿用 ID。整体替换坐标而未提供映射时，分配全新 ID。编辑器通过 `publish_revision` 提供实际映射。
+
+设计页的碳环模板以一条编辑命令提交原子和键。用已有起始碳建环时保留其原子 ID。调整非环键键长时，去掉该键后，移动端所在的连通分量沿键轴整体平移。两类操作均可整步撤销或重做。
+
+一次 `AddHydrogen` 编辑接受一个原子 ID，立即追加一个 H 及其与所选原子间的单键，保留已有坐标、原子 ID 和选区。单击「+H」启用连续加氢工具，点选目标原子后发布编辑。双击工具按钮则为当前结构补齐可确定的缺氢位点，合并为一次可撤销的编辑。自动补氢使用中性单重态模型，对只有坐标的多原子结构先感知键级。设计页显示键级总和异常及电子态诊断，允许继续修改草图。
+
+坐标优化基于发起操作时的几何快照。Open Babel 在独立进程中计算，返回后编辑器校验当前修订，再一次性提交。二维整理及三维预优化保留原子数、顺序及已有键级。对仅有坐标的输入，优化时在已有显示连线上感知键级，提交后可在设计页查看和修改。二维整理保留几何中心，将各原子置于相同的 Z 坐标。三维力场计算中临时使用的氢不会写入项目。
+
+从结果页选择「用此结构设计」时，编辑器解析所显示快照的完整 `GeometryRef`，将其几何发布为可撤销的编辑。仍在当前修订的原子沿用其 ID。采纳坐标不会移动或重新绑定原始计算数据集。
 
 ### 编辑历史恢复协议 `history-restore/1`
 
@@ -122,6 +130,14 @@ schema 2 此版保存一个分子文档的完整修订、实际帧和已登记�
 ## 输出摘要证据
 
 schema 7 在顶层保存 `log_report`。其中 `source` 引用文档已登记的原始日志，`properties` 存名称、数值、单位、计算上下文和源行，`spectra` 存谱名、含单位的表头、逐行数值和表头源行，`status` 记录日志的终止信息。源行从 1 计数。文件级观察值可跨多个优化步，逐原子布居数据仍须绑定到对应快照的原子轴。重开项目仅从项目内数据还原这些记录。
+
+schema 8 在各几何快照的分子对象中保存布尔字段 `bonds_explicit`。当它为真时，空键表表示用户明确指定这些原子之间没有键。旧格式中的空键表沿用按距离推断显示连线的行为。任一历史快照需要显式标记时，当前项目至少使用 schema 8，保留整段历史和所有原子 ID。该格式允许 `log_report` 取 null。
+
+schema 9 保存键的绘图样式和有向端点。配位键以起点为供体，终点为受体。芳香键和部分三键分别表示 1.5 和 2.5 级。键型菜单参考 ChemDraw 对显示样式与分数键级的定义。[键级](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/properties/Bond_Order.htm) · [显示样式](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/properties/Bond_Display.htm)
+
+仅包含常规键的旧项目仍可按原格式读写。
+
+schema 10 允许在设计修订中保存零原子草稿。清空草图是一条可撤销的删除操作，已有修订、计算帧和结果数据集继续保存。当前草稿为空时，输入和结果页暂停结构相关操作。
 
 `OutputSummary` 字段：
 
