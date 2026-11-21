@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QIcon
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QCompleter, QDockWidget, QDoubleSpinBox, QFileDialog, QFrame,
     QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPlainTextEdit,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from orcaview import __version__
+from orcaview.gui import typography
 from orcaview.i18n import diagnostic_text, tr
 from orcaview.application.project import load_project, save_project
 from orcaview.application.session import Session
@@ -72,15 +73,14 @@ QWidget#rotationControls QPushButton { padding: 8px 6px; }
 QPushButton:hover { background: #F2E4E6; border-color: #AB7884; }
 QPushButton#primary { background: #904359; color: white; border-color: #904359; }
 QPushButton#primary:hover { background: #79364B; }
-QLabel#brand { font-size: 22px; font-weight: 700; color: #904359; padding-right: 20px; }
+QLabel#brand { font-size: 22px; font-weight: $heading_weight; color: #904359; padding-right: 20px; }
 QLabel#platformBadge { color: #70635F; font-size: 12px; padding: 5px 10px; background: #FAF7F2; border-radius: 4px; }
-QLabel#heading { font-size: 18px; font-weight: 600; }
+QLabel#heading { font-size: 18px; font-weight: $section_weight; }
 QLabel#muted { color: #70635F; }
 /* Size native dock titles with the font that paints the Chinese glyphs. */
-QDockWidget { font-weight: 600; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+QDockWidget { font-weight: $section_weight; $dock_family }
 QDockWidget::title { background: #FAF7F2; border-bottom: 1px solid #DDD5CB; padding: 9px; }
 QDockWidget[sidePane="true"]::title { padding: 8px 9px 9px; }
-QDockWidget#inputOutputDock::title { border: none; }
 QTreeWidget { background: #FAF7F2; border: none; padding: 10px 4px; }
 QTreeWidget::item { padding: 7px 2px; }
 QTreeWidget::item:selected, QTableWidget::item:selected { background: #F2E4E6; color: #904359; }
@@ -104,7 +104,8 @@ QTabBar#previewTabBar::tab:selected { color: #76394D; background: #F2E4E6; borde
 QPlainTextEdit, QTextBrowser { border: none; background: #FFFDF9; padding: 9px; color: #372F2D; }
 QTableWidget { background: #FFFDF9; alternate-background-color: #FAF7F2; border: 1px solid #DDD5CB; gridline-color: #DDD5CB; }
 QTableWidget::item { padding: 5px; }
-QHeaderView::section { background: #FAF7F2; border: none; padding: 8px 5px; font-weight: 600; }
+$header_rule
+QHeaderView::section { background: #FAF7F2; border: none; padding: 8px 5px; font-weight: $section_weight; }
 QPushButton:disabled, QPushButton#primary:disabled { color: #857976; background: #EFEAE4; border-color: #DDD5CB; }
 QStatusBar { background: #FAF7F2; color: #70635F; border-top: 1px solid #DDD5CB; }
 QStatusBar QLabel { color: #70635F; }
@@ -137,7 +138,7 @@ class MainWindow(QMainWindow):
         self._read_timer.timeout.connect(self._finish_read)
         self.resize(1440, 980)
         self.setMinimumSize(1120, 780)
-        self.setStyleSheet(STYLE)
+        self.setStyleSheet(typography.stylesheet(STYLE))
         versions = desktop_version_info()
         self._create_actions()
         self._create_toolbar(versions.platform_name)
@@ -663,7 +664,7 @@ class MainWindow(QMainWindow):
     def _text_panel(self):
         panel = QPlainTextEdit()
         panel.setReadOnly(True)
-        panel.setFont(QFont("Menlo", 11))
+        panel.setFont(typography.preview_font())
         return panel
 
     def _create_bottom(self):
@@ -680,6 +681,10 @@ class MainWindow(QMainWindow):
             self.tabs.addTab(widget, name)
         self.bottom_dock = self._dock(tr("输入与结果"), self.tabs, Qt.DockWidgetArea.BottomDockWidgetArea)
         self.bottom_dock.setObjectName("inputOutputDock")
+        # The tabs label this panel. Collapse only its native dock title row.
+        title_bar = QWidget(self.bottom_dock)
+        title_bar.setFixedHeight(0)
+        self.bottom_dock.setTitleBarWidget(title_bar)
 
     def _load_controls(self, *, project_path=None):
         self._workspace_version += 1
@@ -1258,9 +1263,9 @@ class MainWindow(QMainWindow):
 def launch(screenshot=None):
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("OrcaView")
-    load_interface_language(app)
+    locale = load_interface_language(app)
     app.setWindowIcon(QIcon(str(APP_ICON)))
-    app.setFont(QFont("Arial", 12))
+    app.setFont(typography.interface_font(locale))
     window = MainWindow()
     window.show()
     if screenshot is not None:

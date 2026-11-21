@@ -5,12 +5,13 @@ from pathlib import Path
 import re
 
 from PySide6.QtCore import QIODevice, QSaveFile
-from PySide6.QtGui import QFontDatabase, QKeySequence
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QHBoxLayout, QMessageBox, QPlainTextEdit,
     QPushButton, QVBoxLayout,
 )
 
+from orcaview.gui.typography import fixed_font
 from orcaview.i18n import tr
 
 
@@ -24,7 +25,7 @@ class NativeInputDialog(QDialog):
         self.editor = QPlainTextEdit()
         self.editor.setAccessibleName(tr("ORCA 输入文本"))
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.editor.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.editor.setFont(fixed_font())
         self.editor.document().modificationChanged.connect(self.setWindowModified)
 
         buttons = QHBoxLayout()

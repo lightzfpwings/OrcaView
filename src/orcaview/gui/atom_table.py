@@ -1,9 +1,10 @@
 """Column layout for the read-only Cartesian coordinate table."""
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontDatabase, QFontMetrics
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QStyledItemDelegate, QTableWidget
 
+from orcaview.gui.typography import fixed_font
 from orcaview.i18n import tr
 
 
@@ -38,7 +39,7 @@ class AtomCoordinateTable(QTableWidget):
         header.setSortIndicatorShown(False)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.coordinate_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        self.coordinate_font = fixed_font()
         self._coordinates = _CoordinateDelegate(self)
         for column in (3, 4, 5):
             self.setItemDelegateForColumn(column, self._coordinates)

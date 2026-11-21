@@ -8,6 +8,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
+from orcaview.gui import typography
 from orcaview.i18n import tr
 from orcaview.gui.result_display import report_text
 
@@ -134,7 +135,7 @@ class SpectrumPreview(QWidget):
         width = max(0, self.width() - 16)
         font = self.font()
         font.setPixelSize(12)
-        font.setBold(True)
+        font.setBold(not typography.WINDOWS)
         painter.setFont(font)
         painter.setPen(_INK)
         title = painter.fontMetrics().elidedText(self.accessibleName(), Qt.TextElideMode.ElideMiddle, width)

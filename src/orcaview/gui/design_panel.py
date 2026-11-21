@@ -10,6 +10,7 @@ from orcaview.core.snapshots import SelectionContext
 from orcaview.editing import (AddAtoms, AddHydrogen, AttachAtom, DeleteAtoms, EditorService, GeometryEditCommand, MoveAtom,
                               InsertRing, ReplaceElement, SetBond)
 from orcaview.editing.diagnostics import design_diagnostics
+from orcaview.gui import typography
 from orcaview.gui.bond_button import BondButton
 from orcaview.gui.design_canvas import DesignCanvas
 from orcaview.gui.bond_length_editor import BondLengthEditor
@@ -28,14 +29,14 @@ class DesignPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("designPanel")
-        self.setStyleSheet("""
+        self.setStyleSheet(typography.stylesheet("""
             QWidget#designPanel { background: #FAF7F2; }
             QWidget#designPanel QPushButton:checked { color: #7C354F; background: #F1E3E8; border-color: #AE7F8E; }
-            QWidget#designPanel QLabel#designSection { color: #433B37; font-weight: 600; }
+            QWidget#designPanel QLabel#designSection { color: #433B37; font-weight: $section_weight; }
             QWidget#designPanel QLabel#designHint { color: #70635F; }
             QWidget#designPanel QLabel#designProblems { color: #944A25; }
             QWidget#designPanel QSplitter::handle { background: #DDD5CB; }
-        """)
+        """))
         self.editor = None
         self._structure_job = None
         self._bond_start = None

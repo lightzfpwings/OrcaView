@@ -2,7 +2,7 @@
 
 OrcaView 是面向 ORCA 的开源桌面前后处理工具。可以打开分子结构、编辑和导出 ORCA 输入，并从已有计算日志查看能量、电荷、分子轨道和光谱结果。
 
-当前公开预发行版为 **0.1.0a37**。输入模板按 **ORCA 6.1.1** 编制。
+当前公开预发行版为 **0.1.0a40**。输入模板按 **ORCA 6.1.1** 编制。
 
 ![从 ORCA 输出查看计算结果、结构及坐标](artifacts/public/results.png)
 
@@ -10,17 +10,17 @@ OrcaView 是面向 ORCA 的开源桌面前后处理工具。可以打开分子�
 
 | 平台 | 下载与启动方式 |
 |---|---|
-| Windows x64 | [下载 Windows ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a37/OrcaView-0.1.0a37-Windows-x64.zip)，完整解压后双击 `OrcaView.exe`。 |
-| Linux x86-64 | [下载 Linux tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a37/OrcaView-0.1.0a37-Linux-x86_64.tar.gz)，解压后进入程序目录，在图形桌面中运行 `./OrcaView`。 |
-| macOS（Apple Silicon，arm64） | [下载 macOS DMG](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a37/OrcaView-0.1.0a37-macOS-arm64.dmg)，打开后将 `OrcaView.app` 拖入「应用程序」。 |
+| Windows x64 | [下载 Windows ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a40/OrcaView-0.1.0a40-Windows-x64.zip)，完整解压后双击 `OrcaView.exe`。 |
+| Linux x86-64 | [下载 Linux tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a40/OrcaView-0.1.0a40-Linux-x86_64.tar.gz)，解压后进入程序目录，在图形桌面中运行 `./OrcaView`。 |
+| macOS（Apple Silicon，arm64） | [下载 macOS DMG](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a40/OrcaView-0.1.0a40-macOS-arm64.dmg)，打开后将 `OrcaView.app` 拖入「应用程序」。 |
 
-三个平台的发行包均内置 Python、Qt 和 Open Babel。浏览结构、生成输入及查看已有计算结果可直接离线使用。运行新的量子化学计算需另行安装 ORCA。Windows 版支持生成和导出输入，应用内的本地作业运行器当前使用 POSIX 进程控制。[发行页与 SHA-256 校验清单](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a37)
+三个平台的发行包均内置 Python、Qt 和 Open Babel。浏览结构、生成输入及查看已有计算结果可直接离线使用。运行新的量子化学计算需另行安装 ORCA。Windows 版支持生成和导出输入，应用内的本地作业运行器当前使用 POSIX 进程控制。[发行页与 SHA-256 校验清单](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a40)
 
 macOS 试用版使用临时签名，未经 Apple 公证。首次打开下载的应用时如出现系统提示，请参阅 [Apple 的打开说明](https://support.apple.com/zh-cn/102445)。
 
 ### 在软件内检查更新
 
-正在使用旧版的用户，请先从上表下载并安装 0.1.0a37。此后，打开 **帮助 → 检查更新…** 即可查询 GitHub 发行版。稳定版只提示新的稳定版，预发行版也会提示更新的预发行版。程序按操作系统和处理器选择安装包，下载完成后校验 SHA-256。
+使用 0.1.0a37 或更高版本时，打开 **帮助 → 检查更新…** 即可查询 GitHub 发行版。更早的版本可从上表下载安装。稳定版只提示新的稳定版，预发行版也会提示更新的预发行版。程序按操作系统和处理器选择安装包，下载完成后校验 SHA-256。
 
 macOS 用户打开下载的 DMG，将 OrcaView 拖到「应用程序」。Windows 和 Linux 用户可在更新窗口选定安装位置，解压后从新版本目录启动。当前项目可先保存，再切换版本。[GitHub 发行记录](https://github.com/lightzfpwings/OrcaView/releases)
 
@@ -30,7 +30,9 @@ macOS 用户打开下载的 DMG，将 OrcaView 拖到「应用程序」。Window
 2. 打开[水分子 XYZ 示例](examples/water.xyz)，从 GitHub 下载原始文件。在 OrcaView 中按 **Ctrl+O** 选取它。视口应显示一个氧原子和两个氢原子，底部「ORCA 输入预览」可查看原生输入。
 3. 要测试结果导入，可下载[手写单点计算日志](examples/m5_orca/water-sp.out)，同样通过 **Ctrl+O** 打开。在「结果」页可核对示例单点能 −76.123456789012 Eh、Mulliken 电荷与原子坐标。
 
-若要检查解压版本，在程序目录打开 PowerShell 并运行 `.\OrcaView-cli.exe --version`，应显示 `0.1.0a37`。本版 Windows 和 Linux 便携包已通过解压、启动器及应用文件核对，目标系统上的启动仍待验证。[分平台验证记录](docs/PUBLIC_VALIDATION.md)
+若要检查解压版本，在程序目录打开 PowerShell 并运行 `.\OrcaView-cli.exe --version`，应显示 `0.1.0a40`。Windows 发行包已在 Wine 的 Qt Windows 后端启动，并检查了三档显示缩放。[分平台验证记录](docs/PUBLIC_VALIDATION.md)
+
+从 0.1.0a40 起，Windows 简体中文界面优先使用微软雅黑 UI，繁体中文优先使用微软正黑体 UI。字体提供细体时，正文使用细体，标题与表头使用常规字重。预览与坐标沿用等宽排版，显示大小跟随 Windows 的缩放比例。
 
 ## 支持的工作流
 
@@ -40,6 +42,8 @@ macOS 用户打开下载的 DMG，将 OrcaView 拖到「应用程序」。Window
 - **旋转与平移（0.1.0a28）**：在「复位视图」旁输入旋转角度（默认 15°，支持小数），每点一次箭头图标，当前视图就旋转该角度。悬停可查看各图标的旋转方向。按住鼠标左键拖动可自由旋转，按住右键拖动可平移，滚轮可缩放。单击原子可选择，点击「复位视图」可恢复初始方向、居中和缩放。
 - **计算输入**：配置方法、基组、计算任务、电荷和自旋多重度，可编辑高级输入块、预览和导出原生 `.inp`。生成的输入中，原子坐标统一保留 8 位小数。[计算方法说明](docs/ORCA_METHODS.md)
 - **计算结果**：从 ORCA `.out` 或 `.log` 中提取实际打印的能量、HOMO/LUMO、偶极矩、布居电荷、振动和 NMR 等数据。只读结果表可复制，详情可回查源文件及行号。
+
+「输入」工作区底部有三个页签。「ORCA 输入预览」随计算设置实时更新，「结果摘要」显示通过 **文件 → 读取 ORCA 输出摘要…** 读入的内容，「消息与日志」记录操作消息。
 
 ## 在「设计」里编辑分子
 
@@ -59,7 +63,7 @@ macOS 用户打开下载的 DMG，将 OrcaView 拖到「应用程序」。Window
 
 内置简体中文、繁体中文、日语、英语及德语。打开 **视图 → 界面语言…** 选择语言，保存并重启即可切换。
 
-要安装或更新外部语言包，解压下载的语言包，将 JSON 文件直接放在所选目录下。在同一对话框点击 **刷新语言包**，选择语言、保存并重启。外部语言包可以只覆盖一部分词条。[独立语言包下载](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a37/OrcaView-0.1.0a37-languages.zip) · [语言包源文件](src/orcaview/languages)
+要安装或更新外部语言包，解压下载的语言包，将 JSON 文件直接放在所选目录下。在同一对话框点击 **刷新语言包**，选择语言、保存并重启。外部语言包可以只覆盖一部分词条。[独立语言包下载](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a40/OrcaView-0.1.0a40-languages.zip) · [语言包源文件](src/orcaview/languages)
 
 ## 源码、构建与测试
 

@@ -11,6 +11,7 @@ from orcaview.i18n import tr
 
 from orcaview.core.snapshots import SelectionContext
 from orcaview.editing.coordinates import CoordinateDefinition, measure
+from orcaview.gui import typography
 from orcaview.gui.atom_table import AtomCoordinateTable
 from orcaview.gui.project_navigation import WrappingTreeLabel
 from orcaview.gui.result_display import (
@@ -24,11 +25,11 @@ from orcaview.gui.viewport import MoleculeViewport
 
 STYLE = """
 QWidget#foundationPanel { background: #FAF7F2; }
-QLabel#foundationTitle { color: #372F2D; font-size: 22px; font-weight: 700; }
-QLabel#sectionTitle { color: #372F2D; font-size: 14px; font-weight: 600; padding: 8px 0; }
+QLabel#foundationTitle { color: #372F2D; font-size: 22px; font-weight: $heading_weight; }
+QLabel#sectionTitle { color: #372F2D; font-size: 14px; font-weight: $section_weight; padding: 8px 0; }
 QTabBar#resultInspectorTabs::tab { padding: 8px 7px; }
 QLabel#foundationDetails { color: #372F2D; padding: 10px 8px; }
-QLabel#bondLength { color: #76394D; font-weight: 600; padding: 8px; }
+QLabel#bondLength { color: #76394D; font-weight: $section_weight; padding: 8px; }
 QScrollArea, QScrollArea > QWidget > QWidget { background: #FFFDF9; border: none; }
 QTreeWidget { background: #FFFDF9; border: 1px solid #DDD5CB; border-radius: 6px; padding: 4px; }
 QTreeWidget::item { padding: 8px 3px; }
@@ -91,7 +92,7 @@ class FoundationPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("foundationPanel")
-        self.setStyleSheet(STYLE)
+        self.setStyleSheet(typography.stylesheet(STYLE))
         self.document = None
         self.selected_snapshot = None
         self._dataset_id = None
