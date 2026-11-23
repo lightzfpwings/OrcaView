@@ -1,10 +1,61 @@
 """Private, single-file Open Babel subprocess. The stdout protocol is UTF-8 JSON."""
 
+from contextlib import ExitStack, contextmanager
 import json
 import math
+import os
+from pathlib import Path
 import re
+import shutil
 import sys
+from tempfile import TemporaryDirectory
 from xml.etree import ElementTree
+
+
+def prepare_windows_babel_data(source, destination):
+    """Copy wheel data with the LF byte offsets used by OBBuilder's fragment index."""
+    def copy_resource(src, dst):
+        if Path(src).name == "rigid-fragments.txt":
+            Path(dst).write_bytes(Path(src).read_bytes().replace(b"\r\n", b"\n"))
+        else:
+            shutil.copyfile(src, dst)
+
+    shutil.copytree(source, destination, copy_function=copy_resource, dirs_exist_ok=True)
+
+
+@contextmanager
+def _windows_resources():
+    if sys.platform != "win32":
+        yield
+        return
+    import ctypes
+    from openbabel import openbabel as ob
+
+    package = Path(ob.__file__).resolve().parent
+    plugins = package / "bin"
+    if not (plugins / "plugin_forcefields.obf").is_file():
+        # Other Open Babel distributions use a different plugin layout.
+        yield
+        return
+    data = package / "share" / "openbabel" / ob.OBReleaseVersion()
+    if not (data / "rigid-fragments.txt").is_file():
+        data = plugins / "data"
+    # The native loader enumerates plugins with ANSI Win32 calls. Load the
+    # wheel's known plugin directory through LoadLibraryExW for Unicode paths.
+    libraries = [ctypes.WinDLL(str(path)) for path in sorted(plugins.glob("*.obf"))]
+    with ExitStack() as stack:
+        with (data / "rigid-fragments.txt").open("rb") as source:
+            raw_wheel = source.readline().endswith(b"\r\n")
+        if raw_wheel:
+            # pip installs the original CRLF table. Keep site-packages read-only.
+            staged = Path(stack.enter_context(TemporaryDirectory()))
+            prepare_windows_babel_data(data, staged)
+            data = staged
+        # Native streams first look for an ASCII filename in the working
+        # directory. Only this private worker changes its working directory.
+        stack.callback(os.chdir, Path.cwd())
+        os.chdir(data)
+        yield libraries
 
 
 def _single_record(text, fmt):
@@ -140,13 +191,14 @@ def _convert(raw, fmt, finite):
 def main(args=None):
     args = sys.argv[1:] if args is None else args
     try:
-        if args and args[0] in ("optimize-2d", "optimize-3d", "perceive-orders"):
-            from orcaview.editing.optimization import optimize_worker
-            result = optimize_worker(json.load(sys.stdin.buffer), args[0])
-        elif args and args[0] in ("sdf", "mol", "mol2", "pdb", "smi", "inchi", "cif", "cdxml", "cml"):
-            result = _convert(sys.stdin.buffer.read(), args[0], "--finite" in args[1:])
-        else:
-            raise ValueError("未知的 Open Babel 读取格式")
+        with _windows_resources():
+            if args and args[0] in ("optimize-2d", "optimize-3d", "perceive-orders"):
+                from orcaview.editing.optimization import optimize_worker
+                result = optimize_worker(json.load(sys.stdin.buffer), args[0])
+            elif args and args[0] in ("sdf", "mol", "mol2", "pdb", "smi", "inchi", "cif", "cdxml", "cml"):
+                result = _convert(sys.stdin.buffer.read(), args[0], "--finite" in args[1:])
+            else:
+                raise ValueError("未知的 Open Babel 读取格式")
         encoded = json.dumps(result, allow_nan=False)
     except ImportError:
         sys.stdout.buffer.write(json.dumps({"error": "无法加载 Open Babel，请安装 OrcaView 桌面依赖或使用内嵌引擎的安装包"}).encode("utf-8"))

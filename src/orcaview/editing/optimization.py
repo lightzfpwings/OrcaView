@@ -17,9 +17,7 @@ class OptimizationResult:
     method: str
 
 
-def optimize_structure(molecule: Molecule, mode: str, plane: str = "XY") -> OptimizationResult:
-    if mode not in ("2D", "3D") or plane not in ("XY", "XZ", "YZ"):
-        raise ValueError("请选择有效的结构优化方式和投影平面")
+def _calculate_points(molecule, mode):
     payload = geometry_payload(molecule)
     payload["infer_orders"] = not molecule.bonds and not molecule.bonds_explicit
     if not payload["bonds"]:
@@ -38,20 +36,84 @@ def optimize_structure(molecule: Molecule, mode: str, plane: str = "XY") -> Opti
         xyz = row[1:]
         if not all(type(v) in (int, float) and math.isfinite(v) for v in xyz):
             raise ValueError("Open Babel 返回无效坐标")
-        if mode == "2D":
-            point = [0., 0., 0.]
-            for axis, value in zip(plane, xyz):
-                point["XYZ".index(axis)] = value
-            xyz = point
         points.append(xyz)
+    return points, response
+
+
+def _zigzag_chain(molecule):
+    """Draw a plain, unbranched single-bond backbone in the usual extended zigzag."""
+    count = len(molecule.atoms)
+    if count < 4 or len(molecule.bonds) != count - 1 or any(
+        atom.element not in ("C", "N", "O", "S") for atom in molecule.atoms
+    ):
+        return None
+    neighbors = [[] for _ in molecule.atoms]
+    for bond in molecule.bonds:
+        if bond.order != 1 or bond.style != "plain":
+            return None
+        neighbors[bond.a].append(bond.b)
+        neighbors[bond.b].append(bond.a)
+    ends = [i for i, adjacent in enumerate(neighbors) if len(adjacent) == 1]
+    if len(ends) != 2 or any(len(adjacent) not in (1, 2) for adjacent in neighbors):
+        return None
+    points = [None] * count
+    previous, current = None, ends[0]
+    for step in range(count):
+        points[current] = (step * 1.5 * math.sqrt(3) / 2, (step % 2) * .75)
+        following = next((i for i in neighbors[current] if i != previous), None)
+        if following is None:
+            # A separate ring can coexist with a shorter path.
+            return points if step == count - 1 else None
+        previous, current = current, following
+
+
+def clean_sketch(molecule: Molecule, sketch_xy=None):
+    """Depict the chemical graph in two dimensions, retaining its position on the page."""
+    molecule.validate_structure()
+    points = _zigzag_chain(molecule)
+    if points is None:
+        xyz, _ = _calculate_points(molecule, "2D")
+        points = [(x, y) for x, y, _ in xyz]
+    reference = sketch_xy if sketch_xy is not None else tuple((a.x, a.y) for a in molecule.atoms)
+    if len(reference) != len(points):
+        raise ValueError("二维草图坐标与原子数不一致")
+    ox, oy = _center(reference)
+    cx, cy = _center(points)
+    centered = [(x - cx, y - cy) for x, y in points]
+    # Best-fit rotation in the drawing plane. Reflection would invert wedge stereochemistry.
+    dot = cross = 0.
+    for (x, y), (rx, ry) in zip(centered, reference):
+        dot += x * (rx - ox) + y * (ry - oy)
+        cross += x * (ry - oy) - y * (rx - ox)
+    angle = math.atan2(cross, dot)
+    cos, sin = math.cos(angle), math.sin(angle)
+    layout = tuple((ox + cos * x - sin * y, oy + sin * x + cos * y) for x, y in centered)
+    if all(math.dist(p, q) < 1e-9 for p, q in zip(layout, reference)):
+        return reference
+    return layout
+
+
+def optimize_structure(molecule: Molecule, mode: str, plane: str = "XY") -> OptimizationResult:
+    """Return a detached geometry; the editor uses clean_sketch for drawing-only edits."""
+    if mode not in ("2D", "3D") or plane not in ("XY", "XZ", "YZ"):
+        raise ValueError("请选择有效的结构优化方式和投影平面")
+    points, response = _calculate_points(molecule, mode)
+    if mode == "2D":
+        axes = tuple("XYZ".index(axis) for axis in plane)
+        planar = []
+        for x, y, _ in points:
+            point = [0., 0., 0.]
+            point[axes[0]], point[axes[1]] = x, y
+            planar.append(point)
+        points = planar
     # Keep the viewport centered on the edited object. Discard any arbitrary
     # translation introduced by the native builder or 2D depiction engine.
-    old_center = _center([row[1:] for row in payload["atoms"]])
+    old_center = _center([(a.x, a.y, a.z) for a in molecule.atoms])
     new_center = _center(points)
     atoms = tuple(Atom(atom.element, *(v - n + o for v, n, o in zip(point, new_center, old_center)))
                   for atom, point in zip(molecule.atoms, points))
     bonds = display_bonds(molecule)
-    if payload["infer_orders"]:
+    if not molecule.bonds and not molecule.bonds_explicit:
         orders = response.get("orders")
         if (not isinstance(orders, list) or len(orders) != len(bonds)
                 or any(type(order) is not int or order not in (1, 2, 3) for order in orders)):

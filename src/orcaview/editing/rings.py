@@ -8,7 +8,7 @@ from orcaview.core.geometry import display_bonds
 from orcaview.core.models import Atom, Bond
 
 
-def _open_direction(anchor, bonds, xyz, u, v):
+def open_direction(anchor, bonds, xyz, u, v):
     """Point the new bond into the largest gap between projected neighbour bonds."""
     directions = []
     for bond in bonds:
@@ -48,7 +48,7 @@ def insert_ring(molecule, operation, anchor):
         origin = existing[anchor]
         attachment = COVALENT_RADII["C"] + COVALENT_RADII.get(molecule.atoms[anchor].element, .85)
         center_offset = radius if use_seed else radius + attachment
-        direction = _open_direction(anchor, bonds, existing, u, v)
+        direction = open_direction(anchor, bonds, existing, u, v)
         step = math.tau / 24
 
     # Try the intended direction first, then nearby angles on either side.

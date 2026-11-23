@@ -1,4 +1,4 @@
-"""Interactive XY sketch of the document's Cartesian coordinates."""
+"""Interactive molecular drawing in the active sketch's XY coordinates."""
 
 import math
 
@@ -42,8 +42,13 @@ class DesignCanvas(QWidget):
         self._can_box = self._append_box = False
         self.update()
 
-    def set_molecule(self, molecule, *, fit=False):
+    def set_molecule(self, molecule, *, fit=False, independent_sketch=False):
         self.molecule = molecule
+        # A detached drawing has no depth. Keep its paint and hit-test order
+        # stable when a 3D optimization moves atoms through the page plane.
+        self._paint_order = list(range(len(molecule.atoms)))
+        if not independent_sketch:
+            self._paint_order.sort(key=lambda i: molecule.atoms[i].z)
         self._bonds = display_bonds(molecule)
         self._aromatic_paths = aromatic_ring_paths(self._bonds)
         self.cancel_gesture()
@@ -78,9 +83,9 @@ class DesignCanvas(QWidget):
 
     def _hit_atom(self, point):
         hits = []
-        for i, atom in enumerate(self.molecule.atoms):
+        for layer, i in enumerate(self._paint_order):
             offset = self.atom_position(i) - point
-            hits.append((math.hypot(offset.x(), offset.y()), -atom.z, i))
+            hits.append((math.hypot(offset.x(), offset.y()), -layer, i))
         distance, _, index = min(hits, default=(math.inf, 0, None))
         return index if distance <= 15 else None
 
@@ -216,7 +221,7 @@ class DesignCanvas(QWidget):
         colors = {"O": "#B84138", "N": "#3265A7", "S": "#856224", "Cl": "#237B54",
                   "F": "#237B54", "Br": "#8F5141", "I": "#79559B", "P": "#AA5729"}
         selected_indices = set(self.selected)
-        for i in sorted(range(len(positions)), key=lambda j: self.molecule.atoms[j].z):
+        for i in self._paint_order:
             el = self.molecule.atoms[i].element
             p = positions[i]
             width = widths[i]

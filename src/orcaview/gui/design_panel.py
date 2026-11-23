@@ -7,8 +7,8 @@ from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDoubleSpinBox, QHBoxLay
 
 from orcaview.core.models import Atom
 from orcaview.core.snapshots import SelectionContext
-from orcaview.editing import (AddAtoms, AddHydrogen, AttachAtom, DeleteAtoms, EditorService, GeometryEditCommand, MoveAtom,
-                              InsertRing, ReplaceElement, SetBond)
+from orcaview.editing import (AddAtoms, AddHydrogen, AttachAtom, DeleteAtoms, EditorService, GeometryEditCommand,
+                              InsertRing, MoveAtom, MoveSketchAtom, ReplaceElement, SetBond)
 from orcaview.editing.diagnostics import design_diagnostics
 from orcaview.gui import typography
 from orcaview.gui.bond_button import BondButton
@@ -140,7 +140,7 @@ class DesignPanel(QWidget):
         sketch_header.addStretch()
         self.clean_2d = self._button(sketch_header, "designClean2D", tr("整理 2D"),
                                      lambda: self._start_structure_job("2D"))
-        self.clean_2d.setToolTip(tr("将当前结构排入 XY 平面，规整键长、键角和环。可撤销。"))
+        self.clean_2d.setToolTip(tr("按二维结构式规整键长、键角和环，仅更新草图。可撤销。"))
         self._button(sketch_header, "designFit", tr("居中"), self.canvas.fit)
         sketch_layout.addWidget(self.canvas, 1)
         splitter.addWidget(sketch)
@@ -154,7 +154,7 @@ class DesignPanel(QWidget):
         preview_header.addStretch()
         self.optimize_3d = self._button(preview_header, "designOptimize3D", tr("优化 3D"),
                                          lambda: self._start_structure_job("3D"))
-        self.optimize_3d.setToolTip(tr("用 Open Babel 力场预优化当前构象。可撤销。"))
+        self.optimize_3d.setToolTip(tr("用 Open Babel 力场预优化三维坐标，同时保留二维草图。可撤销。"))
         self.viewport = MoleculeViewport(design_selection=True)
         self.viewport.setObjectName("designViewport")
         self.viewport.setMinimumSize(200, 180)
@@ -212,7 +212,7 @@ class DesignPanel(QWidget):
         self.canvas.space_clicked.connect(self._space_clicked)
         self.canvas.bond_clicked.connect(self._bond_clicked)
         self.canvas.bond_to_space.connect(self._extend_bond)
-        self.canvas.atom_moved.connect(self._move)
+        self.canvas.atom_moved.connect(self._move_in_sketch)
         self.canvas.delete_requested.connect(self._delete)
         self.viewport.selection_changed.connect(self._select)
         self.viewport.atom_targeted.connect(self._atom_clicked)
@@ -297,10 +297,14 @@ class DesignPanel(QWidget):
         if command is None:
             self.status.setText(diagnostic_text(error))
             return
+        if job.mode == "2D" and job.snapshot.sketch_xy == command.operation.xy:
+            self.status.setText(tr("二维草图已规整。"))
+            return
         result = self._commit(command)
         if result is None:
             return
-        self.canvas.fit()
+        if job.mode != "3D":
+            self.canvas.fit()
         if job.mode == "H":
             self.status.setText(tr("已补加 {count} 个氢原子。", count=len(command.operation.attachments)))
         elif job.mode == "2D":
@@ -361,11 +365,12 @@ class DesignPanel(QWidget):
     def _refresh(self, *, fit=False):
         head = self.editor.document.head
         self._bond_start = None
-        self.canvas.set_molecule(head.molecule, fit=fit)
+        self.canvas.set_molecule(head.sketch_molecule(), fit=fit, independent_sketch=head.sketch_xy is not None)
         if not head.atom_ids and self.canvas.tool == "hydrogen":
             self.select_tool.click()
-        with QSignalBlocker(self.viewport):
-            self.viewport.set_molecule(head.molecule, keep_view=not fit)
+        if fit or self.viewport.molecule != head.molecule:
+            with QSignalBlocker(self.viewport):
+                self.viewport.set_molecule(head.molecule, keep_view=not fit)
         with QSignalBlocker(self.atom_choice):
             self.atom_choice.clear()
             self.atom_choice.addItems([f"{atom.element}{i}" for i, atom in enumerate(head.molecule.atoms, 1)])
@@ -501,6 +506,10 @@ class DesignPanel(QWidget):
 
     def _extend_bond(self, index, x, y, z):
         head = self.editor.document.head
+        if head.sketch_xy is not None:
+            anchor = head.molecule.atoms[index]
+            sx, sy = head.sketch_xy[index]
+            x, y = anchor.x + (x - sx), anchor.y + (y - sy)
         atom = Atom(self.element.currentText(), x, y, z)
         self._select([index])
         result = self._execute(AttachAtom(head.atom_ids[index], atom, self._order, self.canvas.bond_style))
@@ -516,9 +525,14 @@ class DesignPanel(QWidget):
                 self.canvas.fit()
             self._select([len(result.snapshot.atom_ids) - self._ring_size])
 
-    def _move(self, index, x, y, z):
+    def _move_in_sketch(self, index, x, y, z):
         self._select([index])
-        self._execute(MoveAtom(self.editor.document.head.atom_ids[index], x, y, z))
+        head = self.editor.document.head
+        atom_id = head.atom_ids[index]
+        if head.sketch_xy is None:
+            self._execute(MoveAtom(atom_id, x, y, z))
+        else:
+            self._execute(MoveSketchAtom(atom_id, x, y))
 
     def _apply_coordinates(self):
         index = self.atom_choice.currentIndex()
@@ -530,7 +544,7 @@ class DesignPanel(QWidget):
             original = getattr(atom, axis)
             # Keep the original full precision in fields the user did not change.
             xyz.append(original if field.value() == displayed else field.value())
-        self._move(index, *xyz)
+        self._execute(MoveAtom(self.editor.document.head.atom_ids[index], *xyz))
 
     def _delete(self):
         if self.delete_button.isEnabled():

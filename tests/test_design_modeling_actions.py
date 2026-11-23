@@ -98,11 +98,11 @@ class DesignModelingActions(unittest.TestCase):
     def check_undo_redo(self, previous, changed):
         self.assertEqual(changed.parent, previous.ref)
         self.panel.undo_button.click()
-        self.assertEqual((self.document.head.molecule, self.document.head.atom_ids),
-                         (previous.molecule, previous.atom_ids))
+        self.assertEqual((self.document.head.molecule, self.document.head.atom_ids, self.document.head.sketch_xy),
+                         (previous.molecule, previous.atom_ids, previous.sketch_xy))
         self.panel.redo_button.click()
-        self.assertEqual((self.document.head.molecule, self.document.head.atom_ids),
-                         (changed.molecule, changed.atom_ids))
+        self.assertEqual((self.document.head.molecule, self.document.head.atom_ids, self.document.head.sketch_xy),
+                         (changed.molecule, changed.atom_ids, changed.sketch_xy))
 
     def test_h_toolbar_position_and_equal_control_heights(self):
         panel = self.panel
@@ -250,20 +250,35 @@ class DesignModelingActions(unittest.TestCase):
         return preview
 
     @unittest.skipUnless(find_spec("openbabel"), "Requires the desktop Open Babel package")
-    def test_flatten_and_relax_methane_then_export_and_reopen(self):
+    def test_clean_sketch_and_relax_methane_then_export_and_reopen(self):
         self.select_atom(0)
         for _ in range(4):
             methane = self.add_one_h()
+        original_input = self.assert_input_geometry(methane)
+        self.panel.viewport.rotate_view("x", 24)
+        self.panel.viewport.zoom = 1.3
+        original_camera = self.panel.viewport.camera_transform(0, 0, 1)
         planar = self.run_optimization(self.panel.clean_2d)
         self.assertEqual(planar.atom_ids, methane.atom_ids)
-        self.assertEqual(planar.molecule.bonds, methane.molecule.bonds)
-        self.assertEqual(len(set(a.z for a in planar.molecule.atoms)), 1)
+        self.assertEqual(planar.molecule, methane.molecule)
+        self.assertEqual(self.panel.viewport.molecule, methane.molecule)
+        self.assertEqual(self.panel.viewport.zoom, 1.3)
+        self.assertEqual(self.panel.viewport.camera_transform(0, 0, 1), original_camera)
+        self.assertIsNotNone(planar.sketch_xy)
+        self.assertNotEqual(planar.sketch_xy, tuple((a.x, a.y) for a in methane.molecule.atoms))
+        self.assertEqual(tuple((a.x, a.y) for a in self.panel.canvas.molecule.atoms), planar.sketch_xy)
+        changed = QSignalSpy(self.panel.geometry_changed)
+        self.assertIs(self.run_optimization(self.panel.clean_2d), planar)
+        self.assertEqual(changed.count(), 0)
+        self.assertEqual(self.panel.status.text(), "二维草图已规整。")
         self.check_undo_redo(methane, planar)
-        self.assert_input_geometry(planar)
+        self.assertEqual(self.assert_input_geometry(planar), original_input)
         before_relax = self.document.head
         relaxed = self.run_optimization(self.panel.optimize_3d)
         self.assertEqual(relaxed.atom_ids, planar.atom_ids)
         self.assertEqual(relaxed.molecule.bonds, planar.molecule.bonds)
+        self.assertEqual(relaxed.sketch_xy, planar.sketch_xy)
+        self.assertEqual(tuple((a.x, a.y) for a in self.panel.canvas.molecule.atoms), planar.sketch_xy)
         self.assertRegex(self.panel.status.text(), "MMFF94|UFF")
         self.assertGreater(max(a.z for a in relaxed.molecule.atoms) - min(a.z for a in relaxed.molecule.atoms), 1.)
         center, *hydrogens = relaxed.coordinates()
@@ -280,7 +295,8 @@ class DesignModelingActions(unittest.TestCase):
             with patch.object(QFileDialog, "getOpenFileName", return_value=(str(project), "")):
                 self.window.open_project()
             restored = self.window.session.document.head
-            self.assertEqual((restored.molecule, restored.atom_ids), (relaxed.molecule, relaxed.atom_ids))
+            self.assertEqual((restored.molecule, restored.atom_ids, restored.sketch_xy),
+                             (relaxed.molecule, relaxed.atom_ids, planar.sketch_xy))
             self.assertEqual(self.assert_input_geometry(restored), preview)
 
     @unittest.skipUnless(find_spec("openbabel"), "Requires the desktop Open Babel package")
@@ -303,6 +319,7 @@ class DesignModelingActions(unittest.TestCase):
         relaxed = self.run_optimization(panel.optimize_3d)
         self.assertEqual(relaxed.atom_ids, filled.atom_ids)
         self.assertEqual(relaxed.molecule.bonds, filled.molecule.bonds)
+        self.assertEqual(relaxed.sketch_xy, tuple((a.x, a.y) for a in filled.molecule.atoms))
         mol = build_obmol(geometry_payload(relaxed.molecule), ob)
         torsions = [mol.GetTorsion(*(1 + (i + j) % 6 for j in range(4))) for i in range(6)]
         self.assertTrue(all(30. < abs(t) < 75. for t in torsions), torsions)
@@ -310,6 +327,92 @@ class DesignModelingActions(unittest.TestCase):
         sites = relaxed.coordinates()[6:]
         self.assertGreater(min(math.dist(first, second) for i, first in enumerate(sites) for second in sites[i+1:]),
                            1.5)
+
+    def test_editing_a_cleaned_sketch_and_extending_its_topology(self):
+        original = self.draw_second_carbon()
+        layout = ((4., 5.), (5.5, 5.))
+        with patch("orcaview.gui.structure_job.clean_sketch", return_value=layout):
+            cleaned = self.run_optimization(self.panel.clean_2d)
+        self.assertEqual(cleaned.sketch_xy, layout)
+        canvas = self.panel.canvas
+        start = canvas.atom_position(1).toPoint()
+        end = start + QPoint(-12, 36)
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, pos=end)
+        dragged = self.document.head
+        self.assertEqual(dragged.molecule, original.molecule)
+        self.assertNotEqual(dragged.sketch_xy[1], layout[1])
+        self.assertEqual(canvas.atom_position(1).toPoint(), end)
+
+        self.panel.coordinates[2].setValue(2.5)
+        self.panel.apply_button.click()
+        moved = self.document.head
+        self.assertEqual(moved.molecule.atoms[1].z, 2.5)
+        self.assertEqual(moved.sketch_xy, dragged.sketch_xy)
+        self.panel.findChild(QPushButton, "designBond1").click()
+        start = canvas.atom_position(1).toPoint()
+        end = start + QPoint(60, -20)
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, pos=end)
+        extended = self.document.head
+        self.assertEqual(extended.sketch_xy[:2], moved.sketch_xy)
+        self.assertEqual(canvas.atom_position(2).toPoint(), end)
+        self.assertEqual(extended.molecule.atoms[:2], moved.molecule.atoms)
+        parent, new = extended.molecule.atoms[1:]
+        self.assertAlmostEqual(new.x - parent.x, extended.sketch_xy[2][0] - extended.sketch_xy[1][0])
+        self.assertAlmostEqual(new.y - parent.y, extended.sketch_xy[2][1] - extended.sketch_xy[1][1])
+        self.assertEqual(new.z, parent.z)
+
+    def test_undo_while_cleaning_the_sketch_discards_the_late_layout(self):
+        original = self.draw_second_carbon()
+        release, entered = Event(), Event()
+
+        def clean(molecule, sketch_xy):
+            entered.set()
+            if not release.wait(timeout=10):
+                raise ValueError("test worker timed out")
+            return ((0., 0.), (1.5, 0.))
+
+        with patch("orcaview.gui.structure_job.clean_sketch", side_effect=clean):
+            self.panel.clean_2d.click()
+            self.wait_until(entered.is_set)
+            self.assertFalse(self.panel.optimize_3d.isEnabled())
+            try:
+                self.panel.undo_button.click()
+                undone = self.document.head
+                self.assertNotEqual(undone.atom_ids, original.atom_ids)
+            finally:
+                release.set()
+            self.wait_until(lambda: self.panel._structure_job is None)
+        self.assertIs(self.document.head, undone)
+        self.assertIsNone(undone.sketch_xy)
+        self.assertIn("结构已更改", self.panel.status.text())
+
+    def test_cleanup_finishing_on_the_input_page_preserves_the_displayed_input(self):
+        original = self.draw_second_carbon()
+        preview = self.assert_input_geometry(original)
+        layout = ((0., 0.), (1.5, 0.))
+        release, entered = Event(), Event()
+
+        def clean(molecule, sketch_xy):
+            entered.set()
+            if not release.wait(timeout=10):
+                raise ValueError("test worker timed out")
+            return layout
+
+        with patch("orcaview.gui.structure_job.clean_sketch", side_effect=clean):
+            self.panel.clean_2d.click()
+            self.wait_until(entered.is_set)
+            try:
+                self.window.workspace_tabs.setCurrentWidget(self.window.input_page)
+            finally:
+                release.set()
+            self.wait_until(lambda: self.panel._structure_job is None)
+        self.assertEqual(self.window.input_preview.toPlainText(), preview)
+        self.assertEqual(self.window.viewport.molecule, original.molecule)
+        self.assertEqual(self.document.head.sketch_xy, layout)
+        self.window.workspace_tabs.setCurrentWidget(self.panel)
+        self.assertEqual(tuple((a.x, a.y) for a in self.panel.canvas.molecule.atoms), layout)
 
     def test_worker_failure_keeps_current_revision_and_enables_retry(self):
         initial = self.draw_second_carbon()

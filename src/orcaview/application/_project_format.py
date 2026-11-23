@@ -3,7 +3,7 @@
 from dataclasses import asdict, fields
 
 from orcaview import (ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION,
-                      EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
+                      EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
                       STATE_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION)
 from orcaview.core.block_options import BlockOverride
 from orcaview.core._state_methods import EARLIER_RESPONSE_FUNCTIONALS
@@ -131,13 +131,16 @@ def _ref(record):
 
 
 def _snapshot(record, version):
-    data = dict(_fields_for(record, GeometrySnapshot))
+    keys = (f.name for f in fields(GeometrySnapshot) if version >= SKETCH_PROJECT_SCHEMA_VERSION or f.name != "sketch_xy")
+    data = dict(check_fields(record, keys, "GeometrySnapshot"))
     expected_hash = data.pop("content_hash")
     data["ref"] = _ref(data["ref"])
     if data["parent"] is not None:
         data["parent"] = _ref(data["parent"])
     data["molecule"] = read_molecule(data["molecule"], version)
     data["atom_ids"] = tuple(_array(data["atom_ids"]))
+    if data.get("sketch_xy") is not None:
+        data["sketch_xy"] = tuple(tuple(_array(point)) for point in _array(data["sketch_xy"]))
     data["provenance"] = _provenance(data["provenance"])
     snapshot = GeometrySnapshot(**data)
     if snapshot.content_hash != expected_hash:

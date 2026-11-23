@@ -769,7 +769,8 @@ class MainWindow(QMainWindow):
         if molecule.atoms and (not previous.atoms or previous.name != molecule.name):
             self.tree.set_structure(molecule.name)
             self._set_structure_heading(self._structure_path)
-        self._refresh_input_geometry(molecule, keep_view=True)
+        if previous != molecule:
+            self._refresh_input_geometry(molecule, keep_view=True)
         # An edit can make previously rejected form values valid. Preview them
         # without publishing a second revision that would invalidate this undo.
         self._settings_changed(commit_settings=False)
@@ -1251,6 +1252,9 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         if self._guard_discard():
             if self._update_dialog is not None:
+                if not self._update_dialog.finish_on_exit():
+                    event.ignore()
+                    return
                 self._update_dialog.reject()
             self.design_panel.discard_pending_job()
             self._cancel_read()

@@ -1,5 +1,38 @@
 # OrcaView 验证记录
 
+## 0.1.0a42 精简安装包与原位置覆盖更新
+
+三个安装包都附有相同的 20 份示例文件，可直接打开结构、ORCA 输入和输出。macOS 镜像可见内容为 `OrcaView.app` 和「示例」。Windows 与 Linux 归档在单层版本目录中提供启动器、`python` 运行库和「示例」。许可证随软件提供，Open Babel 上游源文件已移到独立的第三方源码 ZIP，附有 SHA-256 清单。
+
+用新版更新器将已发布的 0.1.0a40 Windows 和 Linux 安装目录升级到原位置，核对旧版备份，同时读取留在原处的个人项目及改过的示例。另用原版 0.1.0a40 发行包内的更新器字节码解压新的两个便携包，验证旧版仍可按原有方式完成首次安装。
+
+Windows 最终 ZIP 在 Wine 11.21 的 Qt Windows 后端验证。用临时目录启动实际 `OrcaView.exe`，在更新窗口提供本地最终 ZIP 作为测试下载源，完成校验、暂存、正常退出、进程替换并在同一个含中文及空格的目录重启。新进程成功打开窗口，个人项目、自建示例和修改过的官方示例逐字节保留。Linux 验证了解压、原位置替换、运行库权限、符号链接及应用文件。另在 POSIX 环境运行了助手的等待、替换和重启流程。此次未在原生 Linux 图形桌面启动。
+
+macOS 在临时中文目录中安装 0.1.0a40 副本，使用最终 0.1.0a42 应用内的冻结更新代码和已校验的 DMG 原位覆盖，系统从同一路径重启新版，旁边的个人项目保持原样。已只读挂载最终 DMG，核对代码签名、Cocoa 原生窗口及 20 个示例的读取。
+
+全套回归测试 548 项通过。三个平台均比对了全部 120 个 OrcaView 编译模块与源码。Windows 和 Linux 归档内的文件清单逐项通过 SHA-256 校验。[便携覆盖测试](../tests/test_update_download.py) · [macOS 覆盖测试](../tests/test_macos_update.py) · [更新窗口测试](../tests/test_updates_gui.py)
+
+| 发行包 | SHA-256 |
+|---|---|
+| Windows x64 ZIP | `a3d5ded05ac5d4ef6257821588b510a2fa92cfa80feb7d79d29846365c7af404` |
+| macOS arm64 DMG | `171a3fcebc66be4359ac94cddae77beeb43a2ddbeecbfff8d87c43eac19aefe2` |
+| Linux x86-64 tar.gz | `2c2dbd489fbb5fb18a58a72dbc4ac41878a0404bb49f66e7d1216a3fc697c25d` |
+
+## 0.1.0a41 独立二维草图与 Windows 三维预优化
+
+在 Wine 11.21 的 Qt Windows 后端复现了 0.1.0a40 的两种故障。英文路径下，平面六元碳环在准备三维构象时读取了错误的片段数据。Windows wheel 的构象库文件使用 CRLF 换行，索引按 LF 字节位置生成。含中文和空格的路径下，原生插件发现还会失败。新版安装包校正了片段表的换行，包内 4,647 条索引均指向对应片段的第一行坐标。Windows worker 使用宽字符路径加载随包插件，并从独立工作目录读取数据。[Windows 资源回归测试](../tests/test_babel_worker_resources.py)
+
+将最终 Windows ZIP 分别解压至英文目录和含中文与空格的目录，使用包内 Windows Python、Qt 和 Open Babel 操作设计页。补氢得到 C₆H₁₂ 后依次点击「整理 2D」「优化 3D」「整理 2D」。三维步骤使用 MMFF94 形成椅式，六个环内二面角交替为约 ±55°，原二维草图逐点一致。两次二维操作前后的 ORCA 输入均逐字节相同。另一含镁测试结构实际使用 UFF，Mg–O 距离从 2.60 Å 优化至约 2.00 Å。
+
+536 项回归测试全部通过。覆盖单键直链的 120° 锯齿、规则六元环、二维整理前后 ORCA 输入逐字节相同、三维优化保留草图、两项操作交替、撤销重做、后台任务过期及项目保存重开。[结构整理与力场测试](../tests/test_structure_optimization.py) · [建模按钮测试](../tests/test_design_modeling_actions.py) · [草图持久化测试](../tests/test_sketch_coordinates.py)
+
+macOS arm64 DMG 通过镜像与严格临时签名校验。从只读镜像启动原生 Cocoa 窗口，用包内模块和 Open Babel 子进程完成甲烷的二维、三维操作及环己烷的三维预优化，并保存重开 schema 11 项目。
+
+| 本地试用包 | SHA-256 |
+|---|---|
+| Windows x64 ZIP | `dc99b3a24db71d6b82423a459c7ced787243a71100dfe202440ff2322e462014` |
+| macOS arm64 DMG | `6d785e8e09157ab9d75787d82b715f532ced00d8facde55f3d2123509bc08b48` |
+
 ## 0.1.0a40 Windows 中文字体与缩放
 
 在同一套 Wine 11.21 环境中启动 0.1.0a37 与 0.1.0a40 的 Windows x64 发行包。使用 Qt Windows 后端和 100% 缩放，侧栏与主标题的实际字重均从 600 降到 400。新版在 100%、125% 和 150% 下的 1120 × 780 逻辑窗口分别生成 1120 × 780、1400 × 975 和 1680 × 1170 像素的截图。三档下均能渲染中文和显示底部三个页签。兼容环境缺少微软雅黑，中文由 Arial Unicode MS 回退绘制，输入预览使用 Courier New。原生 Windows 的微软雅黑与 ClearType 观感仍待实机确认。

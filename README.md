@@ -2,7 +2,7 @@
 
 OrcaView 是面向 ORCA 的开源桌面前后处理工具。可以打开分子结构、编辑和导出 ORCA 输入，并从已有计算日志查看能量、电荷、分子轨道和光谱结果。
 
-当前公开预发行版为 **0.1.0a40**。输入模板按 **ORCA 6.1.1** 编制。
+当前公开预发行版为 **0.1.0a42**。输入模板按 **ORCA 6.1.1** 编制。
 
 ![从 ORCA 输出查看计算结果、结构及坐标](artifacts/public/results.png)
 
@@ -10,11 +10,11 @@ OrcaView 是面向 ORCA 的开源桌面前后处理工具。可以打开分子�
 
 | 平台 | 下载与启动方式 |
 |---|---|
-| Windows x64 | [下载 Windows ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a40/OrcaView-0.1.0a40-Windows-x64.zip)，完整解压后双击 `OrcaView.exe`。 |
-| Linux x86-64 | [下载 Linux tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a40/OrcaView-0.1.0a40-Linux-x86_64.tar.gz)，解压后进入程序目录，在图形桌面中运行 `./OrcaView`。 |
-| macOS（Apple Silicon，arm64） | [下载 macOS DMG](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a40/OrcaView-0.1.0a40-macOS-arm64.dmg)，打开后将 `OrcaView.app` 拖入「应用程序」。 |
+| Windows x64 | [下载 Windows ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a42/OrcaView-0.1.0a42-Windows-x64.zip)，完整解压后双击 `OrcaView.exe`。 |
+| Linux x86-64 | [下载 Linux tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a42/OrcaView-0.1.0a42-Linux-x86_64.tar.gz)，解压后进入程序目录，在图形桌面中运行 `./OrcaView`。 |
+| macOS（Apple Silicon，arm64） | [下载 macOS DMG](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a42/OrcaView-0.1.0a42-macOS-arm64.dmg)，打开后将 `OrcaView.app` 拖入「应用程序」。 |
 
-三个平台的发行包均内置 Python、Qt 和 Open Babel。浏览结构、生成输入及查看已有计算结果可直接离线使用。运行新的量子化学计算需另行安装 ORCA。Windows 版支持生成和导出输入，应用内的本地作业运行器当前使用 POSIX 进程控制。[发行页与 SHA-256 校验清单](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a40)
+每个安装包都包含可运行的 OrcaView 和「示例」文件夹中的 20 份文件，覆盖几何结构、ORCA 输入和计算结果。Windows 和 Linux 的 `python` 目录是软件运行库。三个平台均内置 Python、Qt 和 Open Babel。浏览结构、生成输入及查看已有计算结果可直接离线使用。运行新的量子化学计算需另行安装 ORCA。Windows 版支持生成和导出输入，应用内的本地作业运行器当前使用 POSIX 进程控制。[发行页与 SHA-256 校验清单](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a42)
 
 macOS 试用版使用临时签名，未经 Apple 公证。首次打开下载的应用时如出现系统提示，请参阅 [Apple 的打开说明](https://support.apple.com/zh-cn/102445)。
 
@@ -22,15 +22,15 @@ macOS 试用版使用临时签名，未经 Apple 公证。首次打开下载的�
 
 使用 0.1.0a37 或更高版本时，打开 **帮助 → 检查更新…** 即可查询 GitHub 发行版。更早的版本可从上表下载安装。稳定版只提示新的稳定版，预发行版也会提示更新的预发行版。程序按操作系统和处理器选择安装包，下载完成后校验 SHA-256。
 
-macOS 用户打开下载的 DMG，将 OrcaView 拖到「应用程序」。Windows 和 Linux 用户可在更新窗口选定安装位置，解压后从新版本目录启动。当前项目可先保存，再切换版本。[GitHub 发行记录](https://github.com/lightzfpwings/OrcaView/releases)
+从 0.1.0a42 起，在已安装的 OrcaView 中点「下载并覆盖安装…」，软件会校验安装包。保存项目后点「退出并更新」，新版会在原位置重启。Windows 和 Linux 的旧程序保存在同级 `.previous` 目录；项目、自建示例及修改过的示例会保留。0.1.0a37 至 0.1.0a41 的更新器仍使用原来的安装流程。首次升级到本版时，Windows 和 Linux 可从解压好的新版目录启动；macOS 可退出旧版，将新版 OrcaView.app 拖到原来的「应用程序」位置并选择「替换」。[GitHub 发行记录](https://github.com/lightzfpwings/OrcaView/releases)
 
 ### 在 Windows 上试用
 
 1. 完整解压 ZIP，在解压后的程序目录中双击 `OrcaView.exe`。同目录的 `python` 文件夹需要随主程序一起保留。
-2. 打开[水分子 XYZ 示例](examples/water.xyz)，从 GitHub 下载原始文件。在 OrcaView 中按 **Ctrl+O** 选取它。视口应显示一个氧原子和两个氢原子，底部「ORCA 输入预览」可查看原生输入。
-3. 要测试结果导入，可下载[手写单点计算日志](examples/m5_orca/water-sp.out)，同样通过 **Ctrl+O** 打开。在「结果」页可核对示例单点能 −76.123456789012 Eh、Mulliken 电荷与原子坐标。
+2. 在 OrcaView 中按 **Ctrl+O**，选取安装包里的 `示例/water.xyz`。视口应显示一个氧原子和两个氢原子，底部「ORCA 输入预览」可查看原生输入。
+3. 要测试结果导入，可按 **Ctrl+O** 打开安装包里的 `示例/water-sp.out`。在「结果」页可核对示例单点能 −76.123456789012 Eh、Mulliken 电荷与原子坐标。
 
-若要检查解压版本，在程序目录打开 PowerShell 并运行 `.\OrcaView-cli.exe --version`，应显示 `0.1.0a40`。Windows 发行包已在 Wine 的 Qt Windows 后端启动，并检查了三档显示缩放。[分平台验证记录](docs/PUBLIC_VALIDATION.md)
+若要检查解压版本，在程序目录打开 PowerShell 并运行 `.\python\OrcaView-cli.exe --version`，应显示 `0.1.0a42`。Windows 发行包已在 Wine 的 Qt Windows 后端完成原位置升级、启动和示例读取。[分平台验证记录](docs/PUBLIC_VALIDATION.md)
 
 从 0.1.0a40 起，Windows 简体中文界面优先使用微软雅黑 UI，繁体中文优先使用微软正黑体 UI。字体提供细体时，正文使用细体，标题与表头使用常规字重。预览与坐标沿用等宽排版，显示大小跟随 Windows 的缩放比例。
 
@@ -52,9 +52,9 @@ macOS 用户打开下载的 DMG，将 OrcaView 拖到「应用程序」。Window
 1. 点击当前元素符号展开周期表。可直接点选，也可输入元素符号或原子序数，例如输入 Fe 或 26 后按回车选铁。选好键型，从原子拖到空白处即可添加原子并成键。点击已有键线可修改键级，用「原子」工具点击已有原子可替换元素。单、双、三键按钮默认选用常规键，点右箭头可切换样式。单键可选配位虚线、供体指向受体的箭头或楔形等画法，双键可选一实一虚的芳香键（1.5）或构型未指定的交叉双键，三键可选两实一虚的部分三键（2.5）。
 2. 点击工具栏上的小苯环图标或右侧箭头，选择 3 至 8 元碳环或苯环。菜单中的勾号标出当前模板。点击新建分子的起始碳，会以它为环的一个顶点。点击已有结构的原子，会用单键接出一个环。点击空白处会放置独立的环。模板生成平面碳骨架，氢原子需另行添加。
 3. 用「选择」工具点击一条键，或按住 Shift 依次点两个原子，可查看两点距离。对于非环键，可输入目标键长（Å）并点「应用」。移动端一侧的整个基团会沿键轴平移，⇄ 可交换固定端和移动端。环内键和未直接成键的原子对支持测距。
-4. 用「选择」工具从二维草图空白处按住左键拖出矩形，可选中框内的原子。按住 Shift 拖动，可在二维或三维中向当前选择追加原子。两处同步高亮，可一次删除多个原子并撤销。二维草图固定在 XY 平面，拖动原子保留 Z 坐标。要精确定位，可以直接输入 X、Y、Z 坐标（Å）。建环、调键长和坐标编辑均支持撤销和重做。
+4. 用「选择」工具从二维草图空白处按住左键拖出矩形，可选中框内的原子。按住 Shift 拖动，可在二维或三维中向当前选择追加原子。两处同步高亮，可一次删除多个原子并撤销。初始草图显示分子的 XY 投影。在独立草图中拖动原子只改变它在图上的位置。要精确定位，可以直接输入 X、Y、Z 坐标（Å）。建环、调键长和坐标编辑均支持撤销和重做。
 5. 单击 **+H**，光标变为 **+H**。在二维草图或三维预览中点击目标原子，每次接上一个显式氢，可连续点同一原子或换原子。双击工具栏的 **+H**，会按整个结构的成键情况一次补齐缺失的氢。自动补氢按中性单重态的常见价态计算；带电或开壳层结构可手动点加。手动加氢可逐次撤销，整分子补氢可一次撤销。即使成键超出常见范围，编辑也会生效，设计页底部会提示需要检查的原子或电子态。
-6. 「整理 2D」用 Open Babel 的二维排版整理整个草图的键长、键角与环。它会把当前分子坐标排到同一 XY 高度，结果会进入 ORCA 输入。三维预览上方的「优化 3D」用 Open Babel 力场预优化中性单重态分子，优先 MMFF94，缺少参数时尝试 UFF。含配位键或 2.5 级键的结构可做二维整理，三维预优化会提示当前力场的限制。完成预优化后可在设计页底部看到实际采用的力场。整理和预优化都可整步撤销。
+6. 「整理 2D」按二维结构式的规则规整图上的键长、键角与环，只更新左侧草图。右侧的「优化 3D」用 Open Babel 力场预优化中性单重态分子，优先 MMFF94，缺少参数时尝试 UFF。它更新右侧构象及 ORCA 输入中的 XYZ 坐标，并保留左侧草图。含配位键或 2.5 级键的结构可做二维整理，三维预优化会提示当前力场的限制。完成预优化后可在设计页底部看到实际采用的力场。整理和预优化都可整步撤销。
 7. 切回「输入」核对电荷、自旋多重度和坐标，预览并导出 ORCA 输入。「结果」保留各数据集对应的计算结构。要从其中一个构象继续编辑，选中它，点「用此结构设计」。设计与另外两个页签间的切换支持连续操作。
 
 二维整理参考 ChemDraw 的 Clean Up Structure，三维预优化使用 Open Babel 的分子力学实现。需要量子化学优化时，可在「输入」选择 ORCA 的几何优化任务。[ChemDraw 用户指南](https://chemistry.beloit.edu/classes/programs/ChemDraw_25_manual.pdf) · [Open Babel 力场](https://openbabel.org/docs/Forcefields/Overview.html)
@@ -63,7 +63,7 @@ macOS 用户打开下载的 DMG，将 OrcaView 拖到「应用程序」。Window
 
 内置简体中文、繁体中文、日语、英语及德语。打开 **视图 → 界面语言…** 选择语言，保存并重启即可切换。
 
-要安装或更新外部语言包，解压下载的语言包，将 JSON 文件直接放在所选目录下。在同一对话框点击 **刷新语言包**，选择语言、保存并重启。外部语言包可以只覆盖一部分词条。[独立语言包下载](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a40/OrcaView-0.1.0a40-languages.zip) · [语言包源文件](src/orcaview/languages)
+要安装或更新外部语言包，解压下载的语言包，将 JSON 文件直接放在所选目录下。在同一对话框点击 **刷新语言包**，选择语言、保存并重启。外部语言包可以只覆盖一部分词条。[独立语言包下载](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a42/OrcaView-0.1.0a42-languages.zip) · [语言包源文件](src/orcaview/languages)
 
 ## 源码、构建与测试
 

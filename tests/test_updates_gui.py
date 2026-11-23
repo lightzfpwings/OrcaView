@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from threading import Event, get_ident
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -164,6 +164,84 @@ class UpdateWindowTest(unittest.TestCase):
                 self.assertEqual(unpack.call_args.args, (release.asset, archive, Path(folder)))
                 self.assertEqual(self.open_url.call_args.args[0].toLocalFile(), str(launcher.parent))
                 self.assertIn(launcher.name, dialog.status.text())
+
+    def test_current_portable_update_uses_same_directory_and_waits_for_normal_exit(self):
+        release = self.release("OrcaView-9.0.0-Windows-x64.zip")
+        self.check.return_value = release
+        target = Path("/tmp/current OrcaView")
+        prepared = Mock()
+        with patch.object(update_dialog, "current_portable_installation", return_value=target), \
+             patch.object(QFileDialog, "getExistingDirectory") as choose, \
+             patch.object(update_dialog, "download_update", side_effect=lambda asset, folder, **kw: folder / asset.name), \
+             patch.object(update_dialog, "prepare_portable_update", return_value=prepared) as prepare, \
+             patch.object(update_dialog, "schedule_portable_update") as schedule:
+            dialog = self.open_check()
+            self.assertIn(str(target), dialog.status.text())
+            self.assertTrue(dialog.manual_button.isVisible())
+            dialog.install_button.click()
+            self.wait_for(lambda: dialog._task is None)
+            choose.assert_not_called()
+            self.assertEqual(prepare.call_args.args[2], target)
+            schedule.assert_not_called()
+            self.assertTrue(self.window.isVisible() and dialog.restart_button.isVisible())
+            with patch.object(self.window, "_guard_discard", return_value=False) as guard:
+                dialog.restart_button.click()
+                guard.assert_called_once()
+            self.assertTrue(self.window.isVisible())
+            schedule.assert_not_called()
+            dialog.restart_button.click()
+            schedule.assert_called_once_with(prepared)
+            self.assertFalse(self.window.isVisible())
+            self.open_url.assert_not_called()
+
+    def test_mac_install_waits_for_save_guard_and_survives_reopening_update_window(self):
+        release = self.release("OrcaView-9.0.0-macOS-arm64.dmg")
+        self.check.return_value = release
+        target = Path("/tmp/Applications/OrcaView.app")
+        prepared = Mock(spec=update_dialog.PreparedMacUpdate)
+        with patch.object(update_dialog, "current_macos_installation", return_value=target), \
+             patch.object(update_dialog, "download_update", return_value=Path("/tmp/verified.dmg")), \
+             patch.object(update_dialog, "prepare_macos_update", return_value=prepared):
+            dialog = self.open_check()
+            dialog.install_button.click()
+            self.wait_for(lambda: dialog._task is None)
+            dialog.close()
+            self.open_check()
+            self.assertEqual(self.check.call_count, 1)
+            with patch.object(self.window, "_guard_discard", return_value=False):
+                dialog.restart_button.click()
+            prepared.install_on_exit.assert_not_called()
+            self.assertTrue(self.window.isVisible())
+            dialog.restart_button.click()
+            prepared.install_on_exit.assert_called_once()
+            self.assertFalse(self.window.isVisible())
+
+    def test_prepared_update_cancelled_before_delivery_discards_staging(self):
+        release = self.release("OrcaView-9.0.0-Windows-x64.zip")
+        self.check.return_value = release
+        preparing, resume = Event(), Event()
+        prepared = Mock()
+
+        def prepare(*args, **kwargs):
+            preparing.set()
+            resume.wait(4)
+            return prepared
+
+        with patch.object(update_dialog, "current_portable_installation", return_value=Path("/tmp/OrcaView")), \
+             patch.object(update_dialog, "download_update", return_value=Path("/tmp/package")), \
+             patch.object(update_dialog, "prepare_portable_update", side_effect=prepare), \
+             patch.object(update_dialog, "schedule_portable_update") as schedule:
+            dialog = self.open_check()
+            dialog.install_button.click()
+            try:
+                self.wait_for(preparing.is_set)
+                dialog.cancel_button.click()
+            finally:
+                resume.set()
+            self.wait_for(lambda: dialog._task is None)
+            schedule.assert_not_called()
+            prepared.discard.assert_called_once()
+            self.assertTrue(dialog.install_button.isVisible())
 
     def test_close_window_during_download_does_not_open_installer(self):
         release = self.release("test.dmg")

@@ -2,9 +2,9 @@
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
-from orcaview.editing import AddHydrogens, GeometryEditCommand, OptimizeCoordinates
+from orcaview.editing import AddHydrogens, GeometryEditCommand, OptimizeCoordinates, SetSketchLayout
 from orcaview.editing.hydrogens import missing_hydrogens
-from orcaview.editing.optimization import optimize_structure
+from orcaview.editing.optimization import clean_sketch, optimize_structure
 
 
 class _Completion(QObject):
@@ -24,6 +24,8 @@ class StructureJob(QRunnable):
             if self.mode == "H":
                 added, perceived = missing_hydrogens(base.molecule)
                 operation = AddHydrogens(tuple((base.atom_ids[i], h) for i, h in added), perceived)
+            elif self.mode == "2D":
+                operation = SetSketchLayout(clean_sketch(base.molecule, base.sketch_xy))
             else:
                 result = optimize_structure(base.molecule, self.mode)
                 xyz = tuple((atom.x, atom.y, atom.z) for atom in result.molecule.atoms)

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from orcaview.core.geometry import display_bonds
 from orcaview.core.models import Atom, Bond, Molecule
-from orcaview.editing.optimization import optimize_structure
+from orcaview.editing.optimization import clean_sketch, optimize_structure
 
 
 def points(molecule):
@@ -21,6 +21,24 @@ def ring():
 
 
 class OptimizationFailureTests(unittest.TestCase):
+    def test_single_bond_chain_is_an_extended_2d_zigzag_in_bond_order(self):
+        atoms = tuple(Atom("C", i, -i, i * .2) for i in range(6))
+        path = (2, 4, 1, 0, 5, 3)
+        molecule = Molecule("hexane", atoms, tuple(Bond(a, b) for a, b in zip(path, path[1:])))
+        sketch = tuple((9., 7. + path.index(i)) for i in range(6))
+        with patch("orcaview.editing.optimization.run_babel_worker", side_effect=AssertionError):
+            layout = clean_sketch(molecule, sketch)
+            self.assertEqual(clean_sketch(molecule, layout), layout)
+        chain = [layout[i] for i in path]
+        for a, b in zip(chain, chain[1:]):
+            self.assertAlmostEqual(math.dist(a, b), 1.5)
+        for a, c in zip(chain, chain[2:]):
+            self.assertAlmostEqual(math.dist(a, c), 1.5 * math.sqrt(3))
+        self.assertGreater(math.dist(chain[0], chain[-1]), 6.5)
+        self.assertGreater(chain[-1][1], chain[0][1])
+        self.assertAlmostEqual(sum(x for x, _ in layout), 54.)
+        self.assertAlmostEqual(sum(y for _, y in layout), 57.)
+
     def test_single_atom_and_explicit_empty_graph_have_no_optimizable_bonds(self):
         with self.assertRaisesRegex(ValueError, "化学键"):
             optimize_structure(Molecule("C", (Atom("C", 0, 0, 0),)), "3D")
@@ -45,6 +63,16 @@ class OptimizationFailureTests(unittest.TestCase):
 
 @unittest.skipUnless(find_spec("openbabel"), "requires desktop Open Babel")
 class NativeOptimizationTests(unittest.TestCase):
+    def test_depiction_centers_a_regular_ring_on_its_drawing_not_its_conformer(self):
+        physical = optimize_structure(ring(), "3D").molecule
+        reference = tuple((a.x + 8, a.y - 4) for a in physical.atoms)
+        layout = clean_sketch(physical, reference)
+        for bond in physical.bonds:
+            self.assertAlmostEqual(math.dist(layout[bond.a], layout[bond.b]), 1.5, places=5)
+        self.assertGreater(max(a.z for a in physical.atoms) - min(a.z for a in physical.atoms), .3)
+        for after, before in zip(zip(*layout), zip(*reference)):
+            self.assertAlmostEqual(sum(after), sum(before))
+
     def test_aromatic_ring_uses_aromatic_force_field_and_keeps_editor_bonds(self):
         cycle = ring()
         cycle = replace(cycle, bonds=tuple(replace(b, order=2, style="aromatic") for b in cycle.bonds))

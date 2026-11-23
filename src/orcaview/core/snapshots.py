@@ -1,15 +1,29 @@
 """Immutable geometries, atom ordering and selection for a single document."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from struct import pack
 from typing import Optional, Tuple
 
-from ._validation import Versioned, identifiers, integer, nonempty
+from ._validation import Versioned, finite_number, identifiers, integer, nonempty, require_tuple
 from .elements import ATOMIC_NUMBERS
+from .geometry import display_bonds
 from .models import Molecule
 from .provenance import Provenance, new_id
 from .units import LENGTH_UNITS, convert_length
+
+
+SketchCoordinates = Tuple[Tuple[float, float], ...]
+
+
+def validate_sketch_xy(points: SketchCoordinates) -> None:
+    require_tuple(points, "二维草图坐标")
+    for point in points:
+        require_tuple(point, "二维草图坐标")
+        if len(point) != 2:
+            raise ValueError("每个草图原子需要两个坐标")
+        for value in point:
+            finite_number(value, "二维草图坐标")
 
 
 @dataclass(frozen=True)
@@ -35,6 +49,7 @@ class GeometrySnapshot(Versioned):
     provenance: Provenance
     parent: Optional[GeometryRef] = None
     source_unit: str = "angstrom"
+    sketch_xy: Optional[SketchCoordinates] = None
     content_hash: str = field(init=False)
 
     def __post_init__(self):
@@ -50,6 +65,10 @@ class GeometrySnapshot(Versioned):
         identifiers(self.atom_ids, "原子 ID")
         if len(self.atom_ids) != len(self.molecule.atoms):
             raise ValueError("原子 ID 数目必须与坐标行数相同")
+        if self.sketch_xy is not None:
+            validate_sketch_xy(self.sketch_xy)
+            if len(self.sketch_xy) != len(self.atom_ids) or self.ref.frame_id is not None:
+                raise ValueError("二维草图坐标必须逐行对应可编辑修订中的原子")
         digest = sha256(b"orcaview/geometry/1/angstrom\0")
         for atom in self.molecule.atoms:
             # Canonical binary64, big endian. Normalize the two IEEE zeroes.
@@ -72,6 +91,20 @@ class GeometrySnapshot(Versioned):
     def coordinates(self, unit: str = "angstrom") -> Tuple[Tuple[float, ...], ...]:
         return tuple(tuple(convert_length(v, "angstrom", unit) for v in (a.x, a.y, a.z))
                      for a in self.molecule.atoms)
+
+    def sketch_molecule(self) -> Molecule:
+        """Draw the depiction with connectivity from the physical geometry."""
+        if self.sketch_xy is None:
+            return self.molecule
+        atoms = tuple(replace(atom, x=x, y=y) for atom, (x, y) in zip(self.molecule.atoms, self.sketch_xy))
+        return replace(self.molecule, atoms=atoms, bonds=display_bonds(self.molecule), bonds_explicit=True)
+
+    def remap_sketch(self, molecule: Molecule, atom_ids: Tuple[Optional[str], ...]) -> Optional[SketchCoordinates]:
+        """Keep drawing positions by identity; new rows start at their own XY."""
+        if self.sketch_xy is None or not any(atom_id is not None for atom_id in atom_ids):
+            return None
+        by_id = dict(zip(self.atom_ids, self.sketch_xy))
+        return tuple(by_id.get(atom_id, (atom.x, atom.y)) for atom_id, atom in zip(atom_ids, molecule.atoms))
 
 
 @dataclass(frozen=True)

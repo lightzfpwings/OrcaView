@@ -154,3 +154,126 @@ class UpdateDownloadTests(unittest.TestCase):
             install_portable(asset, archive, directory,
                              cancelled=lambda: any(candidate.is_file() for candidate in directory.rglob("OrcaView.exe")))
         self.assertEqual(list(directory.iterdir()), [])
+
+
+class PortableReplacementTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.work = Path(self.temp.name).resolve()
+        self.target = self.work / "自定义 软件"
+        self.target.mkdir()
+        self.init = Path("python/Lib/site-packages/orcaview/__init__.pyc")
+        self.backup = self.target.with_name(self.target.name + ".previous")
+
+    def bundle(self, version):
+        import json
+        content = {"OrcaView.exe": version.encode(), self.init.as_posix(): version.encode(),
+                   "python/managed.dll": version.encode(), "示例/water.xyz": version.encode(),
+                   "示例/imports/ethanol.mol": version.encode()}
+        hashes = {p: hashlib.sha256(v).hexdigest() for p, v in content.items()}
+        content["python/orcaview-files.json"] = json.dumps(hashes).encode()
+        name = f"OrcaView-{version}-Windows-x64"
+        data = BytesIO()
+        with zipfile.ZipFile(data, "w") as archive:
+            for path, payload in content.items():
+                archive.writestr(name + "/" + path, payload)
+        binary = data.getvalue()
+        dest = self.work / (name + ".zip")
+        dest.write_bytes(binary)
+        url = f"https://github.com/lightzfpwings/OrcaView/releases/download/v{version}/{dest.name}"
+        return UpdateAsset(dest.name, url, len(binary), hashlib.sha256(binary).hexdigest()), dest
+
+    def seed(self, legacy=False):
+        asset, path = self.bundle("0.1.0a40")
+        (self.target).rmdir()
+        install_portable(asset, path, self.work).parent.rename(self.target)
+        if legacy:
+            (self.target / "python/orcaview-files.json").unlink()
+            (self.target / "ThirdParty").mkdir()
+            (self.target / "ThirdParty/SOURCES.txt").write_text("legacy")
+            (self.target / "OrcaView-cli.exe").write_text("legacy")
+            (self.target / "LICENSE.txt").write_text("legacy")
+
+    def test_legacy_upgrade_reuses_named_directory_and_retains_private_projects(self):
+        self.seed(legacy=True)
+        (self.target / "my project.ov").write_text("project")
+        (self.target / "示例/water.xyz").write_text("user-edited example")
+        asset, path = self.bundle("0.1.0a42")
+        self.assertEqual(install_portable(asset, path, self.target), self.target / "OrcaView.exe")
+        self.assertEqual((self.target / self.init).read_text(), "0.1.0a42")
+        self.assertEqual((self.target / "my project.ov").read_text(), "project")
+        self.assertEqual((self.backup / self.init).read_text(), "0.1.0a40")
+        self.assertFalse((self.target / "ThirdParty").exists())
+        self.assertTrue((self.backup / "ThirdParty/SOURCES.txt").is_file())
+        self.assertEqual((self.target / "示例/water.xyz").read_text(), "user-edited example")
+        self.assertEqual((self.target / "示例/imports/ethanol.mol").read_text(), "0.1.0a40")
+
+    def test_rotates_one_backup_preserving_only_local_edits(self):
+        self.seed()
+        (self.target / "示例/water.xyz").write_text("custom")
+        (self.target / "示例/my input.inp").write_text("input")
+        (self.target / "python/extra-data").write_text("user addition")
+        for version in ("0.1.0a42", "0.1.0a43", "0.1.0a44"):
+            asset, path = self.bundle(version)
+            install_portable(asset, path, self.target)
+            self.assertEqual((self.target / "示例/water.xyz").read_text(), "custom")
+            self.assertEqual((self.target / "示例/imports/ethanol.mol").read_text(), version)
+            self.assertEqual((self.target / "python/extra-data").read_text(), "user addition")
+            self.assertEqual((self.target / "示例/my input.inp").read_text(), "input")
+        self.assertEqual((self.backup / self.init).read_text(), "0.1.0a43")
+        for preserved in self.work.glob("*.previous-preserved-*"):
+            self.assertFalse((preserved / self.init).exists())
+            self.assertEqual((preserved / "示例/water.xyz").read_text(), "custom")
+
+    def test_relaunch_failure_rolls_back_and_pending_cancellation_leaves_installation_untouched(self):
+        from orcaview.application import portable_replace
+        from orcaview.application.update_download import prepare_portable_update
+        self.seed()
+        asset, path = self.bundle("0.1.0a42")
+        pending = prepare_portable_update(asset, path, self.target)
+        pending.discard()
+        self.assertFalse(pending.staged.parent.exists())
+        self.assertFalse(self.backup.exists())
+        pending = prepare_portable_update(asset, path, self.target)
+        with patch.object(portable_replace.subprocess, "Popen", side_effect=OSError("nt loader")):
+            with self.assertRaisesRegex(OSError, "nt loader"):
+                portable_replace.activate(pending.staged, self.target, pending.backup, True,
+                                          pending.expected, relaunch=True)
+        self.assertEqual((self.target / self.init).read_text(), "0.1.0a40")
+        self.assertFalse(self.backup.exists())
+        pending.discard()
+        self.assertFalse(pending.staged.parent.exists())
+
+    def test_stale_preparations_and_unrelated_backups_are_left_alone(self):
+        from orcaview.application import portable_replace
+        from orcaview.application.update_download import prepare_portable_update
+        self.seed()
+        asset, path = self.bundle("0.1.0a42")
+        pending = prepare_portable_update(asset, path, self.target)
+        install_portable(asset, path, self.target)
+        with self.assertRaisesRegex(ValueError, "安装目录已变更"):
+            portable_replace.activate(pending.staged, self.target, pending.backup, True, pending.expected)
+        pending.discard()
+        (self.backup / ".orcaview-previous.json").unlink()
+        with self.assertRaisesRegex(UpdateDownloadError, "备份路径"):
+            install_portable(asset, path, self.target)
+        self.assertEqual((self.backup / self.init).read_text(), "0.1.0a40")
+        self.assertEqual((self.target / self.init).read_text(), "0.1.0a42")
+
+    @unittest.skipIf(os.name == "nt", "symlink creation needs Windows developer privileges")
+    def test_old_backup_runtime_symlink_cannot_change_an_external_directory(self):
+        from orcaview.application import portable_replace
+        self.seed()
+        external = self.work / "external"
+        external.mkdir()
+        marker = external / "orcaview-files.json"
+        marker.write_text("{}")
+        previous = self.work / "previous"
+        previous.mkdir()
+        (previous / "python").symlink_to(external, target_is_directory=True)
+        (previous / ".orcaview-previous.json").write_text("marker")
+        portable_replace._retire_backup(previous, self.target)
+        self.assertTrue(marker.is_file())
+        retained, = self.work.glob("*.previous-preserved-*")
+        self.assertTrue((retained / "python").is_symlink())

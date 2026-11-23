@@ -2,6 +2,7 @@
 
 from dataclasses import asdict, dataclass, replace
 import json
+import math
 from threading import RLock
 from typing import Optional, Tuple
 
@@ -10,14 +11,14 @@ from orcaview.core._validation import Versioned, identifiers, require_tuple
 from orcaview.core.models import Bond, DIRECTIONAL_STYLES, Molecule
 from orcaview.core.geometry import display_bonds
 from orcaview.core.provenance import Provenance, new_id
-from orcaview.core.snapshots import GeometryRef, GeometrySnapshot, SelectionContext
+from orcaview.core.snapshots import GeometryRef, GeometrySnapshot, SelectionContext, SketchCoordinates, validate_sketch_xy
 
 from .commands import (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, GeometryEditCommand, InsertRing, MoveAtom,
-                       OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength, SetDistance,
+                       MoveSketchAtom, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength, SetDistance,
                        SetElectronicState, UseResultGeometry)
 from .coordinates import bond_moving_atoms, edit_distance
 from .hydrogens import attached_hydrogen
-from .rings import insert_ring
+from .rings import insert_ring, open_direction
 
 
 class EditStateError(ValueError):
@@ -71,6 +72,7 @@ class EditPreview(Versioned):
     selection_before: SelectionContext
     selection_after_ids: Tuple[str, ...]
     electronic_state_error: Optional[str]
+    sketch_xy: Optional[SketchCoordinates] = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,8 @@ def _result_atom_ids(document, target, live_ids):
 
 def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: GeometryEditCommand):
     op, molecule, ids = command.operation, base.molecule, base.atom_ids
+    if isinstance(op, (SetSketchLayout, MoveSketchAtom)):
+        return molecule, ids
     if isinstance(op, (OptimizeCoordinates, AddHydrogens)):
         bonds = display_bonds(molecule)
         if op.perceived_bonds is not None:
@@ -233,6 +237,55 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
     raise ValueError("不支持的编辑操作")
 
 
+def _edit_sketch(document, base, op, molecule, ids):
+    if isinstance(op, SetSketchLayout):
+        if len(op.xy) != len(ids):
+            raise ValueError("二维草图坐标与原子数不一致")
+        return op.xy
+    if isinstance(op, (OptimizeCoordinates, MoveSketchAtom)):
+        # The first 3D optimization freezes the drawing that the user sees.
+        xy = base.sketch_xy or tuple((atom.x, atom.y) for atom in base.molecule.atoms)
+        if isinstance(op, MoveSketchAtom):
+            i = base.index_of(op.atom_id)
+            return xy[:i] + ((op.x, op.y),) + xy[i + 1:]
+        return xy
+    if isinstance(op, UseResultGeometry):
+        target = document.resolve(op.source)
+        if target.sketch_xy is not None:
+            return target.sketch_xy
+    points = base.remap_sketch(molecule, ids)
+    if points is None:
+        return None
+    if isinstance(op, InsertRing):
+        # Find an open sector of the drawing independently of the conformer.
+        anchor = None if op.anchor_id is None else base.index_of(op.anchor_id)
+        drawing = base.sketch_molecule()
+        drawing = replace(drawing, atoms=tuple(replace(atom, z=0.) for atom in drawing.atoms),
+                          bonds_explicit=base.molecule.bonds_explicit)
+        center = (*op.center[:2], 0.) if op.center is not None else None
+        layout_ring = insert_ring(drawing, replace(op, plane="XY", center=center), anchor)
+        return tuple((atom.x, atom.y) for atom in layout_ring.atoms)
+    if isinstance(op, AttachAtom):
+        anchor = base.index_of(op.anchor_id)
+        origin = base.molecule.atoms[anchor]
+        x, y = points[anchor]
+        return points[:-1] + ((x + (op.atom.x - origin.x), y + (op.atom.y - origin.y)),)
+    if isinstance(op, (AddHydrogen, AddHydrogens)):
+        anchors = ((op.anchor_id,) if isinstance(op, AddHydrogen) else tuple(a for a, _ in op.attachments))
+        placed = list(base.sketch_xy)
+        for atom_id in anchors:
+            index = len(placed)
+            anchor = base.index_of(atom_id)
+            bonds = (bond for bond in molecule.bonds if bond.a < index and bond.b < index)
+            angle = open_direction(anchor, bonds, placed, 0, 1)
+            parent, atom = molecule.atoms[anchor], molecule.atoms[index]
+            length = math.dist((parent.x, parent.y, parent.z), (atom.x, atom.y, atom.z))
+            x, y = placed[anchor]
+            placed.append((x + length * math.cos(angle), y + length * math.sin(angle)))
+        return tuple(placed)
+    return points
+
+
 class EditorService:
     """One document's edit history, independent of the display and Qt.
 
@@ -326,12 +379,15 @@ class EditorService:
                 raise StaleRevisionError("命令基准与编辑服务的当前修订不一致")
             molecule, ids = _apply(self._document, base, command)
             molecule.validate_structure(allow_empty=True)
-            if molecule == base.molecule and ids == base.atom_ids:
+            sketch_xy = _edit_sketch(self._document, base, command.operation, molecule, ids)
+            if sketch_xy is not None:
+                validate_sketch_xy(sketch_xy)
+            if molecule == base.molecule and ids == base.atom_ids and sketch_xy == base.sketch_xy:
                 raise _UnchangedEdit("编辑没有改变分子或原子顺序")
             active = set(ids)
             preview = EditPreview(
                 new_id(), command, base, molecule, AtomMapping(base.atom_ids, ids), self._selection,
-                tuple(i for i in self._selection.atom_ids if i in active), _state_error(molecule),
+                tuple(i for i in self._selection.atom_ids if i in active), _state_error(molecule), sketch_xy,
             )
             self._check_head()
             self._pending = preview
@@ -358,7 +414,8 @@ class EditorService:
             origin = Provenance("edit", "orcaview.editing", "1", parameters=parameters)
             after = self._document.publish_revision(
                 command.expected, preview.molecule, preview.mapping.target_ids, origin,
-                source_unit="angstrom",
+                source_unit=preview.before.source_unit if isinstance(command.operation, (MoveSketchAtom, SetSketchLayout))
+                else "angstrom", sketch_xy=preview.sketch_xy,
             )
             selection = SelectionContext(after.ref, preview.selection_after_ids, preview.selection_before.mode)
             entry = EditHistoryEntry(command, preview.before, after, preview.selection_before, selection)

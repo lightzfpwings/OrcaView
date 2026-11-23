@@ -9,7 +9,7 @@ import tempfile
 from orcaview import (
     ADVANCED_PROJECT_SCHEMA_VERSION, DOCUMENT_PROJECT_SCHEMA_VERSION, LEGACY_PROJECT_SCHEMA_VERSION,
     BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION,
-    LOG_REPORT_PROJECT_SCHEMA_VERSION,
+    LOG_REPORT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION,
     TOPOLOGY_PROJECT_SCHEMA_VERSION, __version__,
     SOLVATION_PROJECT_SCHEMA_VERSION, STATE_PROJECT_SCHEMA_VERSION,
 )
@@ -43,7 +43,9 @@ def _payload(session, target):
     document = session.tracked_document
     records = document.records() if document is not None else None
     molecules = [s.molecule for s in records[0]] if records is not None else [session.molecule]
-    if any(not molecule.atoms for molecule in molecules):
+    if records is not None and any(s.sketch_xy is not None for s in records[0]):
+        version = SKETCH_PROJECT_SCHEMA_VERSION
+    elif any(not molecule.atoms for molecule in molecules):
         version = EMPTY_DRAFT_PROJECT_SCHEMA_VERSION
     elif any(b.style != "plain" for molecule in molecules for b in molecule.bonds):
         version = BOND_STYLE_PROJECT_SCHEMA_VERSION
@@ -89,6 +91,8 @@ def _payload(session, target):
         )
         for snapshot in payload["document"]["snapshots"]:
             trim_molecule_fields(snapshot["molecule"], version)
+            if version < SKETCH_PROJECT_SCHEMA_VERSION:
+                del snapshot["sketch_xy"]
         if version >= TOPOLOGY_PROJECT_SCHEMA_VERSION:
             payload["log_report"] = None
         if session.log_report is not None:
@@ -151,7 +155,7 @@ def load_project(path: Path) -> Session:
             LEGACY_PROJECT_SCHEMA_VERSION, DOCUMENT_PROJECT_SCHEMA_VERSION,
             STATE_PROJECT_SCHEMA_VERSION, ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION,
             SOLVATION_PROJECT_SCHEMA_VERSION, LOG_REPORT_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION,
-            BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION):
+            BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION):
         raise ValueError("不支持此项目版本；需要显式迁移")
     common = {"schema_version", "software_version", "calculation", "source_path"}
     extra = {"molecule"} if version == LEGACY_PROJECT_SCHEMA_VERSION else {"contract_version", "document"}

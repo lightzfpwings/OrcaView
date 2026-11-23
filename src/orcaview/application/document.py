@@ -7,7 +7,7 @@ from orcaview.core._validation import require_tuple
 from orcaview.core.models import Molecule
 from orcaview.core.provenance import ArtifactRef, Provenance, new_id
 from orcaview.core.results import ResultDataset
-from orcaview.core.snapshots import GeometryRef, GeometrySnapshot
+from orcaview.core.snapshots import GeometryRef, GeometrySnapshot, SketchCoordinates
 
 
 HISTORY_RESTORE_KIND = "history-restore"
@@ -68,7 +68,7 @@ class MoleculeDocument:
     def publish_revision(self, expected: GeometryRef, molecule: Molecule,
                          atom_ids: Tuple[Optional[str], ...],
                          provenance: Optional[Provenance] = None, *,
-                         source_unit: str = "angstrom") -> GeometrySnapshot:
+                         source_unit: str = "angstrom", sketch_xy: Optional[SketchCoordinates] = None) -> GeometrySnapshot:
         """Pass the surviving IDs in new row order and None for each newly added atom."""
         require_tuple(atom_ids, "修订的原子映射")
         with self._lock:
@@ -84,6 +84,7 @@ class MoleculeDocument:
                 GeometryRef(base.ref.document_id, base.ref.revision + 1), molecule,
                 tuple(new_id() if i is None else i for i in atom_ids),
                 provenance if provenance is not None else Provenance("edit"), parent=base.ref, source_unit=source_unit,
+                sketch_xy=sketch_xy if sketch_xy is not None else base.remap_sketch(molecule, atom_ids),
             )
             self._append(snapshot)
             return snapshot
@@ -106,7 +107,7 @@ class MoleculeDocument:
             snapshot = GeometrySnapshot(
                 GeometryRef(base.ref.document_id, base.ref.revision + 1),
                 original.molecule, original.atom_ids, _restore_provenance(target),
-                parent=base.ref, source_unit=original.source_unit,
+                parent=base.ref, source_unit=original.source_unit, sketch_xy=original.sketch_xy,
             )
             self._append(snapshot)
             return snapshot
@@ -169,7 +170,7 @@ class MoleculeDocument:
                 or snapshot.provenance != _restore_provenance(target.ref)):
             raise ValueError("历史恢复来源必须精确引用本文件中已发布的历史修订及受支持的协议")
         if (snapshot.molecule != target.molecule or snapshot.atom_ids != target.atom_ids
-                or snapshot.source_unit != target.source_unit):
+                or snapshot.source_unit != target.source_unit or snapshot.sketch_xy != target.sketch_xy):
             raise ValueError("历史恢复必须完整保留目标的几何、原子映射、键、电子态和源单位")
 
     def _check_artifacts(self, refs):

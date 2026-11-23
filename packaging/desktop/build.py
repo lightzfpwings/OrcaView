@@ -18,6 +18,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LOCK = json.loads((HERE / "dependencies.json").read_text())
 PYTHON = "3.13"
+sys.path.insert(0, str(HERE.parent))
+from release_examples import install_examples
+
 LINUX_ENTRY = """#!/bin/sh
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 if [ "$#" -eq 0 ]; then set -- gui; fi
@@ -62,9 +65,31 @@ def runtime_member(member):
     return True
 
 
+def wheel_runtime_member(name):
+    """Omit SDK inputs and standalone development tools from the desktop runtime."""
+    parts = Path(name).parts
+    if len(parts) > 1 and parts[0] == "PySide6":
+        if parts[1] in {"doc", "glue", "include", "scripts", "typesystems"}:
+            return False
+        if len(parts) == 2 or parts[1:3] == ("Qt", "libexec"):
+            return Path(parts[-1]).stem not in {
+                "assistant", "designer", "linguist", "lrelease", "lupdate", "qmlcachegen",
+                "qmlformat", "qmlimportscanner", "qmllint", "qmlls", "qmltyperegistrar",
+                "rcc", "svgtoqml", "uic",
+            }
+    if parts[0] == "openbabel":
+        if "include" in parts or "cmake" in parts:
+            return False
+        if len(parts) == 3 and parts[1] == "bin" and parts[2].startswith("ob"):
+            return Path(parts[2]).suffix not in ("", ".exe")
+    return True
+
+
 def install_wheel(path, site):
     with ZipFile(path) as wheel:
         for info in wheel.infolist():
+            if not wheel_runtime_member(info.filename):
+                continue
             # All locked wheels use the site-packages layout directly.
             target = Path(wheel.extract(info, site))
             if info.external_attr >> 16 & 0o111 and not target.is_dir():
@@ -73,16 +98,16 @@ def install_wheel(path, site):
 
 def windows_launchers(bundle, launcher_wheel):
     with ZipFile(launcher_wheel) as wheel:
-        (bundle / "ThirdParty/distlib-LICENSE.txt").write_bytes(
+        (bundle / "python/ThirdParty/distlib-LICENSE.txt").write_bytes(
             wheel.read("distlib-0.4.0.dist-info/LICENSE.txt"))
         archive = BytesIO()
         with ZipFile(archive, "w") as z:
             z.writestr("__main__.py", WINDOWS_ENTRY)
         for name, stub, interpreter in (
-            ("OrcaView.exe", "w64.exe", "pythonw.exe"),
-            ("OrcaView-cli.exe", "t64.exe", "python.exe"),
+            ("OrcaView.exe", "w64.exe", "python\\pythonw.exe"),
+            ("python/OrcaView-cli.exe", "t64.exe", "python.exe"),
         ):
-            shebang = f"#!<launcher_dir>\\python\\{interpreter} -I\n".encode("ascii")
+            shebang = f"#!<launcher_dir>\\{interpreter} -I\n".encode("ascii")
             (bundle / name).write_bytes(wheel.read("distlib/" + stub) + shebang + archive.getvalue())
 
 
@@ -107,13 +132,13 @@ def install_app(site):
 
 def assemble(target, bundle, cache, version):
     runtime, *wheels = [dependency(entry, cache) for entry in LOCK[target]]
-    third_party = bundle / "ThirdParty"
+    third_party = bundle / "python/ThirdParty"
     third_party.mkdir(parents=True)
-    shutil.copyfile(ROOT / "LICENSE", bundle / "LICENSE.txt")
+    shutil.copyfile(ROOT / "LICENSE", third_party / "OrcaView-LICENSE.txt")
+    shutil.copyfile(ROOT / "THIRD_PARTY_NOTICES.md", third_party / "THIRD_PARTY_NOTICES.md")
     sources = (HERE / "SOURCES.txt").read_text(encoding="utf-8").replace("@VERSION@", version)
     (third_party / "SOURCES.txt").write_bytes(sources.encode("utf-8"))
-    for entry in LOCK["shared"]:
-        shutil.copyfile(dependency(entry, cache), third_party / entry["name"])
+    install_examples(ROOT, bundle / "示例")
     with tarfile.open(runtime) as tar:
         tar.extractall(bundle, members=(m for m in tar if runtime_member(m)), filter="data")
     if target == "windows":
@@ -130,9 +155,17 @@ def assemble(target, bundle, cache, version):
     if target == "windows":
         # The official wheel looks for force-field files in the Unix-style
         # share path, although it installs its Windows data next to obabel.exe.
+        from orcaview.io.babel_worker import prepare_windows_babel_data
         babel = site / "openbabel"
-        shutil.copytree(babel / "bin/data", babel / "share/openbabel/3.2.0", dirs_exist_ok=True)
+        prepare_windows_babel_data(babel / "bin/data", babel / "share/openbabel/3.2.0")
     install_app(site)
+    files = {}
+    for path in sorted(bundle.rglob("*")):
+        if not path.is_symlink() and path.is_file():
+            with path.open("rb") as stream:
+                files[path.relative_to(bundle).as_posix()] = file_digest(stream, "sha256").hexdigest()
+    (bundle / "python/orcaview-files.json").write_text(
+        json.dumps(files, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def release_member(member):

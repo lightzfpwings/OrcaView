@@ -1,17 +1,26 @@
 """Download verified OrcaView Releases and install the portable desktop bundles."""
 
+from dataclasses import dataclass
 import hashlib
+import json
 from http.client import HTTPException
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
+import subprocess
+import sys
 import tarfile
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, mkdtemp
+import time
 from urllib.error import HTTPError
 from urllib.request import Request
 import zipfile
+from uuid import uuid4
 
+from . import portable_replace
+from .portable_replace import current_portable_installation
 from .updates import RELEASES_URL, UpdateAsset, open_update_url
 
 
@@ -211,20 +220,135 @@ def _publish_directory(staged, target):
             raise
 
 
-def install_portable(asset: UpdateAsset, archive: Path, directory: Path, *, cancelled=None) -> Path:
-    """Install to a new versioned directory and return the installed launcher."""
+def _bundle(asset):
+    if asset.name.endswith(".zip"):
+        return asset.name.removesuffix(".zip"), "OrcaView.exe", _unpack_windows
+    if asset.name.endswith(".tar.gz"):
+        return asset.name.removesuffix(".tar.gz"), "OrcaView", _unpack_linux
+    raise UpdateDownloadError("请选择 Windows 或 Linux 便携安装包。")
+
+
+def _extract(asset, archive, stage, cancelled):
+    root, launcher, unpack = _bundle(asset)
+    with Path(archive).open("rb") as source:
+        _read_verified(asset, source, cancelled=cancelled)
+        source.seek(0)
+        unpack(source, stage, root, cancelled)
+    entry = stage / root / launcher
+    if entry.is_symlink() or not entry.is_file() or (launcher == "OrcaView" and not os.access(entry, os.X_OK)):
+        raise UpdateDownloadError(_BAD_ARCHIVE)
+    _check_cancelled(cancelled)
+    return entry
+
+
+@dataclass(frozen=True)
+class PreparedPortableUpdate:
+    staged: Path
+    target: Path
+    backup: Path
+    windows: bool
+    expected: list
+
+    def discard(self):
+        # If activation had a filesystem failure during rollback its only
+        # complete copy of the original files may still be inside this workdir.
+        if (portable_replace.valid_workdir(self.staged.parent, self.target)
+                and not (self.staged.parent / "previous").exists() and not (self.staged.parent / "ready").exists()):
+            shutil.rmtree(self.staged.parent, ignore_errors=True)
+
+
+def prepare_portable_update(asset, archive, target, *, cancelled=None):
+    """Verify and extract in the destination filesystem; leave the active installation intact."""
     _check_asset(asset)
     _check_cancelled(cancelled)
-    if asset.name.endswith(".zip"):
-        root, launcher = asset.name.removesuffix(".zip"), "OrcaView.exe"
-        unpack = _unpack_windows
-    elif asset.name.endswith(".tar.gz"):
-        root, launcher = asset.name.removesuffix(".tar.gz"), "OrcaView"
-        unpack = _unpack_linux
-    else:
-        raise UpdateDownloadError("请选择 Windows 或 Linux 便携安装包。")
+    root, launcher, _ = _bundle(asset)
+    windows = launcher == "OrcaView.exe"
+    target = Path(target)
+    if not portable_replace.installation(target, windows):
+        raise UpdateDownloadError("所选目录不是可覆盖的 OrcaView 安装目录。")
+    target = target.resolve()
+    backup = target.with_name(target.name + ".previous")
+    work = None
+    try:
+        expected = portable_replace.fingerprint(target, windows)
+        work = Path(mkdtemp(prefix=".orcaview-install-", dir=target.parent))
+        _extract(asset, archive, work, cancelled)
+        if not portable_replace.installation(work / root, windows):
+            raise UpdateDownloadError(_BAD_ARCHIVE)
+        return PreparedPortableUpdate(work / root, target, backup, windows, expected)
+    except BaseException as exc:
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
+        if isinstance(exc, (OSError, EOFError, zipfile.BadZipFile, tarfile.TarError)):
+            raise UpdateDownloadError("无法解压安装包，请检查磁盘空间和所选目录。") from exc
+        raise
 
-    directory = Path(directory).resolve()
+
+def schedule_portable_update(prepared):
+    """Arm a detached helper and return after it has acquired a handle on this process."""
+    work = prepared.staged.parent
+    if (work / "ready").exists():
+        return
+    runtime = prepared.target / "python"
+    tool = Path(mkdtemp(prefix="orcaview-update-helper-"))
+    worker = None
+    try:
+        # The running GUI, the distlib launcher AND a helper using either
+        # bundled interpreter can all keep Windows binaries locked. Bring a
+        # small private interpreter outside both the live and staged roots.
+        shutil.copytree(runtime, tool / "python", symlinks=True,
+                        ignore=shutil.ignore_patterns("site-packages", "ThirdParty", "__pycache__", "orcaview-files.json"))
+        source = Path(portable_replace.__file__)
+        program = tool / ("replace" + source.suffix)
+        shutil.copyfile(source, program)
+        binary = Path("pythonw.exe") if prepared.windows else Path("bin/python3")
+        plan = work / "update.json"
+        token = uuid4().hex
+        (tool / ".orcaview-helper-token").write_text(token)
+        data = {"helper_token": token,"target": str(prepared.target), "backup": str(prepared.backup),
+                "package": prepared.staged.name, "windows": prepared.windows, "expected": prepared.expected}
+        plan.write_text(json.dumps(data), encoding="utf-8")
+        options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}
+        with (tool / "helper.log").open("ab") as log:
+            worker = subprocess.Popen([str(tool / "python" / binary), "-I", "-S", "-B", str(program),
+                                       str(plan), str(os.getpid())], stdin=subprocess.DEVNULL, stdout=log,
+                                      stderr=log, cwd=tool, close_fds=True, **options)
+        deadline = time.monotonic() + 15
+        while not (work / "ready").exists():
+            if worker.poll() is not None or time.monotonic() > deadline:
+                raise OSError("覆盖安装助手未能启动。")
+            time.sleep(.05)
+    except (OSError, ValueError) as exc:
+        if worker is not None and worker.poll() is None:
+            worker.terminate()
+            worker.wait(timeout=5)
+        shutil.rmtree(tool, ignore_errors=True)
+        (work / "ready").unlink(missing_ok=True)
+        raise UpdateDownloadError(f"无法启动覆盖安装助手。{exc}") from exc
+
+
+def install_portable(asset: UpdateAsset, archive: Path, directory: Path, *, cancelled=None) -> Path:
+    """Install into a new versioned folder, or update an explicitly selected installation in place."""
+    _check_asset(asset)
+    _check_cancelled(cancelled)
+    root, launcher, _ = _bundle(asset)
+    directory = Path(directory)
+    windows = launcher == "OrcaView.exe"
+    target = directory / root
+    if portable_replace.installation(directory, windows):
+        target = directory
+    if portable_replace.installation(target, windows):
+        if current_portable_installation() == target.resolve():
+            raise UpdateDownloadError("请从当前安装中选择覆盖更新，并在保存项目后退出。")
+        pending = prepare_portable_update(asset, archive, target, cancelled=cancelled)
+        try:
+            _check_cancelled(cancelled)
+            return portable_replace.activate(pending.staged, pending.target, pending.backup, windows, pending.expected)
+        except (OSError, ValueError) as exc:
+            raise UpdateDownloadError(f"无法覆盖安装：{exc}") from exc
+        finally:
+            pending.discard()
+    directory = directory.resolve()
     target = directory / root
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -232,14 +356,7 @@ def install_portable(asset: UpdateAsset, archive: Path, directory: Path, *, canc
             raise UpdateDownloadError(_INSTALL_EXISTS)
         with TemporaryDirectory(prefix=".orcaview-install-", dir=directory) as temp:
             stage = Path(temp)
-            with Path(archive).open("rb") as source:
-                _read_verified(asset, source, cancelled=cancelled)
-                source.seek(0)
-                unpack(source, stage, root, cancelled)
-            entry = stage / root / launcher
-            if entry.is_symlink() or not entry.is_file() or (launcher == "OrcaView" and not os.access(entry, os.X_OK)):
-                raise UpdateDownloadError(_BAD_ARCHIVE)
-            _check_cancelled(cancelled)
+            _extract(asset, archive, stage, cancelled)
             try:
                 _publish_directory(stage / root, target)
             except FileExistsError as exc:

@@ -6,7 +6,7 @@ from typing import ClassVar, Optional, Tuple, Union
 from orcaview.core._validation import Versioned, identifiers, integer, nonempty, require_tuple, finite_number
 from orcaview.core.elements import ATOMIC_NUMBERS
 from orcaview.core.models import Atom, Bond, validate_bond_style
-from orcaview.core.snapshots import GeometryRef
+from orcaview.core.snapshots import GeometryRef, SketchCoordinates, validate_sketch_xy
 
 from .coordinates import CoordinateDefinition
 
@@ -46,8 +46,32 @@ class AddHydrogens(Versioned):
 
 
 @dataclass(frozen=True)
+class SetSketchLayout(Versioned):
+    """Replace only the drawing positions, in the base revision's atom order."""
+
+    xy: SketchCoordinates
+    kind: ClassVar[str] = "set-sketch-layout"
+
+    def __post_init__(self):
+        validate_sketch_xy(self.xy)
+
+
+@dataclass(frozen=True)
+class MoveSketchAtom(Versioned):
+    atom_id: str
+    x: float
+    y: float
+    kind: ClassVar[str] = "move-sketch-atom"
+
+    def __post_init__(self):
+        nonempty(self.atom_id, "原子 ID")
+        finite_number(self.x, "二维草图坐标")
+        finite_number(self.y, "二维草图坐标")
+
+
+@dataclass(frozen=True)
 class OptimizeCoordinates(Versioned):
-    """Apply coordinates calculated for the command's exact base revision."""
+    """Apply a force-field conformer calculated for the exact base revision."""
 
     method: str
     coordinates: Tuple[Tuple[float, float, float], ...]
@@ -55,7 +79,7 @@ class OptimizeCoordinates(Versioned):
     kind: ClassVar[str] = "optimize-coordinates"
 
     def __post_init__(self):
-        if self.method not in ("gen2D", "MMFF94", "UFF"):
+        if self.method not in ("MMFF94", "UFF"):
             raise ValueError("未知的结构优化方法")
         if self.perceived_bonds is not None:
             require_tuple(self.perceived_bonds, "感知键级")
@@ -250,7 +274,8 @@ class UseResultGeometry(Versioned):
             raise ValueError("恢复目标必须是完整的 GeometryRef")
 
 
-EditOperation = Union[AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertRing, MoveAtom, OptimizeCoordinates,
+EditOperation = Union[AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertRing, MoveAtom,
+                      MoveSketchAtom, SetSketchLayout, OptimizeCoordinates,
                       ReorderAtoms, ReplaceElement, SetBond, SetDistance, SetElectronicState, UseResultGeometry]
 
 
@@ -263,7 +288,7 @@ class GeometryEditCommand(Versioned):
         if not isinstance(self.expected, GeometryRef) or self.expected.frame_id is not None:
             raise ValueError("编辑命令必须绑定可编辑修订的完整引用")
         if type(self.operation) not in (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertRing, MoveAtom,
-                                       OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength,
+                                       MoveSketchAtom, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength,
                                        SetDistance, SetElectronicState, UseResultGeometry):
             raise ValueError("不支持的编辑操作")
         if isinstance(self.operation, SetDistance) and self.operation.coordinate.geometry != self.expected:

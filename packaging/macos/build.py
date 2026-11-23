@@ -1,41 +1,14 @@
 """Build in an arm64 venv containing PyInstaller and the project's GUI dependency."""
 
-from hashlib import sha256
-from importlib.metadata import distribution
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
-from urllib.request import urlopen
 
 
-_BABEL_ARCHIVE = "openbabel-3.2.0.tar.gz"
-_BABEL_SOURCE = ("https://files.pythonhosted.org/packages/29/67/"
-                 "7e1c86fa3a932bba8d8c9dcef040687f1bce1f2903a29acd4fb5337bbea8/" + _BABEL_ARCHIVE)
-_BABEL_SHA256 = "332e6038146e0b69f9c32b8d71d6de153a095d98dce4663972c4a45e55449d01"
-
-
-def include_openbabel_sources(root, image_root):
-    """Ship the unmodified sources matching the embedded Open Babel wheel."""
-    package = distribution("openbabel")
-    if package.version != "3.2.0":
-        raise ValueError("请在打包环境安装 openbabel==3.2.0。")
-    third_party = image_root / "第三方软件" / "Open Babel"
-    third_party.mkdir(parents=True)
-    archive = third_party / _BABEL_ARCHIVE
-    cached = root / "dist" / "cache" / _BABEL_ARCHIVE
-    if cached.is_file():
-        shutil.copyfile(cached, archive)
-    else:
-        with urlopen(_BABEL_SOURCE, timeout=120) as response, archive.open("wb") as dest:
-            shutil.copyfileobj(response, dest)
-    if sha256(archive.read_bytes()).hexdigest() != _BABEL_SHA256:
-        raise ValueError("Open Babel 源码包 SHA-256 与官方发布不符。")
-    for entry in package.files:
-        if entry.name in ("COPYING", "AUTHORS") and "licenses" in entry.parts:
-            shutil.copy2(package.locate_file(entry), third_party / entry.name)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from release_examples import install_examples
 
 
 def main():
@@ -61,26 +34,10 @@ def main():
             "--workpath", str(work / "work"), str(packaging_dir / "OrcaView.spec"),
         ], env=env, check=True)
         image_root = work / "image"
-        samples = image_root / "示例"
-        samples.mkdir(parents=True)
-        include_openbabel_sources(root, image_root)
+        install_examples(root, image_root / "示例")
         bundle = image_root / app.name
         (work / "frozen" / app.name).rename(bundle)
         subprocess.run(["codesign", "--verify", "--deep", "--strict", bundle], check=True)
-        (image_root / "Applications").symlink_to("/Applications")
-        shutil.copy2(root / "examples" / "water.xyz", samples)
-        shutil.copytree(root / "examples" / "structure_import", samples / "文件导入")
-        shutil.copy2(root / "examples" / "m5_orca" / "water-sp.out", samples)
-        logs = root / "artifacts" / "public" / "validation" / "results-0.1.0a12"
-        for source, name in (("raman/water.out", "water-raman.out"),
-                             ("nmr/water-shield.out", "water-nmr.out"),
-                             ("tdcd/peroxide.out", "peroxide-uv-cd.out")):
-            shutil.copy2(logs / source, samples / name)
-        shutil.copytree(root / "examples" / "native_methods", samples / "原生计算输入")
-        shutil.copy2(root / "LICENSE", image_root / "LICENSE.txt")
-        shutil.copy2(root / "THIRD_PARTY_NOTICES.md", image_root)
-        shutil.copy2(packaging_dir / "试用说明.txt", image_root)
-        shutil.copy2(root / "tools" / "check_orca611.sh", samples)
         image = work / dmg.name
         subprocess.run([
             "hdiutil", "create", "-volname", "OrcaView", "-fs", "HFS+",
