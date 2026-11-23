@@ -41,11 +41,6 @@
       "name": "openbabel-3.2.0-cp313-cp313-win_amd64.whl",
       "url": "https://files.pythonhosted.org/packages/4c/ce/7a4651eb32860bb3d47b056e508d69df600724899e79b0d57063aa14937c/openbabel-3.2.0-cp313-cp313-win_amd64.whl",
       "sha256": "c147a52d35aa566fe0c4f3481776678758028cd19a900250710f1d2eb6ae11b0"
-    },
-    {
-      "name": "distlib-0.4.0-py2.py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/33/6b/e0547afaf41bf2c42e52430072fa5658766e3d65bd4b03a563d1b6336f57/distlib-0.4.0-py2.py3-none-any.whl",
-      "sha256": "9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16"
     }
   ],
   "shared": [

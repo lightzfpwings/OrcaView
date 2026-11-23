@@ -11,7 +11,7 @@ from orcaview.application import updates
 HASH = "1234abcd" * 8
 MAC = "macOS-arm64.dmg"
 LINUX = "Linux-x86_64.tar.gz"
-WINDOWS = "Windows-x64.zip"
+WINDOWS = "Windows-x64-portable.zip"
 
 
 class Response(io.BytesIO):

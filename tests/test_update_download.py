@@ -3,6 +3,7 @@
 from dataclasses import replace
 import hashlib
 from io import BytesIO
+import json
 import os
 from pathlib import Path
 import tarfile
@@ -167,7 +168,6 @@ class PortableReplacementTests(unittest.TestCase):
         self.backup = self.target.with_name(self.target.name + ".previous")
 
     def bundle(self, version):
-        import json
         content = {"OrcaView.exe": version.encode(), self.init.as_posix(): version.encode(),
                    "python/managed.dll": version.encode(), "示例/water.xyz": version.encode(),
                    "示例/imports/ethanol.mol": version.encode()}
@@ -183,6 +183,64 @@ class PortableReplacementTests(unittest.TestCase):
         dest.write_bytes(binary)
         url = f"https://github.com/lightzfpwings/OrcaView/releases/download/v{version}/{dest.name}"
         return UpdateAsset(dest.name, url, len(binary), hashlib.sha256(binary).hexdigest()), dest
+
+    def flat_bundle(self, version, change=None):
+        files = {"LICENSE": b"license", "Examples/water.xyz": version.encode(),
+                 "Examples/imports/ethanol.mol": version.encode()}
+        hashes = {p: hashlib.sha256(v).hexdigest() for p, v in files.items()}
+        info = {"format": "orcaview-windows-portable-v1", "version": version, "files": hashes}
+        exe = BytesIO()
+        exe.write(b"MZ-test-launcher")
+        with zipfile.ZipFile(exe, "a") as payload:
+            payload.writestr("orcaview-windows.json", json.dumps(info))
+        files["OrcaView.exe"] = exe.getvalue()
+        if change:
+            change(files)
+        dest = self.work / f"OrcaView-{version}-Windows-x64-portable.zip"
+        with zipfile.ZipFile(dest, "w") as archive:
+            for name, contents in files.items():
+                archive.writestr(name, contents)
+        digest = hashlib.sha256(dest.read_bytes()).hexdigest()
+        url = f"https://github.com/lightzfpwings/OrcaView/releases/download/v{version}/{dest.name}"
+        return UpdateAsset(dest.name, url, dest.stat().st_size, digest), dest
+
+    def test_onefile_requires_exact_archive_and_matching_embedded_inventory(self):
+        from orcaview.application.portable_replace import current_portable_installation
+        for change in (lambda files: files.pop("LICENSE"),
+                       lambda files: files.update({"Examples/../junk": b"junk"}),
+                       lambda files: files.update({"other.txt": b"user"}),
+                       lambda files: files.update({"OrcaView.exe": b"MZ unrelated application"}),
+                       lambda files: files.update({"Examples/water.xyz": b"damaged"})):
+            with self.subTest(change=change), self.assertRaises(UpdateDownloadError):
+                install_portable(*self.flat_bundle("0.1.0a43", change), self.work)
+        exe = install_portable(*self.flat_bundle("0.1.0a43"), self.work)
+        self.assertEqual({p.name for p in exe.parent.iterdir()}, {"OrcaView.exe", "Examples", "LICENSE"})
+        with patch("sys.platform", "win32"), patch.dict(os.environ, {"ORCAVIEW_PORTABLE_EXE": str(exe)}):
+            self.assertEqual(current_portable_installation(), exe.parent)
+
+    def test_onefile_upgrade_migrates_legacy_examples_and_rotates_pristine_backup(self):
+        self.seed()
+        (self.target / "private project.xyz").write_text("project")
+        (self.target / "示例/water.xyz").write_text("edited")
+        (self.target / "示例/my input.inp").write_text("input")
+        asset, archive = self.flat_bundle("0.1.0a43")
+        install_portable(asset, archive, self.target)
+        self.assertEqual({p.name for p in self.target.iterdir()},
+                         {"OrcaView.exe", "LICENSE", "Examples", "private project.xyz"})
+        self.assertEqual((self.backup / self.init).read_text(), "0.1.0a40")
+        self.assertEqual((self.target / "Examples/water.xyz").read_text(), "edited")
+        (self.target / "python").mkdir()
+        (self.target / "python/mine").write_text("mine")
+        for version in ("0.1.0a44", "0.1.0a45"):
+            install_portable(*self.flat_bundle(version), self.target)
+            self.assertEqual((self.target / "Examples/imports/ethanol.mol").read_text(), version)
+            self.assertEqual((self.target / "Examples/water.xyz").read_text(), "edited")
+            self.assertEqual((self.target / "Examples/my input.inp").read_text(), "input")
+            self.assertEqual((self.target / "private project.xyz").read_text(), "project")
+            self.assertEqual((self.target / "python/mine").read_text(), "mine")
+            self.assertFalse((self.backup / "python").exists())
+        for previous in self.work.glob("*.previous-preserved-*"):
+            self.assertFalse((previous / "OrcaView.exe").exists())
 
     def seed(self, legacy=False):
         asset, path = self.bundle("0.1.0a40")

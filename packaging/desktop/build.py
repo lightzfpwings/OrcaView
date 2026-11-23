@@ -2,17 +2,17 @@
 
 import argparse
 from hashlib import file_digest
-from io import BytesIO
 import json
 import os
 from pathlib import Path
 import py_compile
 import shutil
+import subprocess
 import sys
 import tarfile
 from tempfile import TemporaryDirectory
 from urllib.request import urlopen
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -25,10 +25,6 @@ LINUX_ENTRY = """#!/bin/sh
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 if [ "$#" -eq 0 ]; then set -- gui; fi
 exec "$root/python/bin/python3" -I -m orcaview "$@"
-"""
-WINDOWS_ENTRY = """import sys
-from orcaview.cli import main
-raise SystemExit(main(sys.argv[1:] or ["gui"]))
 """
 
 
@@ -96,19 +92,46 @@ def install_wheel(path, site):
                 target.chmod(0o755)
 
 
-def windows_launchers(bundle, launcher_wheel):
-    with ZipFile(launcher_wheel) as wheel:
-        (bundle / "python/ThirdParty/distlib-LICENSE.txt").write_bytes(
-            wheel.read("distlib-0.4.0.dist-info/LICENSE.txt"))
-        archive = BytesIO()
-        with ZipFile(archive, "w") as z:
-            z.writestr("__main__.py", WINDOWS_ENTRY)
-        for name, stub, interpreter in (
-            ("OrcaView.exe", "w64.exe", "python\\pythonw.exe"),
-            ("python/OrcaView-cli.exe", "t64.exe", "python.exe"),
-        ):
-            shebang = f"#!<launcher_dir>\\{interpreter} -I\n".encode("ascii")
-            (bundle / name).write_bytes(wheel.read("distlib/" + stub) + shebang + archive.getvalue())
+def write_zip_file(archive, path, root, compression=ZIP_DEFLATED):
+    # Use release-independent timestamps/modes even for the ZIP inside the PE.
+    info = ZipInfo(path.relative_to(root).as_posix())
+    info.compress_type = compression
+    info.create_system = 3
+    info.external_attr = 0o100644 << 16
+    with path.open("rb") as src, archive.open(info, "w") as dest:
+        shutil.copyfileobj(src, dest)
+
+
+def windows_package(bundle, archive, version):
+    go = shutil.which("go")
+    if not go:
+        raise RuntimeError("Install Go 1.23 or later to compile the Windows launcher.")
+    env = dict(os.environ, CGO_ENABLED="0", GOOS="windows", GOARCH="amd64", GOAMD64="v1", GOTOOLCHAIN="local")
+    executable = bundle / "OrcaView.exe"
+    subprocess.run([go, "build", "-trimpath", "-buildvcs=false", "-ldflags=-s -w -H=windowsgui -buildid=",
+                    "-o", str(executable), str(HERE / "launcher_windows.go")], env=env, check=True)
+    goroot = Path(subprocess.check_output([go, "env", "GOROOT"], env=env, text=True).strip())
+    licenses = bundle / "python/ThirdParty"
+    shutil.copyfile(goroot / "LICENSE", licenses / "Go-LICENSE.txt")
+    shutil.copyfile(goroot / "PATENTS", licenses / "Go-PATENTS.txt")
+    license_file = bundle / "LICENSE"
+    license_file.write_bytes(b"\n\n".join((ROOT / file).read_bytes() for file in ("LICENSE", "THIRD_PARTY_NOTICES.md"))
+                             + b"\n\nGo runtime license\n\n" + (goroot / "LICENSE").read_bytes())
+    examples = sorted(p for p in (bundle / "Examples").rglob("*") if p.is_file())
+    managed = {}
+    for path in [license_file, *examples]:
+        with path.open("rb") as source:
+            managed[path.relative_to(bundle).as_posix()] = file_digest(source, "sha256").hexdigest()
+    with ZipFile(executable, "a") as payload:
+        manifest = {"format": "orcaview-windows-portable-v1", "version": version, "files": managed}
+        payload.writestr(ZipInfo("orcaview-windows.json"), json.dumps(manifest, ensure_ascii=False).encode("utf-8"))
+        for path in sorted((bundle / "python").rglob("*")):
+            if path.is_file():
+                write_zip_file(payload, path, bundle)
+    with ZipFile(archive, "w") as release:
+        write_zip_file(release, executable, bundle, ZIP_STORED)
+        for path in [license_file, *examples]:
+            write_zip_file(release, path, bundle)
 
 
 def install_app(site):
@@ -138,12 +161,11 @@ def assemble(target, bundle, cache, version):
     shutil.copyfile(ROOT / "THIRD_PARTY_NOTICES.md", third_party / "THIRD_PARTY_NOTICES.md")
     sources = (HERE / "SOURCES.txt").read_text(encoding="utf-8").replace("@VERSION@", version)
     (third_party / "SOURCES.txt").write_bytes(sources.encode("utf-8"))
-    install_examples(ROOT, bundle / "示例")
+    install_examples(ROOT, bundle / ("Examples" if target == "windows" else "示例"))
     with tarfile.open(runtime) as tar:
         tar.extractall(bundle, members=(m for m in tar if runtime_member(m)), filter="data")
     if target == "windows":
         site = bundle / "python/Lib/site-packages"
-        windows_launchers(bundle, wheels.pop())
     else:
         site = bundle / "python/lib/python3.13/site-packages"
         entry = bundle / "OrcaView"
@@ -159,6 +181,8 @@ def assemble(target, bundle, cache, version):
         babel = site / "openbabel"
         prepare_windows_babel_data(babel / "bin/data", babel / "share/openbabel/3.2.0")
     install_app(site)
+    if target == "windows":
+        return  # The single-file launcher carries its own external-file inventory.
     files = {}
     for path in sorted(bundle.rglob("*")):
         if not path.is_symlink() and path.is_file():
@@ -180,7 +204,7 @@ def build(target, output, cache):
     from orcaview import __version__
     dest = output / target / __version__
     dest.mkdir(parents=True, exist_ok=True)
-    label, ext = ("Windows-x64", ".zip") if target == "windows" else ("Linux-x86_64", ".tar.gz")
+    label, ext = ("Windows-x64-portable", ".zip") if target == "windows" else ("Linux-x86_64", ".tar.gz")
     name = f"OrcaView-{__version__}-{label}"
     final = dest / (name + ext)
     with TemporaryDirectory(dir=dest) as temp:
@@ -189,10 +213,7 @@ def build(target, output, cache):
         assemble(target, bundle, cache, __version__)
         archive = work / final.name
         if target == "windows":
-            with ZipFile(archive, "w", ZIP_DEFLATED, compresslevel=6) as z:
-                for path in sorted(bundle.rglob("*")):
-                    if path.is_file():
-                        z.write(path, path.relative_to(work).as_posix())
+            windows_package(bundle, archive, __version__)
         else:
             with tarfile.open(archive, "w:gz", compresslevel=6) as tar:
                 tar.add(bundle, arcname=name, filter=release_member)

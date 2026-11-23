@@ -121,7 +121,7 @@ def _platform_suffix(system, machine):
     if os_name == "darwin" and arch in {"arm64", "aarch64"}:
         return "macOS-arm64.dmg"
     if arch in {"amd64", "x86_64"}:
-        return {"windows": "Windows-x64.zip", "linux": "Linux-x86_64.tar.gz"}.get(os_name)
+        return {"windows": "Windows-x64-portable.zip", "linux": "Linux-x86_64.tar.gz"}.get(os_name)
     return None
 
 

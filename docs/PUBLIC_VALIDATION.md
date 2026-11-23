@@ -1,5 +1,17 @@
 # OrcaView 验证记录
 
+## 0.1.0a43 Windows 单文件发行包
+
+Windows ZIP 第一层为 `OrcaView.exe`、`LICENSE` 和 `Examples/`。对照源码核验了独立 EXE 内的 OrcaView 编译模块和资源、Open Babel 环构象库的 4,647 项索引，以及 20 份示例的文件清单与校验值。
+
+在 Wine 的 Windows 图形后端，从含中文和空格的目录启动发行包的 EXE。通过图形界面和命令行验证启动、版本显示、水分子的输入预览和示例读取。环己烷的二维草图规整后，Open Babel 的 MMFF94 生成椅式构象，UFF 完成 MgOH 预优化。
+
+原位覆盖测试以本地安装包提供更新数据，实际的 EXE 完成准备、退出、文件替换和同一路径重启。核对了个人项目、修改过的示例、自建示例以及同级旧版备份。程序正常退出后，临时运行库和更新助手目录均被清除。另用正式 0.1.0a42 Windows 客户端验证，旧更新器发现单文件版后可通过 **GitHub 发布页** 进入新版下载页。
+
+macOS 验证了挂载镜像中的签名、原生 Cocoa 启动、二维和三维操作及 20 份示例。Linux 在 macOS 上核对归档内文件、清单、符号链接及应用代码，本轮未在 Linux 图形桌面启动。全套 550 项回归测试通过。[发行附件与 SHA-256 清单](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a43)
+
+Windows 最终 ZIP 大小为 90,862,579 字节，SHA-256 为 `88ea0bd0d10935639d0ad8266815dec71919c2ee7825424dc6c382ecf697e5b9`。
+
 ## 0.1.0a42 精简安装包与原位置覆盖更新
 
 三个安装包都附有相同的 20 份示例文件，可直接打开结构、ORCA 输入和输出。macOS 镜像可见内容为 `OrcaView.app` 和「示例」。Windows 与 Linux 归档在单层版本目录中提供启动器、`python` 运行库和「示例」。许可证随软件提供，Open Babel 上游源文件已移到独立的第三方源码 ZIP，附有 SHA-256 清单。

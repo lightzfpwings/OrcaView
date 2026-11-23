@@ -48,13 +48,16 @@ class _UpdateTask(QRunnable):
                 result = check_for_update(__version__, cancelled=self.stop.is_set)
             else:
                 is_mac = self.asset.name.lower().endswith(".dmg")
-                if self.replace_target is not None:
+                if self.replace_target is not None or self.asset.name.endswith("-Windows-x64-portable.zip"):
                     with TemporaryDirectory(prefix="orcaview-download-") as temp:
                         archive = download_update(self.asset, Path(temp), progress=self._report_progress,
                                                   cancelled=self.stop.is_set)
                         self.signals.installing.emit(self)
-                        prepare = prepare_macos_update if is_mac else prepare_portable_update
-                        result = prepare(self.asset, archive, self.replace_target, cancelled=self.stop.is_set)
+                        if self.replace_target is None:
+                            result = install_portable(self.asset, archive, self.directory, cancelled=self.stop.is_set)
+                        else:
+                            prepare = prepare_macos_update if is_mac else prepare_portable_update
+                            result = prepare(self.asset, archive, self.replace_target, cancelled=self.stop.is_set)
                 else:
                     result = download_update(self.asset, self.directory, progress=self._report_progress,
                                              cancelled=self.stop.is_set)
@@ -162,6 +165,8 @@ class UpdateDialog(QDialog):
             title = tr("选择安装包保存位置") if is_dmg else tr("选择安装位置（选择现有 OrcaView 目录可覆盖安装）")
             directory = QFileDialog.getExistingDirectory(
                 self, title, QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation))
+            if manual and directory and not is_dmg and Path(directory).resolve() == self._current_installation():
+                target = Path(directory).resolve()
         if (target is not None or directory) and self.isVisible():
             self.status.setText(tr("正在下载并校验 {name}…", name=asset.name))
             self._start(_UpdateTask(asset, Path(directory) if directory else None, target))

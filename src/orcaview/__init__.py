@@ -1,6 +1,6 @@
 """OrcaView：面向 ORCA 的模块化前后处理工作台。"""
 
-__version__ = "0.1.0a42"
+__version__ = "0.1.0a43"
 ARCHITECTURE_VERSION = "prototype-1"
 LEGACY_PROJECT_SCHEMA_VERSION = 1
 DOCUMENT_PROJECT_SCHEMA_VERSION = 2

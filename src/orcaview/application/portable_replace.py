@@ -5,16 +5,19 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from uuid import uuid4
+import zipfile
 
 
 MANIFEST = Path("python/orcaview-files.json")
 _BACKUP_MARK = ".orcaview-previous.json"
+_BACKUP_EXE_DIGEST = ".orcaview-previous-exe.sha256"
 
 
 def _linked(path):
@@ -25,11 +28,39 @@ def _real_file(path):
     return not _linked(path) and path.is_file()
 
 
+def windows_inventory(root):
+    """Read the identity and example checksums embedded in the Windows launcher."""
+    launcher = root / "OrcaView.exe"
+    if _linked(root) or not _real_file(launcher):
+        return None
+    try:
+        with launcher.open("rb") as stream:
+            if stream.read(2) != b"MZ":
+                return None
+            with zipfile.ZipFile(stream) as payload:
+                info = payload.getinfo("orcaview-windows.json")
+                if info.file_size > 1024 * 1024:
+                    return None
+                data = json.loads(payload.read(info))
+        files = data["files"]
+        if (data["format"] != "orcaview-windows-portable-v1" or not isinstance(files, dict)
+                or not isinstance(data["version"], str) or "LICENSE" not in files or len(files) < 2):
+            return None
+        if all((key == "LICENSE" or key.startswith("Examples/")) and isinstance(value, str)
+               and re.fullmatch(r"[0-9a-f]{64}", value) for key, value in files.items()):
+            return files
+    except (KeyError, TypeError, ValueError, OSError, RuntimeError, zipfile.BadZipFile):
+        pass
+    return None
+
+
 def installation(root, windows):
     """Identify a bundled application even when its enclosing directory was renamed."""
     runtime = root / "python"
     launcher = root / ("OrcaView.exe" if windows else "OrcaView")
     sites = [runtime / "Lib/site-packages"] if windows else (runtime / "lib").glob("python*/site-packages")
+    if windows and windows_inventory(root) is not None:
+        return True
     if _linked(root) or _linked(runtime) or not _real_file(launcher):
         return False
     return any(_real_file(site / "orcaview/__init__.pyc") for site in sites)
@@ -40,6 +71,11 @@ def current_portable_installation():
         return None
     exe = Path(sys.executable).resolve()
     windows = sys.platform == "win32"
+    if windows and (host := os.environ.get("ORCAVIEW_PORTABLE_EXE")):
+        launcher = Path(host)
+        if (launcher.is_absolute() and launcher.name.lower() == "orcaview.exe"
+                and windows_inventory(launcher.parent) is not None):
+            return launcher.parent.resolve()
     runtime = exe.parent if windows else exe.parent.parent
     root = runtime.parent
     if runtime.name.lower() == "python" and installation(root, windows):
@@ -136,9 +172,15 @@ def _move(source, destination):
             time.sleep(.2)
 
 
-def _retire_backup(previous, target):
+def _retire_backup(previous, target, windows=True):
     """Drop only pristine managed files; preserve local changes in an older backup."""
-    inventory = _manifest(previous)
+    inventory = windows_inventory(previous) if windows else None
+    exe_digest = previous / _BACKUP_EXE_DIGEST
+    if inventory is not None and _real_file(exe_digest):
+        inventory["OrcaView.exe"] = exe_digest.read_text(encoding="ascii")
+        exe_digest.unlink()
+    if inventory is None:
+        inventory = _manifest(previous)
     if inventory:
         # Only visit real directories. A user-created junction or symlink
         # must never turn this cleanup into a traversal outside the backup.
@@ -172,11 +214,6 @@ def activate(staged, target, backup, windows, expected, *, relaunch=False):
     """Swap only managed entries. Current documents beside the application stay in place."""
     work = staged.parent
     launcher = "OrcaView.exe" if windows else "OrcaView"
-    names = [launcher, "python", "示例"]
-    # These entries were part of the old distribution. In a current-format
-    # installation a similarly named file at top level belongs to its user.
-    if not (target / MANIFEST).exists():
-        names.extend(["ThirdParty", "LICENSE.txt"] + (["OrcaView-cli.exe"] if windows else []))
     with _exclusive(target):
         if not installation(target, windows) or fingerprint(target, windows) != expected:
             raise ValueError("安装目录已变更，请重新检查更新。")
@@ -185,14 +222,31 @@ def activate(staged, target, backup, windows, expected, *, relaunch=False):
             if (_linked(backup) or not _real_file(mark)
                     or json.loads(mark.read_text(encoding="utf-8")) != str(target)):
                 raise ValueError(f"备份路径已被其他文件占用：{backup}")
-        inventory = _manifest(target)
-        for name in ("python", "示例"):
-            old, new = target / name, staged / name
+        inventory = windows_inventory(target) if windows else None
+        old_flat = inventory is not None
+        if inventory is None:
+            inventory = _manifest(target)
+        new_flat = windows and windows_inventory(staged) is not None
+        names = [launcher]
+        if not old_flat or not new_flat:
+            names.extend(["python", "示例"])
+        if old_flat or new_flat:
+            names.extend(["LICENSE", "Examples"])
+        if not old_flat and not (target / MANIFEST).exists():
+            names.extend(["ThirdParty", "LICENSE.txt"] + (["OrcaView-cli.exe"] if windows else []))
+        examples = "Examples" if new_flat else "示例"
+        for name in names:
+            if name not in ("Examples", "示例", "python"):
+                continue
+            old = target / name
+            new = staged / ("python" if name == "python" else examples)
             if old.is_dir() and not _linked(old) and new.is_dir():
-                _copy_custom(old, new, target, inventory, examples=name == "示例")
+                _copy_custom(old, new, target, inventory, examples=name != "python")
         saved = work / "previous"
         saved.mkdir()
         (saved / _BACKUP_MARK).write_text(json.dumps(str(target)), encoding="utf-8")
+        if old_flat:
+            (saved / _BACKUP_EXE_DIGEST).write_text(_digest(target / launcher), encoding="ascii")
         moved_old, moved_new = [], []
         prior = work / "prior-backup"
         try:
@@ -223,7 +277,7 @@ def activate(staged, target, backup, windows, expected, *, relaunch=False):
             raise
         if prior.exists():
             try:
-                _retire_backup(prior, target)
+                _retire_backup(prior, target, windows)
             except (OSError, ValueError):
                 # Installation has succeeded; conservatively retain unreadable files.
                 _move(prior, target.with_name(target.name + ".previous-preserved-" + uuid4().hex[:10]))
@@ -291,9 +345,7 @@ def run_helper(plan, pid):
 
 
 def cleanup_interpreter(plan, tool):
-    # The helper cannot unlink its own mapped python DLL on Windows. The
-    # newly installed interpreter (or restored one on failure) reaps the
-    # isolated helper directory after the process exits.
+    # Windows holds the helper's interpreter open until the process exits.
     marker = tool / ".orcaview-helper-token"
     if (not tool.name.startswith("orcaview-update-helper-") or _linked(tool)
             or tool.parent.resolve() != Path(tempfile.gettempdir()).resolve()
@@ -302,18 +354,19 @@ def cleanup_interpreter(plan, tool):
     if os.name != "nt":
         shutil.rmtree(tool, ignore_errors=True)
         return
-    target = Path(plan["target"])
-    binary = target / "python/pythonw.exe"
-    if binary.is_file():
-        command = ("import pathlib,shutil,sys,time\n"
-                   "p=pathlib.Path(sys.argv[1])\n"
-                   "for attempt in range(60):\n"
-                   " if not p.exists(): break\n"
-                   " try: shutil.rmtree(p)\n"
-                   " except OSError: time.sleep(.3)\n")
-        subprocess.Popen([str(binary), "-I", "-S", "-c", command, str(tool)], cwd=target,
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         creationflags=subprocess.CREATE_NO_WINDOW, close_fds=True)
+    # Use the OS command processor, independent of the installed application.
+    # Only the random ASCII basename enters the command. The user's temporary
+    # path, which can contain spaces and shell metacharacters, is passed as cwd.
+    if not re.fullmatch(r"orcaview-update-helper-[a-z0-9_]+", tool.name):
+        return
+    shell = Path(os.environ["SystemRoot"]) / "System32/cmd.exe"
+    ping = shell.with_name("ping.exe")
+    command = (f'for /L %i in (1,1,30) do @if exist {tool.name} '
+               f'(rd /s /q {tool.name} 2>nul & if exist {tool.name} '
+               f'"{ping}" -n 2 127.0.0.1 >nul)')
+    subprocess.Popen(f'"{shell}" /d /q /v:off /c {command}', executable=str(shell), cwd=tool.parent,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     creationflags=subprocess.CREATE_NO_WINDOW, close_fds=True)
 
 
 if __name__ == "__main__":

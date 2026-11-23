@@ -33,7 +33,7 @@ class UpdateCancelled(UpdateDownloadError):
 
 
 _BLOCK = 256 * 1024
-_PACKAGE = re.compile(r"OrcaView-([A-Za-z0-9.+_-]+)-(?:macOS-arm64\.dmg|Windows-x64\.zip|Linux-x86_64\.tar\.gz)")
+_PACKAGE = re.compile(r"OrcaView-([A-Za-z0-9.+_-]+)-(?:macOS-arm64\.dmg|Windows-x64(?:-portable)?\.zip|Linux-x86_64\.tar\.gz)")
 _BAD_ASSET = "更新包信息无效。"
 _BAD_HASH = "安装包的 SHA-256 与发布记录不一致。"
 _BAD_SIZE = "安装包大小与发布记录不一致。"
@@ -161,10 +161,19 @@ def _unpack_file(source, target, cancelled):
 
 
 def _unpack_windows(source, stage, root, cancelled):
+    flat = root.endswith("-Windows-x64-portable")
+    files = set()
     with zipfile.ZipFile(source) as archive:
         for item in archive.infolist():
             _check_cancelled(cancelled)
-            path = _member_path(item.filename, stage, root)
+            name = item.filename
+            if flat:
+                if name not in ("OrcaView.exe", "LICENSE", "Examples/") and not name.startswith("Examples/"):
+                    raise UpdateDownloadError(_BAD_ARCHIVE)
+                if not item.is_dir():
+                    files.add(name)
+                name = root + "/" + name
+            path = _member_path(name, stage, root)
             kind = stat.S_IFMT(item.external_attr >> 16)
             if item.is_dir() and kind in (0, stat.S_IFDIR):
                 path.mkdir(parents=True, exist_ok=True)
@@ -172,6 +181,14 @@ def _unpack_windows(source, stage, root, cancelled):
                 with archive.open(item) as contents:
                     _unpack_file(contents, path, cancelled)
             else:
+                raise UpdateDownloadError(_BAD_ARCHIVE)
+    if flat:
+        manifest = portable_replace.windows_inventory(stage / root)
+        if manifest is None or files != {"OrcaView.exe", *manifest}:
+            raise UpdateDownloadError(_BAD_ARCHIVE)
+        for name, digest in manifest.items():
+            _check_cancelled(cancelled)
+            if portable_replace._digest(stage / root / name) != digest:
                 raise UpdateDownloadError(_BAD_ARCHIVE)
 
 
@@ -290,6 +307,19 @@ def schedule_portable_update(prepared):
     if (work / "ready").exists():
         return
     runtime = prepared.target / "python"
+    pid = os.getpid()
+    if prepared.windows and portable_replace.windows_inventory(prepared.target) is not None:
+        # The Windows launcher unpacks a private runtime and holds the public
+        # EXE until the GUI has quit and that runtime has been removed.
+        if current_portable_installation() != prepared.target:
+            raise UpdateDownloadError("所选目录不是可覆盖的 OrcaView 安装目录。")
+        runtime = Path(sys.executable).parent
+        try:
+            pid = int(os.environ["ORCAVIEW_PORTABLE_PID"])
+            if pid <= 0:
+                raise ValueError
+        except (KeyError, ValueError) as exc:
+            raise UpdateDownloadError("覆盖安装助手未能启动。") from exc
     tool = Path(mkdtemp(prefix="orcaview-update-helper-"))
     worker = None
     try:
@@ -311,7 +341,7 @@ def schedule_portable_update(prepared):
         options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}
         with (tool / "helper.log").open("ab") as log:
             worker = subprocess.Popen([str(tool / "python" / binary), "-I", "-S", "-B", str(program),
-                                       str(plan), str(os.getpid())], stdin=subprocess.DEVNULL, stdout=log,
+                                       str(plan), str(pid)], stdin=subprocess.DEVNULL, stdout=log,
                                       stderr=log, cwd=tool, close_fds=True, **options)
         deadline = time.monotonic() + 15
         while not (work / "ready").exists():
