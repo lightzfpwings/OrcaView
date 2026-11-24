@@ -1,4 +1,4 @@
-"""单文档原型会话；科学数据与视图状态分别管理。"""
+"""Single-document session with independent scientific data and view state."""
 
 from dataclasses import InitVar, dataclass, replace
 from pathlib import Path
@@ -37,7 +37,7 @@ class Session:
                  source_path: str = "", *, tracked_document: Optional[MoleculeDocument] = None,
                  _origin: Optional[Provenance] = None, legacy_project_path: Optional[Path] = None, log_report=None):
         if not isinstance(source_path, str):
-            raise ValueError("来源路径必须是字符串")
+            raise ValueError("The source path must be a string")
         self.calculation = calculation if calculation is not None else CalculationSpec()
         self.source_path = source_path
         self._document: Optional[MoleculeDocument] = None
@@ -127,7 +127,7 @@ class Session:
         elif molecule != previous:
             document.publish_revision(base.ref, molecule, base.atom_ids, Provenance("electronic-state"))
         elif document.head.ref != base.ref:
-            raise StaleRevisionError("预览期间几何已变更")
+            raise StaleRevisionError("The geometry changed during the preview")
         self.calculation = calculation
         return text
 

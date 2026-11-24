@@ -39,7 +39,7 @@ def _payload(session, target):
     spec = session.calculation
     spec.validate()
     if not isinstance(session.source_path, str):
-        raise ValueError("项目来源路径必须是字符串")
+        raise ValueError("The project source path must be a string")
     document = session.tracked_document
     records = document.records() if document is not None else None
     molecules = [s.molecule for s in records[0]] if records is not None else [session.molecule]
@@ -67,7 +67,7 @@ def _payload(session, target):
         version = LEGACY_PROJECT_SCHEMA_VERSION
     if (version != LEGACY_PROJECT_SCHEMA_VERSION and session.legacy_project_path is not None
             and target.resolve() == session.legacy_project_path):
-        raise ValueError("迁移需要另存到新路径，以保留原 schema 1 项目")
+        raise ValueError("Save to a new location during migration to preserve the schema 1 project")
 
     payload = {"schema_version": version, "software_version": __version__, "source_path": session.source_path,
                "calculation": write_calculation(spec, version)}
@@ -97,7 +97,7 @@ def _payload(session, target):
             payload["log_report"] = None
         if session.log_report is not None:
             if session.document.artifact(session.log_report.source.artifact_id) != session.log_report.source:
-                raise ValueError("项目的日志与结构来源不一致")
+                raise ValueError("The log and structure sources do not match")
             payload["log_report"] = asdict(session.log_report)
     return payload
 
@@ -134,13 +134,13 @@ def _unique_object(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"项目包含重复字段：{key}")
+            raise ValueError(f"The project contains a duplicate field: {key}")
         result[key] = value
     return result
 
 
 def _invalid_constant(value):
-    raise ValueError(f"项目中包含非有限数值：{value}")
+    raise ValueError(f"The project contains a nonfinite value: {value}")
 
 
 def load_project(path: Path) -> Session:
@@ -149,21 +149,21 @@ def load_project(path: Path) -> Session:
     raw = source.read_bytes()
     data = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
     if not isinstance(data, dict):
-        raise ValueError("项目根节点必须是对象")
+        raise ValueError("The project root must be an object")
     version = data.get("schema_version")
     if type(version) is not int or version not in (
             LEGACY_PROJECT_SCHEMA_VERSION, DOCUMENT_PROJECT_SCHEMA_VERSION,
             STATE_PROJECT_SCHEMA_VERSION, ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION,
             SOLVATION_PROJECT_SCHEMA_VERSION, LOG_REPORT_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION,
             BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION):
-        raise ValueError("不支持此项目版本；需要显式迁移")
+        raise ValueError("Unsupported project version. Migrate the project explicitly")
     common = {"schema_version", "software_version", "calculation", "source_path"}
     extra = {"molecule"} if version == LEGACY_PROJECT_SCHEMA_VERSION else {"contract_version", "document"}
     if version >= LOG_REPORT_PROJECT_SCHEMA_VERSION:
         extra.add("log_report")
-    check_fields(data, common | extra, "项目")
+    check_fields(data, common | extra, "Project")
     if not isinstance(data["software_version"], str) or not isinstance(data["source_path"], str):
-        raise ValueError("软件版本和来源路径必须是字符串")
+        raise ValueError("The software version and source path must be strings")
     spec = read_calculation(data["calculation"], version)
     if version == LEGACY_PROJECT_SCHEMA_VERSION:
         molecule = read_molecule(data["molecule"], version)
@@ -171,14 +171,14 @@ def load_project(path: Path) -> Session:
         artifact = ArtifactRef.from_bytes(raw, "orcaview.schema1", str(source))
         return Session.from_schema1(molecule, spec, data["source_path"], artifact, data["software_version"])
     if type(data["contract_version"]) is not int or data["contract_version"] != GeometryRef.contract_version:
-        raise ValueError("不支持此公共契约版本")
+        raise ValueError("Unsupported public contract version")
     document = read_document(data["document"], version)
     _validate_project_head(document.head.molecule, spec, version)
     session = Session.from_document(document, spec, data["source_path"])
     if version == LOG_REPORT_PROJECT_SCHEMA_VERSION or data.get("log_report") is not None:
         report = read_log_report(data["log_report"])
         if document.artifact(report.source.artifact_id) != report.source:
-            raise ValueError("项目的日志与结构来源不一致")
+            raise ValueError("The log and structure sources do not match")
         session.log_report = report
     return session
 
@@ -187,7 +187,7 @@ def migrate_project(source: Path, destination: Path) -> Session:
     """Promote a legacy file to schema 2, keeping both the original and any existing destination."""
     session = load_project(source)
     if session.legacy_project_path is None:
-        raise ValueError("迁移来源必须是 schema 1 项目")
+        raise ValueError("Migration requires a schema 1 source project")
     _ = session.document  # Allocate IDs once before choosing the schema 2 wire format.
     _write(session, destination, replace=False)
     return session

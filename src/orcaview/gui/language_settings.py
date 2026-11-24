@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QLibraryInfo, QSettings, QStandardPaths, QTranslator, Qt, QUrl
+from PySide6.QtCore import QLocale, QSettings, QStandardPaths, QTranslator, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
@@ -25,7 +25,8 @@ def load_interface_language(app, settings=None):
     """Called before constructing the first window, including after an upgrade."""
     if settings is None:
         settings = _settings()
-    packs, _ = discover_languages(_directory(settings))
+    directory = _directory(settings)
+    packs, _ = discover_languages(directory)
     pack = packs.get(settings.value("interface/language", BASE_LOCALE, type=str), packs[BASE_LOCALE])
     activate_language(pack)
     previous = getattr(app, "_orcaview_qt_translator", None)
@@ -35,8 +36,8 @@ def load_interface_language(app, settings=None):
         app._orcaview_qt_translator = None
     qt = QTranslator(app)
     locale = {"zh-Hans": "zh_CN", "zh-Hant": "zh_TW"}.get(pack.locale, pack.locale.replace("-", "_"))
-    translations = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
-    if qt.load("qtbase_" + locale, translations):
+    QLocale.setDefault(QLocale(locale))
+    if pack.locale != BASE_LOCALE and qt.load("qtbase_" + locale, str(directory)):
         app.installTranslator(qt)
         app._orcaview_qt_translator = qt
     else:
@@ -48,7 +49,7 @@ class LanguageDialog(QDialog):
     def __init__(self, parent=None, *, settings=None):
         super().__init__(parent)
         self.settings = _settings() if settings is None else settings
-        self.setWindowTitle(tr("界面语言"))
+        self.setWindowTitle(tr("Interface language"))
         self.resize(580, 200)
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -57,35 +58,35 @@ class LanguageDialog(QDialog):
         self.directory = QLineEdit(str(_directory(self.settings)))
         self.directory.setReadOnly(True)
         path_row.addWidget(self.directory, 1)
-        choose = QPushButton(tr("选择目录…"))
+        choose = QPushButton(tr("Choose folder…"))
         choose.clicked.connect(self._choose_directory)
         path_row.addWidget(choose)
-        open_folder = QPushButton(tr("打开目录"))
+        open_folder = QPushButton(tr("Open folder"))
         open_folder.clicked.connect(self._open_directory)
         path_row.addWidget(open_folder)
-        form.addRow(tr("语言包目录"), path_row)
+        form.addRow(tr("Language pack folder"), path_row)
         language_row = QHBoxLayout()
         self.languages = QComboBox()
         language_row.addWidget(self.languages, 1)
-        refresh = QPushButton(tr("刷新语言包"))
+        refresh = QPushButton(tr("Reload language packs"))
         refresh.clicked.connect(lambda: self._refresh(self.languages.currentData()))
         language_row.addWidget(refresh)
-        form.addRow(tr("语言"), language_row)
+        form.addRow(tr("Language"), language_row)
         self.report = QLabel()
         self.report.setWordWrap(True)
         self.report.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.report)
-        layout.addWidget(QLabel(tr("重新启动 OrcaView 后生效。")))
+        layout.addWidget(QLabel(tr("Restart OrcaView to apply the change.")))
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        buttons.button(QDialogButtonBox.StandardButton.Save).setText(tr("保存"))
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("取消"))
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText(tr("Save"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("Cancel"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self._refresh(self.settings.value("interface/language", BASE_LOCALE, type=str))
 
     def _choose_directory(self):
-        selected = QFileDialog.getExistingDirectory(self, tr("选择语言包目录"), self.directory.text())
+        selected = QFileDialog.getExistingDirectory(self, tr("Choose a language pack folder"), self.directory.text())
         if selected:
             self.directory.setText(selected)
             self._refresh(self.languages.currentData())
@@ -98,7 +99,7 @@ class LanguageDialog(QDialog):
         except OSError:
             opened = False
         if not opened:
-            QMessageBox.warning(self, tr("界面语言"), tr("无法打开目录：{path}", path=path))
+            QMessageBox.warning(self, tr("Interface language"), tr("Could not open the folder: {path}", path=path))
 
     def _refresh(self, preferred):
         packs, failures = discover_languages(self.directory.text())
@@ -106,19 +107,19 @@ class LanguageDialog(QDialog):
         for pack in packs.values():
             self.languages.addItem(pack.name, pack.locale)
         self.languages.setCurrentIndex(max(0, self.languages.findData(preferred)))
-        self.report.setText(tr("未能读取语言包：{files}", files="\n".join(failures)) if failures else "")
+        self.report.setText(tr("Could not read language packs: {files}", files="\n".join(failures)) if failures else "")
         self.report.setVisible(bool(failures))
 
     def accept(self):
         selected = self.languages.currentData()
         self._refresh(selected)
         if self.languages.currentData() != selected:
-            QMessageBox.warning(self, tr("界面语言"), tr("所选语言包已不可用。"))
+            QMessageBox.warning(self, tr("Interface language"), tr("The selected language pack is no longer available."))
             return
         self.settings.setValue("interface/languageDirectory", self.directory.text())
         self.settings.setValue("interface/language", selected)
         self.settings.sync()
         if self.settings.status() != QSettings.Status.NoError:
-            QMessageBox.warning(self, tr("界面语言"), tr("无法保存语言设置。"))
+            QMessageBox.warning(self, tr("Interface language"), tr("Could not save the language settings."))
             return
         super().accept()

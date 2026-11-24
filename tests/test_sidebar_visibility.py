@@ -64,10 +64,10 @@ class SidebarVisibilityTests(unittest.TestCase):
         window = self.window
         dock = window.bottom_dock
         bar = window.tabs.tabBar()
-        self.assertEqual(dock.windowTitle(), "输入与结果")
+        self.assertEqual(dock.windowTitle(), "Input and results")
         self.assertIs(dock.widget(), window.tabs)
         self.assertEqual([bar.tabText(i) for i in range(bar.count())],
-                         ["ORCA 输入预览", "结果摘要", "消息与日志"])
+                         ["ORCA input preview", "Results summary", "Messages and log"])
         for size in (window.size(), window.minimumSize()):
             window.resize(size)
             self.settle()

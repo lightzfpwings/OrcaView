@@ -1,12 +1,14 @@
-# Linux 和 Windows 便携版
+# Linux and Windows portable builds
 
-使用 CPython 3.13 在仓库根目录运行以下命令。构建 Windows 包还需要将 Go 1.23 或更高版本的 `go` 加入 PATH。0.1.0a43 发行包使用 Go 1.27.4。构建机可使用 macOS、Linux 或 Windows。脚本使用 Go 标准库交叉编译 Windows x64 启动器，并校验锁定的 CPython、PySide6 Essentials、Shiboken 和 Open Babel 依赖。
+Run this from the repository root with CPython 3.13. Windows builds require Go 1.23 or later on PATH. The launcher uses only the Go standard library and is cross-compiled for Windows x64. The build verifies the checksums of the target-native Python, Qt, Shiboken and Open Babel distributions before assembly.
 
-```sh
+```shell
 python3.13 packaging/desktop/build.py both
 ```
 
-可将 `both` 换成 `linux` 或 `windows`。重复构建时可指定 `--cache <目录>` 复用经过校验的下载。成品分别写入 `dist/linux/<版本>/` 和 `dist/windows/<版本>/`。四个语言包、Qt 标准控件译文和许可证随运行库提供。发行页的独立第三方源码附件包含对应的 Open Babel 源码。
+Use `linux` or `windows` for a single target. Pass `--cache <directory>` to reuse verified downloads. Finished packages are in `dist/<platform>/<version>/`. Each includes an English interface and 20 files in `Examples`. Build optional interface extensions with `python packaging/build_language_packs.py` from an environment with Qt 6.8.3.
 
-- **Linux x86-64**。解开 `.tar.gz`，在图形桌面运行解压目录里的 `./OrcaView`。Qt 6.8.3 的 Linux 原生库要求 glibc 2.28 或更新版本，并使用系统图形栈、字体和键盘库。在没有安装完整桌面环境的 Debian/Ubuntu 系统中，X11 插件还需要系统的 `libxcb-cursor0`、`libxkbcommon-x11-0` 等桌面库。可用 `./OrcaView --version` 验证命令入口。
-- **Windows x64**。将 `-Windows-x64-portable.zip` 解压到独立目录，里面有 `OrcaView.exe`、`LICENSE` 和 `Examples`。双击 EXE 启动界面，命令行可运行 `.\OrcaView.exe --version`。EXE 内嵌一个标准 ZIP，每次启动会将运行库展开至当前用户的临时目录，常规退出后清除。Windows 支持界面、结构处理、输入生成和已有结果导入。
+- **Windows x64**. Extract the ZIP into a dedicated folder. Its contents are `OrcaView.exe`, `LICENSE` and `Examples`. Double-click the EXE or run `.\OrcaView.exe --version`. Each launch expands the embedded runtime into a private temporary directory and removes it on normal exit.
+- **Linux x86-64**. Extract the tarball and launch `./OrcaView` on a graphical desktop. Qt requires glibc 2.28 or newer and desktop libraries including `libxcb-cursor0` and `libxkbcommon-x11-0` on Debian/Ubuntu. Run `./OrcaView --version` to check the launcher. The runtime contains the required third-party notices.
+
+The source and notice attachment on the release page provides the corresponding third-party sources. The app can process structures, prepare input and import results on both platforms. The local ORCA job runner uses POSIX process control.

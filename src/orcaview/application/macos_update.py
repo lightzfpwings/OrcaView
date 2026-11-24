@@ -59,7 +59,7 @@ def _system(*args):
                             stderr=subprocess.PIPE, check=False)
     if result.returncode:
         raise UpdateDownloadError(result.stderr.decode(errors="replace").strip() or
-                                  "无法准备 macOS 应用更新。")
+                                  "Could not prepare the macOS app update.")
 
 
 class PreparedMacUpdate:
@@ -84,7 +84,7 @@ class PreparedMacUpdate:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             if (self.target.stat().st_dev, self.target.stat().st_ino) != self.old_identity:
-                raise UpdateDownloadError("安装目录已变更，请重新检查更新。")
+                raise UpdateDownloadError("The installation has changed. Check for updates again.")
             _exchange(staged, self.target)
             try:
                 _system("/usr/bin/open", "-n", str(self.target))
@@ -93,7 +93,7 @@ class PreparedMacUpdate:
                     _exchange(staged, self.target)
                 except OSError as exc:
                     self._cleanup.detach()
-                    raise UpdateDownloadError(f"无法恢复原应用，旧版保存在 {staged}") from exc
+                    raise UpdateDownloadError(f"Could not restore the application. The previous version is at {staged}") from exc
                 raise
         finally:
             os.close(fd)
@@ -105,7 +105,7 @@ def prepare_macos_update(asset, archive, target, *, cancelled=None):
     suffix = "-macOS-arm64.dmg"
     target = Path(target)
     if not asset.name.endswith(suffix) or not _bundle_version(target):
-        raise UpdateDownloadError("无法确认要覆盖的 OrcaView 应用。")
+        raise UpdateDownloadError("Could not identify the OrcaView app to replace.")
     expected = asset.name[len("OrcaView-"):-len(suffix)]
     old = target.stat()
     workspace = Path(mkdtemp(prefix=".orcaview-update-", dir=target.parent))
@@ -122,7 +122,7 @@ def prepare_macos_update(asset, archive, target, *, cancelled=None):
                 _check_cancelled(cancelled)
                 source = mount / "OrcaView.app"
                 if _bundle_version(source) != expected:
-                    raise UpdateDownloadError("磁盘映像中的应用版本与发布记录不一致。")
+                    raise UpdateDownloadError("The app version in the disk image does not match the release.")
                 _system("/usr/bin/ditto", str(source), str(staged))
             finally:
                 _system("/usr/bin/hdiutil", "detach", str(mount))

@@ -20,6 +20,7 @@ LOCK = json.loads((HERE / "dependencies.json").read_text())
 PYTHON = "3.13"
 sys.path.insert(0, str(HERE.parent))
 from release_examples import install_examples
+from release_language import check_release_sources
 
 LINUX_ENTRY = """#!/bin/sh
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
@@ -65,6 +66,8 @@ def wheel_runtime_member(name):
     """Omit SDK inputs and standalone development tools from the desktop runtime."""
     parts = Path(name).parts
     if len(parts) > 1 and parts[0] == "PySide6":
+        if name.endswith(".qm"):
+            return False
         if parts[1] in {"doc", "glue", "include", "scripts", "typesystems"}:
             return False
         if len(parts) == 2 or parts[1:3] == ("Qt", "libexec"):
@@ -138,8 +141,6 @@ def install_app(site):
     source = ROOT / "src/orcaview"
     # A checked source hash and a stable filename make bytecode independent of
     # the build directory. Sibling .pyc modules also work in a read-only install.
-    if len(list((source / "languages").glob("*.json"))) < 4:
-        raise ValueError("Expected the four release language packs")
     for path in sorted(source.rglob("*")):
         if not path.is_file() or "__pycache__" in path.parts:
             continue
@@ -161,7 +162,7 @@ def assemble(target, bundle, cache, version):
     shutil.copyfile(ROOT / "THIRD_PARTY_NOTICES.md", third_party / "THIRD_PARTY_NOTICES.md")
     sources = (HERE / "SOURCES.txt").read_text(encoding="utf-8").replace("@VERSION@", version)
     (third_party / "SOURCES.txt").write_bytes(sources.encode("utf-8"))
-    install_examples(ROOT, bundle / ("Examples" if target == "windows" else "示例"))
+    install_examples(ROOT, bundle / "Examples")
     with tarfile.open(runtime) as tar:
         tar.extractall(bundle, members=(m for m in tar if runtime_member(m)), filter="data")
     if target == "windows":
@@ -183,6 +184,12 @@ def assemble(target, bundle, cache, version):
     install_app(site)
     if target == "windows":
         return  # The single-file launcher carries its own external-file inventory.
+    # Up to a43 the Linux updater installs only the former example directory.
+    # Carry a compact seed through its runtime swap for the first launch.
+    with ZipFile(bundle / "python/orcaview-examples.zip", "w") as seed:
+        for path in sorted((bundle / "Examples").rglob("*")):
+            if path.is_file():
+                write_zip_file(seed, path, bundle / "Examples")
     files = {}
     for path in sorted(bundle.rglob("*")):
         if not path.is_symlink() and path.is_file():
@@ -202,6 +209,7 @@ def release_member(member):
 def build(target, output, cache):
     sys.path.insert(0, str(ROOT / "src"))
     from orcaview import __version__
+    check_release_sources(ROOT)
     dest = output / target / __version__
     dest.mkdir(parents=True, exist_ok=True)
     label, ext = ("Windows-x64-portable", ".zip") if target == "windows" else ("Linux-x86_64", ".tar.gz")

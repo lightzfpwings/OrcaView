@@ -2,8 +2,8 @@ OrcaView @VERSION@
 OrcaView's MIT license is in OrcaView-LICENSE.txt next to this file.
 Bundled dependencies are distributed under their own licenses.
 
-This release's corresponding source downloads:
-https://github.com/lightzfpwings/OrcaView/releases/download/v@VERSION@/OrcaView-@VERSION@-third-party-sources.zip
+Corresponding sources for these dependency versions:
+https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a43/OrcaView-0.1.0a43-third-party-sources.zip
 
 Third-party notices and source locations:
-https://github.com/lightzfpwings/OrcaView/blob/v@VERSION@/THIRD_PARTY_NOTICES.md
+See THIRD_PARTY_NOTICES.md next to this file.

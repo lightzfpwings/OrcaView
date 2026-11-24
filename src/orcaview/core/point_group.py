@@ -18,7 +18,7 @@ def geometric_symmetry(molecule: Molecule, tolerance: float = DEFAULT_TOLERANCE)
 
     The tolerance (Å) applies to same-element atom correspondence under each
     operation. A degenerate geometry or an inconsistent set of near-symmetries
-    yields “未定”. Charges, bonds and electronic state do not enter this test.
+    yields “Undetermined”. Charges, bonds and electronic state do not enter this test.
     """
     analysis = analyze_rotations(molecule, tolerance)
     principal = analysis.principal
@@ -29,7 +29,7 @@ def geometric_symmetry(molecule: Molecule, tolerance: float = DEFAULT_TOLERANCE)
     if not analysis.closed:
         # Independently passing operations near the tolerance boundary may
         # fail to form a point group. The verified rotation axis still exists.
-        return "未定", principal
+        return "Undetermined", principal
 
     # An orientation-reversing operation is stored as -R, for a proper
     # rotation R. Its order *as R* is 1 for inversion and 2 for a reflection.
@@ -40,7 +40,7 @@ def geometric_symmetry(molecule: Molecule, tolerance: float = DEFAULT_TOLERANCE)
     if isinf(principal.order):
         return ("D∞h" if inversion else "C∞v"), principal
     if not analysis.operations:
-        return "未定", principal
+        return "Undetermined", principal
     n = int(principal.order)
     if n == 1:
         if mirrors:

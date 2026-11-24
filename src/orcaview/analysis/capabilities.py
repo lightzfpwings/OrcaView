@@ -37,45 +37,45 @@ class CapabilityCheck:
 def check_capability(request: AnalysisRequest, snapshot: GeometrySnapshot) -> CapabilityCheck:
     """Check the producer's declared metadata against a historical or current snapshot."""
     if not isinstance(request, AnalysisRequest) or not isinstance(snapshot, GeometrySnapshot):
-        raise ValueError("能力检查需要 AnalysisRequest 和 GeometrySnapshot")
+        raise ValueError("Capability checks require an AnalysisRequest and a GeometrySnapshot")
     versions = tuple(item for item in ANALYSIS_CAPABILITIES if item.capability_id == request.capability_id)
     if not versions:
-        return CapabilityCheck(None, (ErrorInfo("unknown_capability", "未登记此分析功能"),))
+        return CapabilityCheck(None, (ErrorInfo("unknown_capability", "This analysis capability is not registered"),))
     capability = next((item for item in versions if item.feature_version == request.feature_version), None)
     if capability is None:
-        return CapabilityCheck(None, (ErrorInfo("feature_version_unsupported", "未登记此功能版本"),))
+        return CapabilityCheck(None, (ErrorInfo("feature_version_unsupported", "This capability version is not registered"),))
 
     source = request.wavefunction
     issues = []
     file_evidence = (source.artifact,)
     if (source.geometry, source.geometry_sha256) != (snapshot.ref, snapshot.content_hash):
-        issues.append(ErrorInfo("geometry_mismatch", "波函数与选定几何的完整引用或摘要不符", evidence=file_evidence))
+        issues.append(ErrorInfo("geometry_mismatch", "The wavefunction reference or digest does not match the selected geometry", evidence=file_evidence))
     if set(source.atom_ids) != set(snapshot.atom_ids):
-        issues.append(ErrorInfo("atom_mapping_mismatch", "源文件原子行必须逐一对应选定几何的原子 ID",
+        issues.append(ErrorInfo("atom_mapping_mismatch", "Source atom rows must match the selected geometry's atom IDs in order",
                                 evidence=file_evidence))
     if source.periodic is True:
-        issues.append(ErrorInfo("periodic_unsupported", "分子分析不支持周期输入", evidence=file_evidence))
+        issues.append(ErrorInfo("periodic_unsupported", "Molecular analysis does not support periodic inputs", evidence=file_evidence))
     if source.artifact.format not in capability.formats:
-        issues.append(ErrorInfo("input_unsupported", "此功能仅登记 Molden 候选输入", evidence=file_evidence))
+        issues.append(ErrorInfo("input_unsupported", "Only Molden candidate inputs are registered for this capability", evidence=file_evidence))
 
     unknown = tuple(name for name in capability.required_metadata if getattr(source, name) is None)
     if unknown:
-        issues.append(ErrorInfo("metadata_missing", "尚未核对 " + ", ".join(unknown), evidence=file_evidence))
+        issues.append(ErrorInfo("metadata_missing", "Not yet verified: " + ", ".join(unknown), evidence=file_evidence))
     absent = tuple(name for name in ("has_basis", "has_orbitals", "has_occupations")
                    if getattr(source, name) is False)
     if absent:
-        issues.append(ErrorInfo("input_unsupported", "缺少所需输入 " + ", ".join(absent), evidence=file_evidence))
+        issues.append(ErrorInfo("input_unsupported", "Missing required input: " + ", ".join(absent), evidence=file_evidence))
     if source.has_ecp is True:
-        issues.append(ErrorInfo("input_unsupported", "本交付范围尚未核验 ECP/EDF 输入", evidence=file_evidence))
+        issues.append(ErrorInfo("input_unsupported", "ECP/EDF inputs have not been validated for this release", evidence=file_evidence))
     if source.basis_convention not in (None, "spherical", "cartesian", "mixed"):
-        issues.append(ErrorInfo("input_unsupported", "未登记该基组表示约定", evidence=file_evidence))
+        issues.append(ErrorInfo("input_unsupported", "This basis representation convention is not registered", evidence=file_evidence))
     if source.spin_type not in (None, "restricted", "unrestricted"):
-        issues.append(ErrorInfo("input_unsupported", "未登记该轨道自旋表示", evidence=file_evidence))
+        issues.append(ErrorInfo("input_unsupported", "This orbital spin representation is not registered", evidence=file_evidence))
     if (request.density not in capability.densities
             or (source.densities is not None and request.density not in source.densities)):
-        issues.append(ErrorInfo("input_unsupported", "请求的密度超出功能范围，或源文件缺少该密度",
+        issues.append(ErrorInfo("input_unsupported", "The requested density is unsupported or absent from the source",
                                 evidence=file_evidence))
     if request.resources is not None and request.resources.processes != 1:
-        issues.append(ErrorInfo("resource_unsupported", "单次分析只接受一个 worker 进程的预算"))
-    issues.append(ErrorInfo("internal_engine_unavailable", "当前构建未提供内部数值库与 worker"))
+        issues.append(ErrorInfo("resource_unsupported", "An analysis is limited to a single worker process"))
+    issues.append(ErrorInfo("internal_engine_unavailable", "This build does not include the internal numerical library and worker"))
     return CapabilityCheck(capability, tuple(issues))

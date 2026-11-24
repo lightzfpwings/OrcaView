@@ -40,15 +40,15 @@ class OptimizationFailureTests(unittest.TestCase):
         self.assertAlmostEqual(sum(y for _, y in layout), 57.)
 
     def test_single_atom_and_explicit_empty_graph_have_no_optimizable_bonds(self):
-        with self.assertRaisesRegex(ValueError, "化学键"):
+        with self.assertRaisesRegex(ValueError, "at least one bond"):
             optimize_structure(Molecule("C", (Atom("C", 0, 0, 0),)), "3D")
         m = Molecule("unbonded", (Atom("C", 0, 0, 0), Atom("O", 1.3, 0, 0)), bonds_explicit=True)
-        with self.assertRaisesRegex(ValueError, "化学键"):
+        with self.assertRaisesRegex(ValueError, "at least one bond"):
             optimize_structure(m, "2D")
 
     def test_forcefield_requires_representable_charge_and_spin(self):
         for attrs in ({"charge": 1}, {"multiplicity": 3}):
-            with self.subTest(attrs=attrs), self.assertRaisesRegex(ValueError, "中性单重态"):
+            with self.subTest(attrs=attrs), self.assertRaisesRegex(ValueError, "neutral singlets"):
                 optimize_structure(replace(ring(), **attrs), "3D")
 
     def test_changed_atom_or_incomplete_result_is_rejected(self):
@@ -57,7 +57,7 @@ class OptimizationFailureTests(unittest.TestCase):
         for rows in [[], wrong_rows]:
             response = {"atoms": rows, "method": "MMFF94"}
             with patch("orcaview.editing.optimization.run_babel_worker", return_value=response):
-                with self.assertRaisesRegex(ValueError, "原子映射"):
+                with self.assertRaisesRegex(ValueError, "atom mapping"):
                     optimize_structure(m, "3D")
 
 
@@ -86,8 +86,8 @@ class NativeOptimizationTests(unittest.TestCase):
 
     def test_partial_and_coordinate_sketches_remain_editable_without_integer_force_field_approximation(self):
         atoms = (Atom("N", 0., 0., 0.), Atom("B", 1.5, 0., 0.))
-        for order, style, diagnostic in ((1, "coordinate", "配位键"), (1, "coordinate_arrow", "配位键"),
-                                         (3, "partial_triple", "2.5"), (2, "aromatic", "芳香环")):
+        for order, style, diagnostic in ((1, "coordinate", "coordinate bonds"), (1, "coordinate_arrow", "coordinate bonds"),
+                                         (3, "partial_triple", "2.5"), (2, "aromatic", "aromatic system")):
             with self.subTest(style=style):
                 m = Molecule("fragment", atoms, (Bond(0, 1, order, style),))
                 self.assertEqual(optimize_structure(m, "2D").molecule.bonds, m.bonds)
@@ -208,7 +208,7 @@ class NativeOptimizationTests(unittest.TestCase):
         coords = [(0, 0, 0), (1.1, 1.3, 1.2), (-.8, -.8, .8), (1.2, -1.2, -1.2), (-.6, .6, -.6)]
         m = Molecule("CHBrClF", tuple(Atom(e, *p) for e, p in zip(("C","Br","F","Cl","H"), coords)),
                      tuple(Bond(0, i) for i in range(1, 5)))
-        with self.assertRaisesRegex(ValueError, "四面体手性"):
+        with self.assertRaisesRegex(ValueError, "tetrahedral stereochemistry"):
             optimize_structure(m, "2D")
         result = optimize_structure(m, "3D")
         corrected = points(result.molecule)
@@ -237,10 +237,10 @@ class NativeOptimizationTests(unittest.TestCase):
 
     def test_missing_uff_parameters_and_local_ionic_valences_fail_atomically(self):
         m = Molecule("late element", (Atom("Og", 0., 0., 0.), Atom("C", 2., 0., 0.)), (Bond(0,1),))
-        with self.assertRaisesRegex(ValueError, "参数"):
+        with self.assertRaisesRegex(ValueError, "parameters"):
             optimize_structure(m, "3D")
         m = Molecule("ammonium sketch", (Atom("N", 0, 0, 0),) + tuple(
             Atom("C", *p) for p in ((1,1,1),(-1,-1,1),(-1,1,-1),(1,-1,-1))),
                      tuple(Bond(0, i) for i in range(1, 5)))
-        with self.assertRaisesRegex(ValueError, "形式电荷"):
+        with self.assertRaisesRegex(ValueError, "formal charge"):
             optimize_structure(m, "3D")

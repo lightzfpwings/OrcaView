@@ -37,11 +37,11 @@ def build_obmol(payload, ob, *, layout_only=False):
     aromatic = []
     styles = payload.get("bond_styles", ["plain"] * len(payload["bonds"]))
     if len(styles) != len(payload["bonds"]):
-        raise ValueError("Open Babel 无法建立当前连接表")
+        raise ValueError("Open Babel could not construct this bond graph.")
     for (a, b, order), style in zip(payload["bonds"], styles):
         if style in COORDINATE_STYLES or style == "partial_triple":
             if not layout_only:
-                raise ValueError("当前力场不能表示配位键或 2.5 级键，请使用二维整理")
+                raise ValueError("The available force fields cannot represent coordinate bonds or order-2.5 bonds. Use 2D cleanup.")
             # gen2D only needs a connected graph. Its temporary integer orders
             # are never written back over an explicitly drawn bond.
             order = 1 if style in COORDINATE_STYLES else 2
@@ -49,7 +49,7 @@ def build_obmol(payload, ob, *, layout_only=False):
             aromatic.append((a + 1, b + 1))
             order = 1
         if not mol.AddBond(a + 1, b + 1, order, flags.get(style, 0)):
-            raise ValueError("Open Babel 无法建立当前连接表")
+            raise ValueError("Open Babel could not construct this bond graph.")
     mol.EndModify()
     mol.SetTotalCharge(payload["charge"])
     mol.SetTotalSpinMultiplicity(payload["multiplicity"])
@@ -69,5 +69,5 @@ def build_obmol(payload, ob, *, layout_only=False):
                 ob.OBAtomAssignTypicalImplicitHydrogens(atom)
             mol.SetAromaticPerceived(False)
             if not kekulized or not all(mol.GetBond(a, b).IsAromatic() for a, b in aromatic):
-                raise ValueError("当前 1.5 级键无法表示为芳香环，无法进行力场优化")
+                raise ValueError("The current order-1.5 bonds do not form a supported aromatic system for force-field optimization.")
     return mol

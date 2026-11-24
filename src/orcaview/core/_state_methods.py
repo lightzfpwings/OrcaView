@@ -16,7 +16,7 @@ EARLIER_RESPONSE_FUNCTIONALS = ("B3LYP", "PBE0", "CAM-B3LYP", "PBE", "BP86")
 # LDA/GGA kernels and global or long-range hybrid GGAs. Double hybrids
 # use their dedicated RI doubles-correction presets.
 _NATIVE_RESPONSE_GGAS = tuple(name for family, entries in DFT_METHOD_GROUPS
-                              if family.startswith(("局域密度", "广义梯度", "全局杂化 GGA"))
+                              if family.startswith(("Local density", "Generalized gradient", "Global hybrid GGA"))
                               for name, _ in entries)
 RESPONSE_FUNCTIONALS = tuple(dict.fromkeys((
     *EARLIER_RESPONSE_FUNCTIONALS, *_NATIVE_RESPONSE_GGAS, "LC-BLYP", "LC-PBE", "WB97", "WB97X",
@@ -26,22 +26,22 @@ RESPONSE_FUNCTIONALS = tuple(dict.fromkeys((
 def _positive_input_integer(value, label):
     integer(value, label, 1)
     if value > 2**31 - 1:
-        raise ValueError(f"{label} 超出 32 位整数范围")
+        raise ValueError(f"{label} exceeds the 32-bit integer range")
 
 
 def _validate_active_space(active_electrons, active_orbitals):
-    _positive_input_integer(active_electrons, "活性电子数")
-    _positive_input_integer(active_orbitals, "活性轨道数")
+    _positive_input_integer(active_electrons, "Active electrons")
+    _positive_input_integer(active_orbitals, "Active orbitals")
     if active_electrons > 2 * active_orbitals:
-        raise ValueError("活性电子数不能超过活性轨道数的两倍")
+        raise ValueError("Active electrons cannot exceed twice the number of active orbitals")
 
 
 def _validate_active_spin(active_electrons, active_orbitals, multiplicity):
-    integer(multiplicity, "自旋多重度", 1)
+    integer(multiplicity, "Spin multiplicity", 1)
     unpaired = multiplicity - 1
     holes = 2 * active_orbitals - active_electrons
     if unpaired > min(active_electrons, holes) or (active_electrons - unpaired) % 2:
-        raise ValueError("活性空间的电子数和空穴数与所选自旋多重度不相容")
+        raise ValueError("Active-space electron and hole counts are incompatible with the selected multiplicity")
 
 
 def validate_parameters(method, active_electrons, active_orbitals, nroots, reference_functional,
@@ -50,37 +50,37 @@ def validate_parameters(method, active_electrons, active_orbitals, nroots, refer
     if method in ACTIVE_SPACE_METHODS:
         _validate_active_space(active_electrons, active_orbitals)
     elif active_electrons is not None or active_orbitals is not None:
-        raise ValueError(f"{method} 不使用活性电子数或活性轨道数")
+        raise ValueError(f"{method} does not use active electron or active orbital counts")
 
     if method in EXCITED_STATE_METHODS:
-        _positive_input_integer(nroots, "目标根数")
+        _positive_input_integer(nroots, "Target roots")
     elif nroots is not None:
-        raise ValueError("激发态数仅适用于垂直激发能计算；活性空间模板固定为单根")
+        raise ValueError("Excited-state counts apply only to vertical excitations. Active-space templates use one root.")
 
     if method in REFERENCE_FUNCTIONAL_METHODS:
         if reference_functional not in RESPONSE_FUNCTIONALS:
-            raise ValueError(f"{method} 需要指定参考泛函，可选 " + "、".join(RESPONSE_FUNCTIONALS))
+            raise ValueError(f"{method} requires a reference functional. Available: " + ", ".join(RESPONSE_FUNCTIONALS))
     elif reference_functional is not None:
-        raise ValueError(f"{method} 不使用可选参考泛函")
+        raise ValueError(f"{method} does not use an optional reference functional")
     if electron_channel is not None:
         if method not in ELECTRON_CHANNEL_METHODS:
-            raise ValueError(f"{method} 不使用电离或附着自旋通道")
+            raise ValueError(f"{method} does not use an ionization or attachment spin channel")
         if electron_channel not in ("alpha", "beta"):
-            raise ValueError("电子自旋通道必须为 alpha 或 beta")
+            raise ValueError("Electron spin channel must be alpha or beta")
 
 
 def _validate_reference(method, multiplicity, electron_channel):
     if method in CLOSED_SHELL_METHODS and multiplicity != 1:
-        raise ValueError(f"{method} 模板需要闭壳层单重参考态")
+        raise ValueError(f"The {method} template requires a closed-shell singlet")
     if method in SPIN_FLIP_METHODS and multiplicity < 3:
-        raise ValueError(f"{method} 的自旋翻转参考态多重度至少为 3")
+        raise ValueError(f"The {method} spin-flip reference requires multiplicity 3 or higher")
     if method in ROCIS_METHODS and multiplicity < 2:
-        raise ValueError(f"{method} 模板需要高自旋开壳层参考态")
+        raise ValueError(f"The {method} template requires a high-spin open-shell reference")
     if method in ELECTRON_CHANNEL_METHODS:
         if multiplicity > 1 and electron_channel not in ("alpha", "beta"):
-            raise ValueError(f"{method} 开壳层参考态须指定 alpha 或 beta 自旋通道")
+            raise ValueError(f"An open-shell {method} reference requires an alpha or beta spin channel")
         if multiplicity == 1 and electron_channel is not None:
-            raise ValueError(f"{method} 的闭壳层模板不使用自旋通道")
+            raise ValueError(f"The closed-shell {method} template does not use a spin channel")
 
 
 def validate_state_system(method, molecule, active_electrons, active_orbitals,
@@ -90,16 +90,16 @@ def validate_state_system(method, molecule, active_electrons, active_orbitals,
         return
     electrons = molecule.electron_count if method == "ZINDO/S-CIS" else effective_electron_count(basis, molecule)
     if electrons < 1 or electrons < molecule.multiplicity - 1:
-        raise ValueError("显式电子数不足以构成所选电子态，请检查电荷、多重度和 ECP")
+        raise ValueError("Too few explicit electrons for this state. Check charge, multiplicity and ECP.")
     _validate_reference(method, molecule.multiplicity, electron_channel)
     if (method in ELECTRON_CHANNEL_METHODS and "IP-" in method and electron_channel == "beta"
             and electrons == molecule.multiplicity - 1):
-        raise ValueError("参考态中没有可移除的 beta 电子")
+        raise ValueError("The reference has no beta electron to remove")
     if method in ACTIVE_SPACE_METHODS:
         _validate_active_space(active_electrons, active_orbitals)
         inactive = electrons - active_electrons
         if inactive < 0 or inactive % 2:
-            raise ValueError("活性电子数必须使剩余显式电子能成对占据非活性轨道")
+            raise ValueError("The remaining explicit electrons must doubly occupy inactive orbitals")
         _validate_active_spin(active_electrons, active_orbitals, molecule.multiplicity)
 
 
@@ -182,7 +182,7 @@ def _validate_cas_roots(electrons, orbitals, multiplicity, nroots):
     product = _binomial_up_to(orbitals, alpha, minimum_product)
     product *= _binomial_up_to(orbitals + 1, beta, minimum_product)
     if product < minimum_product:
-        raise ValueError("目标根数超过该多重度下活性空间的自旋适配组态数")
+        raise ValueError("Target roots exceed the number of spin-adapted active-space configurations at this multiplicity")
 
 
 def _mr_eom_input(method, electrons, orbitals, multiplicity, nroots):

@@ -10,7 +10,7 @@ from zipfile import ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ARCHIVE = ROOT / "artifacts" / "public" / "OrcaView-verification-0.1.0a26.zip"
+ARCHIVE = ROOT / "artifacts" / "public" / "OrcaView-verification-0.1.0a44.zip"
 
 
 def main():

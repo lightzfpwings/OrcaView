@@ -36,29 +36,29 @@ class CoordinateDefinition(Versioned):
 
     def __post_init__(self):
         if not isinstance(self.geometry, GeometryRef):
-            raise ValueError("坐标定义必须绑定完整 GeometryRef")
+            raise ValueError("The coordinate definition must reference a complete GeometryRef")
         if not isinstance(self.kind, str) or self.kind not in _ARITY:
-            raise ValueError("坐标类型只支持 distance、angle、dihedral")
-        identifiers(self.atom_ids, "坐标定义的原子 ID")
+            raise ValueError("Supported coordinate types are distance, angle and dihedral")
+        identifiers(self.atom_ids, "Coordinate definition atom IDs")
         if len(self.atom_ids) != _ARITY[self.kind]:
-            raise ValueError("坐标类型与有序原子 ID 数目不符")
+            raise ValueError("The number of ordered atom IDs does not match the coordinate type")
         expected = "angstrom" if self.kind == "distance" else "degree"
         if self.unit is None:
             object.__setattr__(self, "unit", expected)
         elif self.unit != expected:
-            raise ValueError("距离单位必须为 angstrom，角度单位必须为 degree")
+            raise ValueError("Distances must use angstrom and angles must use degree")
 
 
 def _points(snapshot: GeometrySnapshot, definition: CoordinateDefinition):
     if not isinstance(snapshot, GeometrySnapshot) or not isinstance(definition, CoordinateDefinition):
-        raise ValueError("坐标操作需要 GeometrySnapshot 和 CoordinateDefinition")
+        raise ValueError("Coordinate operations require a GeometrySnapshot and CoordinateDefinition")
     if snapshot.ref != definition.geometry:
-        raise ValueError("坐标定义与实际快照的几何引用不一致")
+        raise ValueError("The coordinate definition refers to a different geometry")
     return tuple(snapshot.molecule.atoms[snapshot.index_of(i)] for i in definition.atom_ids)
 
 
 def _vector(first: Atom, second: Atom):
-    return tuple(finite_number(b - a, "坐标差")
+    return tuple(finite_number(b - a, "Coordinate difference")
                  for a, b in zip((first.x, first.y, first.z), (second.x, second.y, second.z)))
 
 
@@ -75,7 +75,7 @@ def _cross(first, second):
 def _unit(vector, label):
     scale = finite_number(max(abs(v) for v in vector), label)
     if scale == 0:
-        raise ValueError(label + "为零；重合原子无法定义此坐标")
+        raise ValueError(label + " is zero. Coincident atoms cannot define this coordinate")
     # Scaling first keeps normalization accurate for subnormal components and
     # avoids an overflowing norm for large, individually finite components.
     scaled = tuple(v / scale for v in vector)
@@ -88,20 +88,20 @@ def measure(snapshot: GeometrySnapshot, definition: CoordinateDefinition) -> flo
     points = _points(snapshot, definition)
     if definition.kind == "distance":
         # Zero distance is a defined measurement, but not a direction for editing.
-        return finite_number(math.hypot(*_vector(points[0], points[1])), "距离")
+        return finite_number(math.hypot(*_vector(points[0], points[1])), "Distance")
     if definition.kind == "angle":
-        first = _unit(_vector(points[1], points[0]), "角的第一条边")
-        second = _unit(_vector(points[1], points[2]), "角的第二条边")
+        first = _unit(_vector(points[1], points[0]), "First angle arm")
+        second = _unit(_vector(points[1], points[2]), "Second angle arm")
         return math.degrees(math.atan2(math.hypot(*_cross(first, second)), _dot(first, second)))
-    axis = _unit(_vector(points[1], points[2]), "二面角中心键")
-    first = _unit(_vector(points[1], points[0]), "二面角第一条边")
-    second = _unit(_vector(points[2], points[3]), "二面角最后一条边")
+    axis = _unit(_vector(points[1], points[2]), "Central dihedral bond")
+    first = _unit(_vector(points[1], points[0]), "First dihedral arm")
+    second = _unit(_vector(points[2], points[3]), "Last dihedral arm")
     first_normal = _cross(axis, first)
     second_normal = _cross(axis, second)
     if min(math.hypot(*first_normal), math.hypot(*second_normal)) <= 1e-12:
-        raise ValueError("二面角存在共线或近共线原子，无法定义平面")
-    first_normal = _unit(first_normal, "二面角第一平面")
-    second_normal = _unit(second_normal, "二面角第二平面")
+        raise ValueError("Collinear or nearly collinear atoms do not define a dihedral plane")
+    first_normal = _unit(first_normal, "First dihedral plane")
+    second_normal = _unit(second_normal, "Second dihedral plane")
     value = math.degrees(math.atan2(_dot(_cross(axis, first_normal), second_normal),
                                     _dot(first_normal, second_normal)))
     return (value + 180.0) % 360.0 - 180.0
@@ -120,26 +120,26 @@ def edit_distance(snapshot: GeometrySnapshot, definition: CoordinateDefinition,
     """
     points = _points(snapshot, definition)
     if definition.kind != "distance":
-        raise ValueError("此编辑操作只接受 distance 定义")
-    target = finite_number(target, "目标距离")
+        raise ValueError("This edit requires a distance definition")
+    target = finite_number(target, "Target distance")
     if target <= 0:
-        raise ValueError("目标距离必须大于零")
-    identifiers(moving_atom_ids, "移动原子 ID")
-    identifiers(fixed_atom_ids, "固定原子 ID")
+        raise ValueError("The target distance must be greater than zero.")
+    identifiers(moving_atom_ids, "Moving atom IDs")
+    identifiers(fixed_atom_ids, "Fixed atom IDs")
     known = set(snapshot.atom_ids)
     moving, fixed = set(moving_atom_ids), set(fixed_atom_ids)
     if not moving.issubset(known) or not fixed.issubset(known):
-        raise ValueError("移动或固定集合包含未知原子 ID")
+        raise ValueError("The moving or fixed set contains unknown atom IDs")
     if moving.intersection(fixed):
-        raise ValueError("固定与移动集合不能重叠")
+        raise ValueError("The fixed and moving sets must be disjoint")
     if definition.atom_ids[0] in moving or definition.atom_ids[1] not in moving:
-        raise ValueError("有序距离的第一端必须固定，第二端必须属于移动集合")
+        raise ValueError("For an ordered distance, the first atom must be fixed and the second must be in the moving set")
     vector = _vector(points[0], points[1])
-    direction = _unit(vector, "原始距离")
+    direction = _unit(vector, "Original distance")
     original = math.hypot(*vector)
     delta = tuple((target - original) * v for v in direction)
     atoms = tuple(
-        Atom(atom.element, *(finite_number(c + d, "编辑后的坐标")
+        Atom(atom.element, *(finite_number(c + d, "Edited coordinates")
                              for c, d in zip((atom.x, atom.y, atom.z), delta)))
         if atom_id in moving else atom
         for atom_id, atom in zip(snapshot.atom_ids, snapshot.molecule.atoms)
@@ -147,7 +147,7 @@ def edit_distance(snapshot: GeometrySnapshot, definition: CoordinateDefinition,
     actual = math.hypot(*_vector(atoms[snapshot.index_of(definition.atom_ids[0])],
                                  atoms[snapshot.index_of(definition.atom_ids[1])]))
     if not math.isclose(actual, target, rel_tol=1e-10, abs_tol=0.0):
-        raise ValueError("浮点坐标无法满足目标距离；未生成编辑结果")
+        raise ValueError("The coordinate precision does not allow this distance. The edit was not applied.")
     molecule = replace(snapshot.molecule, atoms=atoms)
     molecule.validate_structure()
     return molecule
@@ -161,7 +161,7 @@ def bond_moving_atoms(snapshot, definition, bonds):
         neighbors[bond.a].add(bond.b)
         neighbors[bond.b].add(bond.a)
     if moving not in neighbors[fixed]:
-        raise ValueError("所选原子未直接成键，仅显示距离。")
+        raise ValueError("The selected atoms are not directly bonded. Their distance is shown for measurement only.")
     neighbors[moving].remove(fixed)
     neighbors[fixed].remove(moving)
     component = {moving}
@@ -170,7 +170,7 @@ def bond_moving_atoms(snapshot, definition, bonds):
         i = pending.pop()
         for neighbor in neighbors[i] - component:
             if neighbor == fixed:
-                raise ValueError("环内键仅支持测距。")
+                raise ValueError("You can only measure the length of a bond within a ring.")
             component.add(neighbor)
             pending.append(neighbor)
     return tuple(snapshot.atom_ids[i] for i in sorted(component))

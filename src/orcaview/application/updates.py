@@ -22,7 +22,7 @@ _GITHUB_HOSTS = {"api.github.com", "github.com", "release-assets.githubuserconte
 _VERSION = re.compile(r"v?(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:(a|b|rc)(\d{1,9}))?", re.ASCII)
 _STAGES = {"a": 0, "b": 1, "rc": 2, None: 3}
 _SHA256 = re.compile(r"sha256:([a-fA-F0-9]{64})")
-_INVALID_METADATA = "GitHub 返回的发布信息无效。"
+_INVALID_METADATA = "GitHub returned invalid release information."
 
 
 class UpdateError(Exception):
@@ -65,7 +65,7 @@ def open_update_url(request: Request, *, timeout: float):
 
 def _read(url, *, limit, cancelled, api=False):
     if cancelled is not None and cancelled():
-        raise UpdateError("已取消检查更新。")
+        raise UpdateError("Update check canceled.")
     headers = {"User-Agent": "OrcaView-update-check"}
     if api:
         headers.update({"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"})
@@ -73,13 +73,13 @@ def _read(url, *, limit, cancelled, api=False):
         with open_update_url(Request(url, headers=headers), timeout=12) as response:
             data = response.read(limit + 1)
             if len(data) > limit:
-                raise UpdateError("GitHub 发布信息超过大小限制。")
+                raise UpdateError("The GitHub release information exceeds the size limit.")
             return data, response.headers.get("Link", "")
     except HTTPError as exc:
         exc.close()
-        raise UpdateError(f"GitHub 返回 HTTP {exc.code}。") from exc
+        raise UpdateError(f"GitHub returned HTTP {exc.code}.") from exc
     except (OSError, HTTPException) as exc:
-        raise UpdateError(f"读取 GitHub 发布信息失败：{exc}") from exc
+        raise UpdateError(f"Could not read GitHub release information: {exc}") from exc
 
 
 def _version_key(tag):
@@ -113,7 +113,7 @@ def _releases(cancelled):
         page += 1
         # GitHub may link using the numerical repository ID. Always request our fixed endpoint.
         if parse_qs(urlsplit(next_link[1]).query).get("page") != [str(page)]:
-            raise UpdateError("GitHub 返回的分页信息无效。")
+            raise UpdateError("GitHub returned invalid pagination information.")
 
 
 def _platform_suffix(system, machine):
@@ -138,7 +138,7 @@ def _manifest_hash(data, name):
     try:
         lines = data.decode("utf-8-sig").splitlines()
     except UnicodeError as exc:
-        raise UpdateError("GitHub 发布的校验清单无效。") from exc
+        raise UpdateError("The checksum list published on GitHub is invalid.") from exc
     pattern = re.compile(r"([a-fA-F0-9]{64})\s+\*?(?:\./)?" + re.escape(name))
     matches = {m[1].lower() for line in lines if (m := pattern.fullmatch(line.strip()))}
     return matches.pop() if len(matches) == 1 else None
@@ -164,7 +164,7 @@ def _platform_asset(release, suffix, cancelled):
             data, _ = _read(manifest["browser_download_url"], limit=512 * 1024, cancelled=cancelled)
             manifest_digest = _SHA256.fullmatch(str(manifest.get("digest", "")))
             if manifest_digest and sha256(data).hexdigest() != manifest_digest[1].lower():
-                raise UpdateError("GitHub 发布的校验清单无效。")
+                raise UpdateError("The checksum list published on GitHub is invalid.")
             checksum = _manifest_hash(data, name)
             if checksum:
                 return UpdateAsset(name, asset["browser_download_url"], asset["size"], checksum)
@@ -176,7 +176,7 @@ def check_for_update(current_version: str, system: Optional[str] = None, machine
     """Find the highest eligible newer version, independent of GitHub's publication order."""
     current = _version_key(current_version)
     if current is None:
-        raise UpdateError(f"无法识别当前 OrcaView 版本 {current_version}。")
+        raise UpdateError(f"Unrecognized OrcaView version: {current_version}")
     stable_channel = current[3] == _STAGES[None]
     highest = current
     newest = None

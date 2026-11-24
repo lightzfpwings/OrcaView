@@ -34,9 +34,9 @@ _CD_LENGTH = "CD SPECTRUM VIA TRANSITION ELECTRIC DIPOLE MOMENTS"
 _CD_VELOCITY = "CD SPECTRUM VIA TRANSITION VELOCITY DIPOLE MOMENTS"
 _SECTIONS = {_IR, _RAMAN, _FREQUENCIES, _SHIELD, _COUPLING, _LENGTH, _VELOCITY, _CD_LENGTH, _CD_VELOCITY}
 _TRANSITION_MOMENTS = {
-    "SPECTRUM FOR RIGHT TRANSITION MOMENTS": "右跃迁矩",
-    "SPECTRUM FOR LEFT TRANSITION MOMENTS": "左跃迁矩",
-    "SPECTRUM FOR LEFT-RIGHT TRANSITION MOMENTS": "左–右跃迁矩",
+    "SPECTRUM FOR RIGHT TRANSITION MOMENTS": "Right transition moment",
+    "SPECTRUM FOR LEFT TRANSITION MOMENTS": "Left transition moment",
+    "SPECTRUM FOR LEFT-RIGHT TRANSITION MOMENTS": "Left–right transition moment",
 }
 _NUMBER_RE = re.compile(_NUMBER)
 _RULE = re.compile(r"[-=\s]+")
@@ -45,11 +45,11 @@ _NUCLEUS = re.compile(r"[A-Z][a-z]?")
 _MODE_FREQUENCY = re.compile(
     rf"\s*([0-9]{{1,12}}):\s*({_NUMBER})\s+cm(?:\*\*|\^)?-1(?:\s+\**\s*imaginary mode\s*\**)?\s*", re.I
 )
-_WAVENUMBER = "波数（cm⁻¹）"
-_INTENSITY = "红外强度（km/mol）"
-_MODE = ("振动模式", _WAVENUMBER)
-_UV_LEGACY = ("激发态", _WAVENUMBER, "波长（nm）", "振子强度")
-_UV_MODERN = ("跃迁", "能量（eV）", _WAVENUMBER, "波长（nm）", "振子强度")
+_WAVENUMBER = "Wavenumber (cm⁻¹)"
+_INTENSITY = "IR intensity (km/mol)"
+_MODE = ("Vibrational mode", _WAVENUMBER)
+_UV_LEGACY = ("Excited state", _WAVENUMBER, "Wavelength (nm)", "Oscillator strength")
+_UV_MODERN = ("Transition", "Energy (eV)", _WAVENUMBER, "Wavelength (nm)", "Oscillator strength")
 
 
 def _next_content(lines, index):
@@ -157,23 +157,23 @@ def _couplings(lines, heading, start):
                     pairs[pair] = value
     if any(value is not None for value in pairs.values()):
         rows = tuple((f"{i} {a}", f"{j} {b}", value) for ((i, a), (j, b)), value in pairs.items())
-        return SpectrumTable("nmr", "NMR 自旋–自旋耦合", ("原子核 1", "原子核 2", "各向同性 J（Hz）"), rows, heading + 1)
+        return SpectrumTable("nmr", "NMR spin–spin coupling", ("Nucleus 1", "Nucleus 2", "Isotropic J (Hz)"), rows, heading + 1)
 
 
 def _moment_columns(symbol):
-    return (f"{symbol}²（a.u.²）", *(f"{symbol}{axis}（a.u.）" for axis in "xyz"))
+    return (f"{symbol}² (a.u.²)", *(f"{symbol}{axis} (a.u.)" for axis in "xyz"))
 
 
 def _optical_title(lines, heading, title, length_gauge):
-    gauge = "长度表象" if length_gauge else "速度表象"
+    gauge = "Length gauge" if length_gauge else "Velocity gauge"
     for index in range(heading - 1, max(-1, heading - 9), -1):
         line = lines[index].strip().upper()
         if line and not _RULE.fullmatch(line):
             context = _TRANSITION_MOMENTS.get(line)
             if context:
-                gauge += f"，{context}"
+                gauge += f", {context}"
             break
-    return f"{title}（{gauge}）"
+    return f"{title} ({gauge})"
 
 
 def _frequencies(lines, heading, start):
@@ -190,40 +190,40 @@ def _frequencies(lines, heading, start):
             continue
         rows.append((int(match[1]), frequency))
     if rows:
-        return SpectrumTable("vibrations", "振动频率（仅波数）", _MODE, tuple(rows), heading + 1)
+        return SpectrumTable("vibrations", "Vibrational frequencies (wavenumbers only)", _MODE, tuple(rows), heading + 1)
 
 
 def _layout(lines, heading, section, header):
     if section == _IR:
         if header == "mode freq eps int t**2 tx ty tz":
-            columns = _MODE + ("摩尔吸光系数（L·mol⁻¹·cm⁻¹）", _INTENSITY, "T²（a.u.）", "Tx（a.u.）", "Ty（a.u.）", "Tz（a.u.）")
+            columns = _MODE + ("Molar absorptivity (L·mol⁻¹·cm⁻¹)", _INTENSITY, "T² (a.u.)", "Tx (a.u.)", "Ty (a.u.)", "Tz (a.u.)")
         elif header == "mode freq (cm**-1) t**2 tx ty tz":
             # ORCA <= 4.2.1 used a different T**2 convention; keep its native columns.
-            columns = _MODE + ("T²（km/mol）", "Tx", "Ty", "Tz")
+            columns = _MODE + ("T² (km/mol)", "Tx", "Ty", "Tz")
         else:
             return None
-        return "ir", "红外光谱", columns, _mode_row
+        return "ir", "Infrared spectrum", columns, _mode_row
 
     if section == _RAMAN and header == "mode freq (cm**-1) activity depolarization":
-        return "raman", "拉曼光谱", _MODE + ("拉曼活性（Å⁴/amu）", "退偏比"), _mode_row
+        return "raman", "Raman spectrum", _MODE + ("Raman activity (Å⁴/amu)", "Depolarization ratio"), _mode_row
 
     if section == _SHIELD and header == "nucleus element isotropic anisotropy":
-        columns = ("原子核序号", "元素", "各向同性屏蔽（ppm）", "屏蔽各向异性（ppm）")
-        return "nmr", "NMR 化学屏蔽", columns, _shield_row
+        columns = ("Nucleus index", "Element", "Isotropic shielding (ppm)", "Shielding anisotropy (ppm)")
+        return "nmr", "NMR chemical shielding", columns, _shield_row
 
     if section in {_LENGTH, _VELOCITY}:
         length_gauge = section == _LENGTH
         symbol = "D" if length_gauge else "P"
-        title = _optical_title(lines, heading, "紫外–可见吸收", length_gauge)
+        title = _optical_title(lines, heading, "UV–visible absorption", length_gauge)
         if header == f"transition energy energy wavelength fosc({symbol}2) {symbol}2 {symbol}x {symbol}y {symbol}z".lower():
             return "uvvis", title, _UV_MODERN + _moment_columns(symbol), _transition_row
         symbol = "T" if length_gauge else "P"
         if header == f"state energy wavelength fosc {symbol}2 {symbol}x {symbol}y {symbol}z".lower():
-            columns = _UV_LEGACY + _moment_columns(symbol) + ("备注",)
+            columns = _UV_LEGACY + _moment_columns(symbol) + ("Notes",)
             return "uvvis", title, columns, _state_row
     if section in {_CD_LENGTH, _CD_VELOCITY} and header == "transition energy energy wavelength r mx my mz":
-        title = _optical_title(lines, heading, "电子圆二色谱 CD", section == _CD_LENGTH)
-        columns = _UV_MODERN[:4] + ("旋光强度（10⁻⁴⁰ cgs）", "Mx（a.u.）", "My（a.u.）", "Mz（a.u.）")
+        title = _optical_title(lines, heading, "Electronic circular dichroism (CD)", section == _CD_LENGTH)
+        columns = _UV_MODERN[:4] + ("Rotatory strength (10⁻⁴⁰ cgs)", "Mx (a.u.)", "My (a.u.)", "Mz (a.u.)")
         return "cd", title, columns, _transition_row
     return None
 

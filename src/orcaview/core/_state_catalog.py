@@ -69,20 +69,20 @@ _ATTACHMENT = (
 )
 
 STATE_METHOD_GROUPS = (
-    ("多参考活性空间", _CAS),
-    ("态平均与准简并活性空间", tuple((name, "sp") for name in _SA_CAS)),
-    ("多组态线性响应", tuple((name, "sp-aux") for name in MCRPA_METHODS)),
-    ("多参考密度泛函（CASDFT）", tuple((name, "sp") for name in CASDFT_METHODS)),
-    ("多参考微扰", _CAS_PT),
-    ("内收缩多参考 CI / CC 与高阶微扰", _CAS_AUTOCI),
-    ("未收缩多参考 CI（MRCI）", _UNCONTRACTED),
-    ("多参考运动方程（MR-EOM）", _MREOM),
-    ("垂直电子激发能", _RESPONSE),
-    ("双杂化 TD/TDA 激发能", tuple((name, "sp-aux") for name in DOUBLE_HYBRID_RESPONSE)),
-    ("高自旋限制性开壳层 CI（ROCIS）", _ROCIS),
-    ("耦合簇与 ADC 垂直激发能", _CORRELATED_EE),
-    ("垂直电离能（IP）", _IONIZATION),
-    ("垂直电子附着能（EA）", _ATTACHMENT),
+    ("Multireference active space", _CAS),
+    ("State-averaged and quasi-degenerate active spaces", tuple((name, "sp") for name in _SA_CAS)),
+    ("Multiconfiguration linear response", tuple((name, "sp-aux") for name in MCRPA_METHODS)),
+    ("Multireference density functional theory (CASDFT)", tuple((name, "sp") for name in CASDFT_METHODS)),
+    ("Multireference perturbation theory", _CAS_PT),
+    ("Internally contracted multireference CI/CC and higher-order perturbation", _CAS_AUTOCI),
+    ("Uncontracted multireference CI (MRCI)", _UNCONTRACTED),
+    ("Multireference equation of motion (MR-EOM)", _MREOM),
+    ("Vertical electronic excitation energies", _RESPONSE),
+    ("Double-hybrid TD/TDA excitation energies", tuple((name, "sp-aux") for name in DOUBLE_HYBRID_RESPONSE)),
+    ("High-spin restricted open-shell CI (ROCIS)", _ROCIS),
+    ("Coupled-cluster and ADC vertical excitation energies", _CORRELATED_EE),
+    ("Vertical ionization energies (IP)", _IONIZATION),
+    ("Vertical electron attachment energies (EA)", _ATTACHMENT),
 )
 ACTIVE_SPACE_METHODS = (tuple(name for name, _ in _CAS + _CAS_PT + _CAS_AUTOCI + _UNCONTRACTED + _MREOM)
                         + CASDFT_METHODS + _SA_CAS + MCRPA_METHODS)

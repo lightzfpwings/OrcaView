@@ -1,4 +1,4 @@
-"""元素序号，以及仅用于原型显示的半径和颜色。"""
+"""Atomic numbers, radii and colors used to display atoms."""
 
 _SYMBOLS = (
     "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn "
@@ -8,7 +8,7 @@ _SYMBOLS = (
 ).split()
 ATOMIC_NUMBERS = {symbol: index + 1 for index, symbol in enumerate(_SYMBOLS)}
 
-# 单位为 Å；未列出的元素使用显示层回退值，不用于化学键级判断。
+# Radii in angstroms are for display, independent of bond order.
 COVALENT_RADII = {
     "H": 0.31, "He": 0.28, "Li": 1.28, "Be": 0.96, "B": 0.84,
     "C": 0.76, "N": 0.71, "O": 0.66, "F": 0.57, "Ne": 0.58,

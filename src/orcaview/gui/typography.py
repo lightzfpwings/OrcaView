@@ -11,9 +11,9 @@ from PySide6.QtWidgets import QApplication
 WINDOWS = sys.platform == "win32"
 
 _CJK_FAMILIES = {
-    QLocale.Script.SimplifiedHanScript: ("Microsoft YaHei UI", "微软雅黑 UI", "Microsoft YaHei", "微软雅黑"),
-    QLocale.Script.TraditionalHanScript: ("Microsoft JhengHei UI", "微軟正黑體 UI", "Microsoft JhengHei", "微軟正黑體"),
-    QLocale.Script.JapaneseScript: ("Yu Gothic UI", "游ゴシック UI", "Meiryo UI", "メイリオ UI"),
+    QLocale.Script.SimplifiedHanScript: ("Microsoft YaHei UI", "Microsoft YaHei"),
+    QLocale.Script.TraditionalHanScript: ("Microsoft JhengHei UI", "Microsoft JhengHei"),
+    QLocale.Script.JapaneseScript: ("Yu Gothic UI", "Meiryo UI"),
 }
 
 

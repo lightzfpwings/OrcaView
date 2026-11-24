@@ -24,9 +24,9 @@ def design_diagnostics(molecule: Molecule) -> tuple[str, ...]:
     totals = occupied_valences(molecule, molecule.bonds, ambiguous_donors=ambiguous)
     for candidates in ambiguous:
         sites = ", ".join(f"{molecule.atoms[i].element}{i + 1}" for i in candidates)
-        issues.append(f"芳香环的加氢位置有歧义，请手动选择其中一个原子加氢：{sites}。")
+        issues.append(f"The aromatic ring has more than one possible H site. Choose one of these atoms and add H manually: {sites}.")
     for index, (atom, total) in enumerate(zip(molecule.atoms, totals), 1):
         limit = _COMMON_BOND_ORDER_LIMITS.get(atom.element)
         if limit is not None and total > limit:
-            issues.append(f"请检查 {atom.element}{index} 的成键：键级总和为 {total:g}，超出常见范围。")
+            issues.append(f"Check the bonds of {atom.element}{index}: the total bond order ({total:g}) is outside the usual range.")
     return tuple(issues)

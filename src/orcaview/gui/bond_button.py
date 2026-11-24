@@ -12,19 +12,19 @@ from orcaview.i18n import tr
 def _choices(order):
     if order == 1:
         return (
-            ("plain", tr("单键")), ("coordinate", tr("配位键（虚线）")),
-            ("coordinate_arrow", tr("配位键（箭头）")), ("wedge", tr("实心楔形键")),
-            ("hashed_wedge", tr("虚楔键")), ("hollow_wedge", tr("空心楔形键")),
-            ("wavy", tr("波浪键")), ("wavy_wedge", tr("波浪楔形键")),
-            ("hashed", tr("等宽短横线键")), ("bold", tr("粗单键")),
+            ("plain", tr("Single bond")), ("coordinate", tr("Coordinate bond (dashed)")),
+            ("coordinate_arrow", tr("Coordinate bond (arrow)")), ("wedge", tr("Solid wedge")),
+            ("hashed_wedge", tr("Hashed wedge")), ("hollow_wedge", tr("Hollow wedge")),
+            ("wavy", tr("Wavy bond")), ("wavy_wedge", tr("Wavy wedge")),
+            ("hashed", tr("Hashed bond")), ("bold", tr("Bold single bond")),
         )
     if order == 2:
         return (
-            ("plain", tr("双键")), ("aromatic", tr("芳香键（一实一虚，1.5）")),
-            ("crossed", tr("交叉双键（构型未指定）")), ("bold", tr("粗双键")),
-            ("dashed", tr("双虚线键")),
+            ("plain", tr("Double bond")), ("aromatic", tr("Aromatic bond (solid and dashed, 1.5)")),
+            ("crossed", tr("Crossed double bond (unspecified configuration)")), ("bold", tr("Bold double bond")),
+            ("dashed", tr("Dashed double bond")),
         )
-    return (("plain", tr("三键")), ("partial_triple", tr("部分三键（两实一虚，2.5）")))
+    return (("plain", tr("Triple bond")), ("partial_triple", tr("Partial triple bond (two solid, one dashed, 2.5)")))
 
 
 class BondButton(ToolbarMenuButton):

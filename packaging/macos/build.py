@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from release_examples import install_examples
+from release_language import check_release_sources
 
 
 def main():
@@ -17,12 +18,13 @@ def main():
     sys.path.insert(0, str(root / "src"))
     from orcaview import __version__
 
+    check_release_sources(root)
     output = root / "dist" / "macos" / __version__
     output.mkdir(parents=True, exist_ok=True)
     app = output / "OrcaView.app"
     dmg = output / f"OrcaView-{__version__}-macOS-arm64.dmg"
     if app.exists() or dmg.exists():
-        raise SystemExit(f"请先移走上次构建的应用和镜像，再运行打包：{output}")
+        raise SystemExit(f"Move the previous app and disk image before rebuilding: {output}")
 
     # Keep intermediate files on the destination filesystem for final renames.
     with TemporaryDirectory(prefix=".build-", dir=output) as directory:
@@ -34,7 +36,7 @@ def main():
             "--workpath", str(work / "work"), str(packaging_dir / "OrcaView.spec"),
         ], env=env, check=True)
         image_root = work / "image"
-        install_examples(root, image_root / "示例")
+        install_examples(root, image_root / "Examples")
         bundle = image_root / app.name
         (work / "frozen" / app.name).rename(bundle)
         subprocess.run(["codesign", "--verify", "--deep", "--strict", bundle], check=True)

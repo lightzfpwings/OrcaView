@@ -25,11 +25,11 @@ class DatasetAxis(Versioned):
     ids: Optional[Tuple[str, ...]] = None
 
     def __post_init__(self):
-        nonempty(self.kind, "轴类型")
+        nonempty(self.kind, "Axis type")
         if self.ids is not None:
-            identifiers(self.ids, "轴 ID")
+            identifiers(self.ids, "Axis ID")
         elif self.kind in ("atom", "orbital", "mode", "state", "spin"):
-            raise ValueError(f"{self.kind} 轴必须提供有序身份")
+            raise ValueError(f"The {self.kind} axis requires ordered identities")
 
 
 @dataclass(frozen=True)
@@ -54,48 +54,48 @@ class ResultDataset(Versioned):
 
     def __post_init__(self):
         nonempty(self.dataset_id, "dataset_id")
-        nonempty(self.kind, "数据类型")
-        integer(self.data_version, "数据类型版本", 1)
+        nonempty(self.kind, "Data type")
+        integer(self.data_version, "Data type version", 1)
         if not isinstance(self.geometry, GeometryRef) or not isinstance(self.provenance, Provenance):
-            raise ValueError("结果必须绑定几何和来源")
-        nonempty(self.unit, "单位")
+            raise ValueError("The result must reference a geometry and provenance")
+        nonempty(self.unit, "Unit")
         if self.dtype not in ("float64", "int64"):
-            raise ValueError("当前结果 dtype 支持 float64 和 int64")
+            raise ValueError("Supported result dtypes are float64 and int64")
         require_tuple(self.shape, "shape")
-        require_tuple(self.axes, "轴")
+        require_tuple(self.axes, "Axis")
         if len(self.axes) != len(self.shape):
-            raise ValueError("轴数必须与 shape 的维数相符")
+            raise ValueError("The number of axes must match the rank of the shape")
         for size, axis in zip(self.shape, self.axes):
-            integer(size, "维度", 1)
+            integer(size, "Dimension", 1)
             if not isinstance(axis, DatasetAxis) or (axis.ids is not None and len(axis.ids) != size):
-                raise ValueError("轴身份与 shape 不一致")
+                raise ValueError("Axis identities do not match the shape")
         for label in ("method", "density", "spin", "state_id", "missing_reason"):
             if getattr(self, label) is not None:
                 nonempty(getattr(self, label), label)
-        identifiers(self.quality, "质量说明")
+        identifiers(self.quality, "Quality notes")
 
         if self.array_ref is not None:
             if (not isinstance(self.array_ref, ArtifactRef) or self.array_ref.format != "raw-le"
                     or self.array_ref.sha256 is None):
-                raise ValueError("外部数组需要 raw-le 文件及 SHA-256")
+                raise ValueError("An external array requires a raw-le file and a SHA-256 digest")
             if self.values is not None or self.missing_reason is not None:
-                raise ValueError("外部数组不能同时声明内联值或缺失")
+                raise ValueError("An external array cannot also declare inline values or missing data")
         elif self.values is None:
             if self.missing_reason is None:
-                raise ValueError("缺少结果载荷时必须给出缺失原因")
+                raise ValueError("A missing result payload must include a reason")
         else:
-            require_tuple(self.values, "结果值")
+            require_tuple(self.values, "Result values")
             if len(self.values) != math.prod(self.shape):
-                raise ValueError("结果数量与 shape 不一致")
+                raise ValueError("The number of result values does not match the shape")
             if (None in self.values) != (self.missing_reason is not None):
-                raise ValueError("缺失值与缺失原因必须同时声明")
+                raise ValueError("Missing values and their reasons must be declared together")
             if self.dtype == "float64":
-                values = tuple(None if v is None else finite_number(v, "结果值") for v in self.values)
+                values = tuple(None if v is None else finite_number(v, "Result values") for v in self.values)
                 object.__setattr__(self, "values", values)
             else:
                 for value in self.values:
                     if value is not None and (type(value) is not int or not -2**63 <= value < 2**63):
-                        raise ValueError("结果值超出 int64 范围或类型不符")
+                        raise ValueError("The result is outside the int64 range or has an incompatible type")
 
     @property
     def valid_mask(self) -> Optional[Tuple[bool, ...]]:
@@ -106,34 +106,34 @@ class ResultDataset(Versioned):
 
     def validate_geometry(self, snapshot: GeometrySnapshot) -> None:
         if self.geometry != snapshot.ref:
-            raise ValueError("结果与实际几何引用不一致")
+            raise ValueError("The result refers to a different geometry")
         if not snapshot.atom_ids:
-            raise ValueError("分子至少需要一个原子")
+            raise ValueError("A molecule requires at least one atom")
         atoms = set(snapshot.atom_ids)
         for axis in self.axes:
             if axis.kind == "atom" and not atoms.issuperset(axis.ids):
-                raise ValueError("结果轴包含该几何中不存在的原子 ID")
+                raise ValueError("The result axis contains atom IDs absent from this geometry")
 
     @contextmanager
     def open_array(self, path: Path):
         """Yield a verified, read-only mapping. Release borrowed buffers before leaving the block."""
         if self.array_ref is None:
-            raise ValueError("数据集没有外部数组")
+            raise ValueError("The dataset has no external array")
         size = math.prod(self.shape) * 8
         digest = sha256()
         # A private copy stays immutable even if the source is edited or replaced.
         with Path(path).open("rb") as source, tempfile.TemporaryFile() as owned:
             if os.fstat(source.fileno()).st_size != size:
-                raise ValueError("外部数组字节数与 dtype/shape 不符")
+                raise ValueError("The external array byte count does not match its dtype and shape")
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
                 if owned.tell() + len(chunk) > size or len(chunk) % 8:
-                    raise ValueError("外部数组长度已改变")
+                    raise ValueError("The external array length has changed")
                 if self.dtype == "float64" and any(not math.isfinite(v) for (v,) in struct.iter_unpack("<d", chunk)):
-                    raise ValueError("外部数组包含非有限实数")
+                    raise ValueError("The external array contains nonfinite numbers")
                 digest.update(chunk)
                 owned.write(chunk)
             if owned.tell() != size or digest.hexdigest() != self.array_ref.sha256:
-                raise ValueError("外部数组内容与记录的 SHA-256 或大小不符")
+                raise ValueError("The external array differs from its recorded SHA-256 digest or size")
             owned.flush()
             with mmap.mmap(owned.fileno(), size, access=mmap.ACCESS_READ) as mapping:
                 yield mapping

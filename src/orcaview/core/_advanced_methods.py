@@ -92,18 +92,18 @@ def check_extrapolation_basis(name, molecule):
 
 
 ADVANCED_GROUPS = (
-    ("LibXC 纯泛函", _libxc(LIBXC_PURE, "sp")),
-    ("LibXC 杂化泛函", _libxc(LIBXC_HYBRID, "sp")),
-    ("LibXC 双杂化泛函", _libxc(LIBXC_DOUBLE, "sp-aux")),
-    ("显式相关 F12", _group(_F12, "sp") + _group(_F12_RI, "sp-aux")),
-    ("自动生成单参考关联 AUTOCI", _AUTOCI),
-    ("高阶关联 MRCC（外部程序）", tuple(("MRCC-" + m, "sp") for m in _MRCC.split())),
-    ("解析密度泛函 ADFT", _group("ADFT(XAlpha) ADFT(HF) ADFT(CC)", "numeric-freq")),
-    ("随机相位近似 RPA", (("RPAC(PBE)", "sp-aux"),)),
-    ("全组态相互作用", (("FCI", "sp"),)),
-    ("完备基组极限 CBS 外推", tuple((name, "fixed-sp") for name in CBS_PROTOCOLS)),
-    ("外部 xTB 与力场", _group("GFN0-xTB GFN1-xTB GFN2-xTB GFN-FF", "semiempirical")),
-    ("分子内团簇近似 CIM", _group("CIM-RI-MP2 CIM-DLPNO-MP2 CIM-DLPNO-CCSD(T)", "sp-aux")
+    ("LibXC pure functionals", _libxc(LIBXC_PURE, "sp")),
+    ("LibXC hybrid functionals", _libxc(LIBXC_HYBRID, "sp")),
+    ("LibXC double-hybrid functionals", _libxc(LIBXC_DOUBLE, "sp-aux")),
+    ("Explicit correlation F12", _group(_F12, "sp") + _group(_F12_RI, "sp-aux")),
+    ("Automatic single-reference correlation (AUTOCI)", _AUTOCI),
+    ("Higher-order correlation with external MRCC", tuple(("MRCC-" + m, "sp") for m in _MRCC.split())),
+    ("Analytic density functional theory (ADFT)", _group("ADFT(XAlpha) ADFT(HF) ADFT(CC)", "numeric-freq")),
+    ("Random phase approximation (RPA)", (("RPAC(PBE)", "sp-aux"),)),
+    ("Full configuration interaction", (("FCI", "sp"),)),
+    ("Complete basis set extrapolation (CBS)", tuple((name, "fixed-sp") for name in CBS_PROTOCOLS)),
+    ("External xTB and force fields", _group("GFN0-xTB GFN1-xTB GFN2-xTB GFN-FF", "semiempirical")),
+    ("Cluster-in-molecules (CIM)", _group("CIM-RI-MP2 CIM-DLPNO-MP2 CIM-DLPNO-CCSD(T)", "sp-aux")
      + _group("CIM-CCSD(T)", "sp")),
 )
 
@@ -150,16 +150,16 @@ def advanced_input(name, multiplicity):
         method, pair = CBS_PROTOCOLS[name]
         return f"{method} Extrapolate({pair}) TightSCF Conv", ()
     if name in ("F12-DLPNO-MP2", "F12/D-DLPNO-MP2") and multiplicity != 1:
-        raise ValueError(f"{name} 要求限制性闭壳层参考态")
+        raise ValueError(f"{name} requires a restricted closed-shell reference")
     if name.startswith("CIM-"):
         if multiplicity != 1:
-            raise ValueError("CIM 要求闭壳层单重参考态")
+            raise ValueError("CIM requires a closed-shell singlet reference")
         return name[4:] + " CIM", ()
     if name == "FCI":
         return "HF", ("%casscf", "  DoFCI true", f"  mult {multiplicity}", "  nroots 1", "end")
     if name.startswith("MRCC-"):
         if multiplicity != 1:
-            raise ValueError("外部 MRCC 接口只支持闭壳层单重参考态")
+            raise ValueError("The external MRCC interface supports only a closed-shell singlet reference")
         return "HF Conv", ("%mrcc", f'  method "{name[5:]}"', "end")
     if name.startswith("ADFT("):
         return name + " XFit/3", ()

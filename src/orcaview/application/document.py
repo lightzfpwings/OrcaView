@@ -34,9 +34,9 @@ class StaleRevisionError(ValueError):
 class MoleculeDocument:
     def __init__(self, initial: GeometrySnapshot):
         if initial.ref.revision != 1 or initial.ref.frame_id is not None or initial.parent is not None:
-            raise ValueError("文档必须从无父引用的第 1 个修订开始")
+            raise ValueError("A document must start at revision 1 with no parent reference")
         if initial.provenance.kind == HISTORY_RESTORE_KIND:
-            raise ValueError("初始几何不能声明历史恢复")
+            raise ValueError("The initial geometry cannot declare a history restore")
         self._head = initial
         self._snapshots = {initial.ref.snapshot_id: initial}
         self._frame_keys = set()
@@ -62,7 +62,7 @@ class MoleculeDocument:
         with self._lock:
             snapshot = self._snapshots.get(ref.snapshot_id)
             if snapshot is None or snapshot.ref != ref:
-                raise GeometryLookupError(f"此文档中没有指定的修订或帧：{ref}")
+                raise GeometryLookupError(f"The document does not contain the requested revision or frame: {ref}")
             return snapshot
 
     def publish_revision(self, expected: GeometryRef, molecule: Molecule,
@@ -70,16 +70,16 @@ class MoleculeDocument:
                          provenance: Optional[Provenance] = None, *,
                          source_unit: str = "angstrom", sketch_xy: Optional[SketchCoordinates] = None) -> GeometrySnapshot:
         """Pass the surviving IDs in new row order and None for each newly added atom."""
-        require_tuple(atom_ids, "修订的原子映射")
+        require_tuple(atom_ids, "Revision atom mapping")
         with self._lock:
             base = self._head
             if expected != base.ref:
-                raise StaleRevisionError("基准几何已变更或不是当前修订")
+                raise StaleRevisionError("The base geometry has changed or is not the current revision")
             active = set(base.atom_ids)
             if any(i is not None and (not isinstance(i, str) or i not in active) for i in atom_ids):
-                raise ValueError("只能沿用基准修订中的原子 ID；新增原子请传 None")
+                raise ValueError("Only atom IDs from the base revision may be reused. Pass None for new atoms")
             if isinstance(provenance, Provenance) and provenance.kind == HISTORY_RESTORE_KIND:
-                raise ValueError("历史恢复必须通过 restore_revision 提交")
+                raise ValueError("History restores must use restore_revision")
             snapshot = GeometrySnapshot(
                 GeometryRef(base.ref.document_id, base.ref.revision + 1), molecule,
                 tuple(new_id() if i is None else i for i in atom_ids),
@@ -98,12 +98,12 @@ class MoleculeDocument:
         with self._lock:
             base = self._head
             if expected != base.ref:
-                raise StaleRevisionError("基准几何已变更或不是当前修订")
+                raise StaleRevisionError("The base geometry has changed or is not the current revision")
             if not isinstance(target, GeometryRef):
-                raise ValueError("恢复目标必须是完整的 GeometryRef")
+                raise ValueError("The restore target must be a complete GeometryRef")
             original = self.resolve(target)
             if target.frame_id is not None or target == base.ref:
-                raise ValueError("恢复目标必须是已发布的历史修订，不能是当前修订或实际帧")
+                raise ValueError("The restore target must be a published historical revision")
             snapshot = GeometrySnapshot(
                 GeometryRef(base.ref.document_id, base.ref.revision + 1),
                 original.molecule, original.atom_ids, _restore_provenance(target),
@@ -118,7 +118,7 @@ class MoleculeDocument:
         """Attach an actual source frame to a revision without moving the editable head."""
         with self._lock:
             if base.frame_id is not None or frame_id is None:
-                raise ValueError("实际帧需要所属修订和明确的帧 ID")
+                raise ValueError("An actual frame requires its owning revision and an explicit frame ID")
             snapshot = GeometrySnapshot(GeometryRef(base.document_id, base.revision, frame_id),
                                         molecule, atom_ids, provenance, base, source_unit)
             self._append(snapshot)
@@ -127,37 +127,37 @@ class MoleculeDocument:
     def _append(self, snapshot: GeometrySnapshot) -> None:
         ref, head = snapshot.ref, self._head
         if ref.document_id != head.ref.document_id or ref.snapshot_id in self._snapshots:
-            raise ValueError("几何引用跨文档或重复")
+            raise ValueError("The geometry reference is duplicated or belongs to another document")
         artifacts = self._check_artifacts(snapshot.provenance.parents)
         if ref.frame_id is None:
             if snapshot.parent != head.ref or ref.revision != head.ref.revision + 1:
-                raise ValueError("修订链不连续或父修订不符")
+                raise ValueError("The revision chain is discontinuous or the parent revision is invalid")
             is_restore = snapshot.provenance.kind == HISTORY_RESTORE_KIND
             if is_restore:
                 self._check_restoration(snapshot)
             added = set(snapshot.atom_ids).difference(head.atom_ids)
             if added.intersection(self._known_atoms) and not is_restore:
-                raise ValueError("已移除的原子 ID 不能用于新原子")
+                raise ValueError("Removed atom IDs cannot be reused for new atoms")
             self._known_atoms.update(added)
             self._head = snapshot
         else:
             if snapshot.provenance.kind == HISTORY_RESTORE_KIND:
-                raise ValueError("实际帧不能声明历史恢复")
+                raise ValueError("An actual frame cannot declare a history restore")
             parent = snapshot.parent
             if (parent is None or parent.frame_id is not None or parent.revision != ref.revision
                     or parent.document_id != ref.document_id):
-                raise ValueError("帧必须绑定所属修订")
+                raise ValueError("The frame must reference its owning revision")
             frame_key = (ref.revision, ref.frame_id)
             if frame_key in self._frame_keys:
-                raise ValueError("所属修订中已存在该帧 ID")
+                raise ValueError("The frame ID already exists in this revision")
             base = self.resolve(parent)
             elements = dict(zip(base.atom_ids, (a.element for a in base.molecule.atoms)))
             if (set(snapshot.atom_ids) != set(elements)
                     or any(elements[i] != a.element for i, a in zip(snapshot.atom_ids, snapshot.molecule.atoms))):
-                raise ValueError("帧的原子身份或对应元素不一致")
+                raise ValueError("Frame atom identities or corresponding elements do not match")
             if ((snapshot.molecule.charge, snapshot.molecule.multiplicity)
                     != (base.molecule.charge, base.molecule.multiplicity)):
-                raise ValueError("同一修订的帧必须使用该修订的电荷和多重度")
+                raise ValueError("Frames must use the charge and multiplicity of their revision")
             self._frame_keys.add(frame_key)
         self._snapshots[ref.snapshot_id] = snapshot
         self._artifacts.update(artifacts)
@@ -168,17 +168,17 @@ class MoleculeDocument:
         target = self._snapshots.get(parameters.get("target_snapshot_id"))
         if (target is None or target.ref.frame_id is not None or target.ref == self._head.ref
                 or snapshot.provenance != _restore_provenance(target.ref)):
-            raise ValueError("历史恢复来源必须精确引用本文件中已发布的历史修订及受支持的协议")
+            raise ValueError("Restored history must reference a published historical revision in this file using a supported protocol")
         if (snapshot.molecule != target.molecule or snapshot.atom_ids != target.atom_ids
                 or snapshot.source_unit != target.source_unit or snapshot.sketch_xy != target.sketch_xy):
-            raise ValueError("历史恢复必须完整保留目标的几何、原子映射、键、电子态和源单位")
+            raise ValueError("A history restore must preserve the target geometry, atom mapping, bonds, electronic state and source units")
 
     def _check_artifacts(self, refs):
         batch = {}
         for item in refs:
             previous = batch.get(item.artifact_id, self._artifacts.get(item.artifact_id))
             if previous is not None and item != previous:
-                raise ValueError("同一文件 ID 的来源记录冲突")
+                raise ValueError("Conflicting provenance records for the same file ID")
             batch[item.artifact_id] = item
         return batch
 
@@ -187,14 +187,14 @@ class MoleculeDocument:
             try:
                 return self._artifacts[artifact_id]
             except KeyError as exc:
-                raise ValueError("文档中没有指定的文件 ID") from exc
+                raise ValueError("The file ID is not present in the document") from exc
 
     def add_dataset(self, dataset: ResultDataset) -> None:
         with self._lock:
             dataset.validate_geometry(self.resolve(dataset.geometry))
             previous = self._datasets.get(dataset.dataset_id)
             if previous is not None and previous != dataset:
-                raise ValueError("数据集 ID 已绑定其他内容")
+                raise ValueError("This dataset ID is bound to other content")
             refs = dataset.provenance.parents
             if dataset.array_ref is not None:
                 refs += (dataset.array_ref,)
@@ -206,7 +206,7 @@ class MoleculeDocument:
             try:
                 return self._datasets[dataset_id]
             except KeyError as exc:
-                raise ValueError("文档中没有指定的数据集") from exc
+                raise ValueError("The requested dataset is not present in the document") from exc
 
     def records(self) -> Tuple[Tuple[GeometrySnapshot, ...], Tuple[ResultDataset, ...]]:
         """Capture one coherent, immutable generation for persistence."""
@@ -216,12 +216,12 @@ class MoleculeDocument:
     @classmethod
     def restore(cls, snapshots: Tuple[GeometrySnapshot, ...], datasets: Tuple[ResultDataset, ...]):
         if not snapshots:
-            raise ValueError("项目没有初始几何")
+            raise ValueError("The project has no initial geometry")
         doc = cls(snapshots[0])
         for snapshot in snapshots[1:]:
             doc._append(snapshot)
         for dataset in datasets:
             if dataset.dataset_id in doc._datasets:
-                raise ValueError("项目含重复的数据集 ID")
+                raise ValueError("The project contains duplicate dataset IDs")
             doc.add_dataset(dataset)
         return doc

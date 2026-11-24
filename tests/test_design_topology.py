@@ -107,7 +107,7 @@ class DesignTopologyTests(unittest.TestCase):
             self.assertEqual(load_project(path).molecule.bonds, (Bond(0, 1, 3),))
             bond_record["style"] = "partial_triple"
             path.write_text(json.dumps(record))
-            with self.assertRaisesRegex(ValueError, "未知字段"):
+            with self.assertRaisesRegex(ValueError, "unknown fields"):
                 load_project(path)
 
     def test_fractional_and_coordinate_bonds_contribute_to_valence_by_endpoint(self):
@@ -119,4 +119,4 @@ class DesignTopologyTests(unittest.TestCase):
         reverse = Bond(3, 0, 1, "coordinate")
         self.assertEqual((reverse.valence_at(3), reverse.valence_at(0)), (0, 1))
         molecule = Molecule("mixed", atoms, (*molecule.bonds[:2], reverse, molecule.bonds[-1]))
-        self.assertTrue(any("C1" in issue and " 5，" in issue for issue in design_diagnostics(molecule)))
+        self.assertTrue(any("C1" in issue and "(5)" in issue for issue in design_diagnostics(molecule)))

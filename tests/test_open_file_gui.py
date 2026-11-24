@@ -44,7 +44,7 @@ class OpenFileWindowTests(unittest.TestCase):
     def _open(self, path):
         with patch.object(QFileDialog, "getOpenFileName", return_value=(str(path), "")) as dialog:
             self.window.open_file_action.trigger()
-        self.assertEqual(dialog.call_args.args[1], "打开文件")
+        self.assertEqual(dialog.call_args.args[1], "Open file")
         self.assertIn("*.sdf", dialog.call_args.args[3])
 
     def _wait(self, predicate):
@@ -117,7 +117,7 @@ class OpenFileWindowTests(unittest.TestCase):
             if not isinstance(box, QMessageBox):
                 return
             messages.append(box.text())
-            if "是否" in box.text():
+            if "Remove periodicity" in box.text():
                 button = box.button(choice)
                 if button is None:
                     role = QMessageBox.ButtonRole.YesRole if choice == QMessageBox.StandardButton.Yes else QMessageBox.ButtonRole.NoRole
@@ -135,7 +135,7 @@ class OpenFileWindowTests(unittest.TestCase):
         timer.start(20)
         self.addCleanup(timer.stop)
         self._open(path)
-        self._wait(lambda: any("不支持周期性结构" in msg for msg in messages))
+        self._wait(lambda: any("Periodic structures are unsupported" in msg for msg in messages))
         self.assertIs(self.window.session, initial)
         self.assertEqual(self.window.workspace_tabs.currentIndex(), 0)
         choice = QMessageBox.StandardButton.Yes
@@ -144,6 +144,6 @@ class OpenFileWindowTests(unittest.TestCase):
         head = self.window.session.document.head
         self.assertEqual([a.x for a in head.molecule.atoms], [0.1, 5.9])
         self.assertEqual(dict(head.provenance.parameters)["periodicity"], "removed")
-        self.assertEqual(sum("是否" in text for text in messages), 2)
+        self.assertEqual(sum("Remove periodicity" in text for text in messages), 2)
         self.assertFalse(unexpected)
         self.assertEqual(path.read_bytes(), raw)

@@ -110,15 +110,15 @@ class EditorServiceTests(unittest.TestCase):
         self.doc.add_dataset(value)
         empty = self.commit(DeleteAtoms(self.root.atom_ids)).snapshot
         session = Session.from_document(self.doc, CalculationSpec(), "")
-        with self.assertRaisesRegex(ValueError, "至少需要一个原子"):
+        with self.assertRaisesRegex(ValueError, "at least one atom"):
             session.input_text()
-        with self.assertRaisesRegex(ValueError, "至少需要一个原子"):
+        with self.assertRaisesRegex(ValueError, "at least one atom"):
             write_xyz(empty.molecule)
         with self.assertRaises(ValueError):
             parse_xyz("0\nempty\n")
-        with self.assertRaisesRegex(ValueError, "至少需要一个原子"):
+        with self.assertRaisesRegex(ValueError, "at least one atom"):
             self.doc.add_frame(empty.ref, "calculation", empty.molecule, (), Provenance("source-frame"))
-        with self.assertRaisesRegex(ValueError, "至少需要一个原子"):
+        with self.assertRaisesRegex(ValueError, "at least one atom"):
             self.doc.add_dataset(replace(value, geometry=empty.ref))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "design.oview.json"
@@ -128,7 +128,7 @@ class EditorServiceTests(unittest.TestCase):
             self.assertEqual(payload["schema_version"], 10)
             payload["schema_version"] = 9
             path.write_text(json.dumps(payload))
-            with self.assertRaisesRegex(ValueError, "至少需要一个原子"):
+            with self.assertRaisesRegex(ValueError, "at least one atom"):
                 load_project(path)
             self.editor.undo()
             save_project(session, path)

@@ -34,19 +34,19 @@ def solvation_options(method, job):
 
 def validate_solvation(spec):
     if spec.solvation_model not in solvation_options(spec.method, spec.job_type):
-        raise ValueError(f"{spec.method} / {spec.job_type} 不支持溶剂模型 {spec.solvation_model!r}")
+        raise ValueError(f"{spec.method} / {spec.job_type} does not support solvent model {spec.solvation_model!r}")
     if spec.solvation_model == "DDCOSMO" and spec.solvent is None:
         from .block_options import BlockOverride
         if not isinstance(spec.block_options, tuple) or not any(
                 isinstance(option, BlockOverride) and (option.block, option.key) == ("xtb", "EPSILON")
                 for option in spec.block_options):
-            raise ValueError("自定义 ddCOSMO 介质需要指定 %xtb EPSILON")
+            raise ValueError("Custom ddCOSMO media require %xtb EPSILON")
         return
     if spec.solvation_model == "Gas":
         if spec.solvent is not None:
-            raise ValueError("气相计算不能指定溶剂")
+            raise ValueError("Gas-phase calculations cannot specify a solvent")
     elif not isinstance(spec.solvent, str) or spec.solvent.lower() not in SOLVENTS[spec.solvation_model]:
-        raise ValueError(f"{spec.solvation_model} 需要从该模型的溶剂列表选择溶剂，收到 {spec.solvent!r}")
+        raise ValueError(f"{spec.solvation_model} requires a solvent from its own list; received {spec.solvent!r}")
 
 
 def solvation_input(spec):
@@ -82,24 +82,24 @@ def uses_numerical_frequencies(spec):
 def solvation_block_options(spec):
     from ._block_catalog import BlockOption
     if spec.solvation_model == "DDCOSMO" and spec.solvent is None:
-        return (BlockOption("xtb", "EPSILON", "介电常数", "float", minimum=1),)
+        return (BlockOption("xtb", "EPSILON", "Dielectric constant", "float", minimum=1),)
     if spec.solvation_model not in ("CPCM", "SMD"):
         return ()
     if spec.solvation_model == "CPCM":
         options = [
-            BlockOption("cpcm", "epsilon", "静态介电常数", "float", minimum=1),
-            BlockOption("cpcm", "refrac", "折射率", "float", minimum=0, minimum_exclusive=True),
+            BlockOption("cpcm", "epsilon", "Static dielectric constant", "float", minimum=1),
+            BlockOption("cpcm", "refrac", "Refractive index", "float", minimum=0, minimum_exclusive=True),
         ]
         if spec.method in _CC:
-            options.append(BlockOption("cpcm", "CPCMccm", "耦合簇溶剂方案（0、1 或 2）", "int", 0, 2))
+            options.append(BlockOption("cpcm", "CPCMccm", "Coupled-cluster solvation scheme (0, 1 or 2)", "int", 0, 2))
         return tuple(options)
     return (
-        BlockOption("cpcm", "SMD18", "使用 SMD18 的溴、碘半径", "bool"),
-        BlockOption("cpcm", "soln", "293 K 光学折射率", "float", minimum=0, minimum_exclusive=True),
-        BlockOption("cpcm", "soln25", "298 K 光学折射率", "float", minimum=0, minimum_exclusive=True),
-        BlockOption("cpcm", "sola", "氢键酸度", "float"),
-        BlockOption("cpcm", "solb", "氢键碱度", "float"),
-        BlockOption("cpcm", "solg", "相对宏观表面张力", "float"),
-        BlockOption("cpcm", "solc", "芳香非氢原子比例", "float", 0, 1),
-        BlockOption("cpcm", "solh", "F、Cl、Br 占非氢原子的比例", "float", 0, 1),
+        BlockOption("cpcm", "SMD18", "Use SMD18 radii for bromine and iodine", "bool"),
+        BlockOption("cpcm", "soln", "Optical refractive index at 293 K", "float", minimum=0, minimum_exclusive=True),
+        BlockOption("cpcm", "soln25", "Optical refractive index at 298 K", "float", minimum=0, minimum_exclusive=True),
+        BlockOption("cpcm", "sola", "Hydrogen bond acidity", "float"),
+        BlockOption("cpcm", "solb", "Hydrogen bond basicity", "float"),
+        BlockOption("cpcm", "solg", "Relative macroscopic surface tension", "float"),
+        BlockOption("cpcm", "solc", "Fraction of aromatic nonhydrogen atoms", "float", 0, 1),
+        BlockOption("cpcm", "solh", "Fraction of F, Cl and Br among nonhydrogen atoms", "float", 0, 1),
     )

@@ -71,7 +71,7 @@ def _write_file(directory_fd: int, name: str, content: bytes) -> None:
 
 def _require_private_file(info: os.stat_result, name: str) -> None:
     if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-        raise ValueError(f"尝试目录需使用独立的普通文件：{name}")
+        raise ValueError(f"The attempt directory requires a separate regular file: {name}")
 
 
 def _verify_sha256(directory_fd: int, name: str, expected: str) -> None:
@@ -86,15 +86,15 @@ def _verify_sha256(directory_fd: int, name: str, expected: str) -> None:
     finally:
         os.close(fd)
     if digest.hexdigest() != expected:
-        raise ValueError(f"尝试目录中的文件与冻结内容不符：{name}")
+        raise ValueError(f"The attempt file differs from the frozen content: {name}")
 
 
 def stage_attempt(root: Path, attempt_id: str, snapshot: InputSnapshot) -> Path:
     """Exclusively stage one attempt. Retain any evidence if staging fails."""
     if not isinstance(attempt_id, str) or not _ATTEMPT_ID.fullmatch(attempt_id):
-        raise ValueError("无效的尝试 ID")
+        raise ValueError("Invalid attempt ID")
     if not isinstance(snapshot, InputSnapshot):
-        raise ValueError("尝试目录需要 M3 InputSnapshot")
+        raise ValueError("The attempt directory requires an M3 InputSnapshot")
     root = root.absolute()
     root.mkdir(parents=True, exist_ok=True)
     with _open_directory(root) as root_fd:
@@ -116,14 +116,14 @@ def verify_attempt_inputs(
     """Recheck the fresh workspace and its manifest before launching ORCA."""
     if any(not isinstance(name, str) or not _METADATA_NAME.fullmatch(name)
            for name in allowed_metadata):
-        raise ValueError("无效的尝试元数据文件名")
+        raise ValueError("Invalid attempt metadata file name")
     files = _snapshot_files(snapshot)
     with _open_directory(directory) as attempt_fd:
         expected = {path for path, _, _, _ in files} | {ATTEMPT_METADATA}
         actual = set(os.listdir(attempt_fd))
         if actual != expected:
             changed = ", ".join(sorted(actual ^ expected))
-            raise ValueError(f"尝试目录中的文件与冻结清单不一致：{changed}")
+            raise ValueError(f"The attempt files differ from the frozen manifest: {changed}")
         for path, _, _, expected_digest in files:
             _verify_sha256(attempt_fd, path, expected_digest)
         with _open_directory(ATTEMPT_METADATA, parent_fd=attempt_fd) as metadata_fd:
@@ -131,7 +131,7 @@ def verify_attempt_inputs(
             unexpected = extras.difference(allowed_metadata)
             if unexpected:
                 changed = ", ".join(sorted(unexpected))
-                raise ValueError(f"尝试目录含未预期的元数据：{changed}")
+                raise ValueError(f"The attempt directory contains unexpected metadata: {changed}")
             for name in extras:
                 _require_private_file(os.stat(name, dir_fd=metadata_fd, follow_symlinks=False), name)
             _verify_sha256(metadata_fd, INPUT_MANIFEST, sha256(_manifest_bytes(snapshot)).hexdigest())

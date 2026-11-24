@@ -87,14 +87,14 @@ def _line_numbers(lines, pattern):
 def _finite(token):
     value = float(token.replace("D", "E").replace("d", "e"))
     if not isfinite(value):
-        raise ValueError("数值超出有限浮点范围")
+        raise ValueError("The number is outside the finite floating-point range")
     return value
 
 
 def _table(lines, heading):
     """Read a dashed ORCA table as indexed, contiguous source rows."""
     if heading >= len(lines) or not _DASHES.fullmatch(lines[heading]):
-        raise ValueError("数据表缺少标题分隔线")
+        raise ValueError("The table is missing its header separator")
     for index in range(heading + 1, len(lines)):
         line = lines[index]
         if not line or _DASHES.fullmatch(line):
@@ -105,8 +105,8 @@ def _table(lines, heading):
 def _geometry(lines, angstrom, bohr, atom_counts, scf_line):
     if len(angstrom) != 1:
         if angstrom:
-            return (), angstrom[0], OutputIssue("ambiguous_geometry", "存在多个 Å 坐标表。", angstrom[1])
-        return (), None, OutputIssue("missing_geometry", "未找到实际 Å 笛卡尔坐标表。")
+            return (), angstrom[0], OutputIssue("ambiguous_geometry", "Multiple coordinate tables in angstroms were found.", angstrom[1])
+        return (), None, OutputIssue("missing_geometry", "No actual Cartesian coordinate table in angstroms was found.")
     heading = angstrom[0]
     atoms = []
     row_number = heading
@@ -114,22 +114,22 @@ def _geometry(lines, angstrom, bohr, atom_counts, scf_line):
         for row_number, row in _table(lines, heading):
             match = _XYZ_ROW.fullmatch(row)
             if not match or match[1] not in ATOMIC_NUMBERS:
-                raise ValueError("Å 坐标表含有未知元素或不符合格式的坐标行")
+                raise ValueError("The coordinate table in angstroms has an unknown element or malformed row")
             atoms.append(Atom(match[1], *(_finite(value) for value in match.groups()[1:])))
         if not atoms:
-            raise ValueError("Å 坐标表为空")
+            raise ValueError("The coordinate table in angstroms is empty")
     except ValueError as error:
         return (), heading, OutputIssue("invalid_geometry", str(error), row_number)
     if any(count != len(atoms) for _, count in atom_counts):
         count_line = next(line for line, count in atom_counts if count != len(atoms))
-        return (), heading, OutputIssue("conflicting_geometry", "实际坐标与输出中的原子总数不一致。", count_line)
+        return (), heading, OutputIssue("conflicting_geometry", "The actual coordinates do not match the reported atom count.", count_line)
     if bohr:
         conflict = _crosscheck_bohr(lines, heading, bohr, atoms, scf_line)
         if conflict is not None:
             return (), heading, conflict
     elif not any(heading < line and (scf_line is None or line < scf_line) for line, _ in atom_counts):
         return tuple(atoms), heading, OutputIssue(
-            "missing_atom_count", "缺少可核对 Å 坐标表完整性的 Bohr 坐标或计算前原子总数。", heading,
+            "missing_atom_count", "Missing Bohr coordinates or precalculation atom count to verify the coordinate table in angstroms.", heading,
         )
     return tuple(atoms), heading, None
 
@@ -161,7 +161,7 @@ def _crosscheck_bohr(lines, heading, bohr, atoms, scf_line):
             raise ValueError
     except ValueError:
         return OutputIssue(
-            "conflicting_geometry", "Bohr 坐标表格式、原子身份或单位换算与 Å 坐标表不一致。", row_number,
+            "conflicting_geometry", "The Bohr table format, atom identities or unit conversion disagree with the table in angstroms.", row_number,
         )
     return None
 
@@ -181,24 +181,24 @@ def _electronic_state(lines, echoed_lines, geometry_line, scf_line, atoms):
     charge = multiplicity = None
     try:
         if len(echo_states) > 1 or (geometry_line is not None and any(line >= geometry_line for line in echo_states)):
-            raise ValueError("回显包含多个几何输入或位于实际几何表之后。")
+            raise ValueError("The input echo contains multiple geometries or follows the actual geometry table.")
         for entries in (charges, multiplicities):
             if any(not re.fullmatch(_INT, value) for _, value in entries):
-                raise ValueError("总电荷和多重度必须为明确的整数。")
+                raise ValueError("Total charge and multiplicity must be explicit integers.")
             if len({int(value) for _, value in entries}) > 1:
-                raise ValueError("输出与回显输入的总电荷或多重度证据不一致。")
+                raise ValueError("Charge or multiplicity in the output and input echo disagree.")
             if scf_line is not None and any(line >= scf_line for line, _ in entries):
-                raise ValueError("电子态证据出现在 SCF 证据之后。")
+                raise ValueError("Electronic state information appears after the SCF evidence.")
         if charge_line is not None:
             charge = int(charges[0][1])
         if multiplicity_line is not None:
             multiplicity = int(multiplicities[0][1])
         if charge is None or multiplicity is None:
             return charge, multiplicity, charge_line, multiplicity_line, OutputIssue(
-                "missing_electronic_state", "缺少有明确证据的总电荷或自旋多重度。", geometry_line,
+                "missing_electronic_state", "No unambiguous total charge or spin multiplicity was found.", geometry_line,
             )
         if multiplicity < 1:
-            raise ValueError("自旋多重度必须为正整数。")
+            raise ValueError("Spin multiplicity must be a positive integer.")
         if atoms:
             Molecule("ORCA output", atoms, charge=charge, multiplicity=multiplicity).validate()
     except ValueError as error:
@@ -211,30 +211,30 @@ def _electronic_state(lines, echoed_lines, geometry_line, scf_line, atoms):
 def _energy(lines):
     entries = list(_matches(lines, r"FINAL\s+SINGLE\s+POINT\s+ENERGY\b\s*(.*)"))
     if not entries:
-        return None, None, OutputIssue("missing_energy", "未找到最终单点能。")
+        return None, None, OutputIssue("missing_energy", "No final single-point energy was found.")
     heading, match = entries[0]
     if len(entries) > 1:
-        return None, heading, OutputIssue("ambiguous_energy", "存在多个最终单点能条目。", entries[1][0])
+        return None, heading, OutputIssue("ambiguous_energy", "Multiple final single-point energies were found.", entries[1][0])
     value = re.fullmatch(rf"({_NUMBER})(?:\s+(?:EH|HARTREE))?", match[1], re.I)
     try:
         if value is None:
             raise ValueError
         return _finite(value[1]), heading, None
     except ValueError:
-        return None, heading, OutputIssue("invalid_energy", "最终单点能不是有限的 Hartree 数值。", heading)
+        return None, heading, OutputIssue("invalid_energy", "The final single-point energy is not a finite Hartree value.", heading)
 
 
 def _mulliken(lines, atoms, charge, scf_line, normal_line):
     headings = list(_matches(lines, r"MULLIKEN ATOMIC CHARGES\b(.*)"))
     if not headings:
-        return None, None, "输出中没有 Mulliken 原子电荷表。", None
+        return None, None, "The output has no Mulliken atomic charge table.", None
     heading, match = headings[0]
     row_number = heading
     try:
         if len(headings) > 1 or match[1]:
-            raise ValueError("Mulliken 表不唯一或标题超出当前支持的电荷表格式。")
+            raise ValueError("The Mulliken table is ambiguous or uses an unsupported header.")
         if not (scf_line is not None and normal_line is not None and scf_line < heading < normal_line):
-            raise ValueError("Mulliken 电荷表不在已核对的计算区间内。")
+            raise ValueError("The Mulliken charge table lies outside the verified calculation interval.")
         values = []
         printed_total = None
         for row_number, row in _table(lines, heading):
@@ -248,16 +248,16 @@ def _mulliken(lines, atoms, charge, scf_line, normal_line):
                 not entry or index >= len(atoms) or int(entry[1]) != index
                 or entry[2] != atoms[index].element or row_number >= normal_line
             ):
-                raise ValueError("Mulliken 电荷表的单位、行格式或有序原子身份不匹配。")
+                raise ValueError("Mulliken table units, row format or ordered atom identities do not match.")
             values.append(_finite(entry[3]))
         if not values or len(values) != len(atoms):
-            raise ValueError("Mulliken 电荷表的原子数量不匹配。")
+            raise ValueError("The Mulliken charge table has the wrong atom count.")
         # Printed per-atom values have six decimal places, and the printed total has seven.
         if printed_total is not None:
             if charge is not None and not isclose(printed_total, charge, rel_tol=0.0, abs_tol=1e-6):
-                raise ValueError("Mulliken 表中的总电荷与计算电子态不一致。")
+                raise ValueError("The total Mulliken charge is inconsistent with the electronic state.")
             if not isclose(fsum(values), printed_total, rel_tol=0.0, abs_tol=len(values) * 0.5e-6 + 1e-7):
-                raise ValueError("Mulliken 表逐原子数值之和与输出的总电荷不一致。")
+                raise ValueError("The sum of the atomic Mulliken charges differs from the reported total.")
     except (ValueError, OverflowError) as error:
         reason = str(error)
         return None, heading, reason, OutputIssue("invalid_mulliken", reason, row_number)
@@ -328,43 +328,43 @@ def parse_native_output(text: str) -> NativeOutputEvidence:
 
     issues = [issue for issue in (geometry_issue, state_issue, energy_issue) if issue is not None]
     if program_version is None:
-        issues.append(OutputIssue("missing_version", "缺少 ORCA 版本横幅。"))
+        issues.append(OutputIssue("missing_version", "The ORCA version banner is missing."))
     elif not re.fullmatch(r"6\.1(?:\.[0-9]+)?", program_version):
-        issues.append(OutputIssue("unsupported_version", "当前适配仅支持 ORCA 6.1 系列。", version_line))
+        issues.append(OutputIssue("unsupported_version", "Only ORCA 6.1 output is supported by this adapter.", version_line))
     repeated = [group[1] for group in (banners, [line for line, _ in versions], normal_lines, single_point)
                 if len(group) > 1]
     if repeated or job_directives or (normal_lines and abnormal_lines):
         repeated.extend(job_directives)
         repeated.extend(abnormal_lines if normal_lines else ())
-        issues.append(OutputIssue("multiple_jobs", "存在多个任务或拼接输出的证据。", min(repeated)))
+        issues.append(OutputIssue("multiple_jobs", "The output contains multiple jobs or concatenated calculations.", min(repeated)))
     if optimization_line is not None:
         other_tasks.append(optimization_line)
     if not single_point or other_tasks:
-        issues.append(OutputIssue("unsupported_task", "未能确认这是唯一的单点任务。", min(other_tasks, default=None)))
+        issues.append(OutputIssue("unsupported_task", "Could not confirm a single, unique single-point job.", min(other_tasks, default=None)))
     if unsupported_units or (bohr and not angstrom):
-        issues.append(OutputIssue("unsupported_geometry_unit", "几何发布需要明确的 Å 坐标及一致的单位证据。",
+        issues.append(OutputIssue("unsupported_geometry_unit", "Publishing the geometry requires explicit angstrom coordinates and consistent unit information.",
                                   (unsupported_units or bohr)[0]))
     if scf is None:
-        issues.append(OutputIssue("missing_scf_convergence", "未找到明确的 SCF 收敛证据。"))
+        issues.append(OutputIssue("missing_scf_convergence", "Explicit SCF convergence evidence is missing."))
     elif scf is False:
-        issues.append(OutputIssue("scf_unconverged", "SCF 明确未收敛。", scf_line))
+        issues.append(OutputIssue("scf_unconverged", "SCF did not converge.", scf_line))
     if len(scf_events) > 1:
-        issues.append(OutputIssue("ambiguous_scf", "检测到多个 SCF 完成标记。", scf_events[1][0]))
+        issues.append(OutputIssue("ambiguous_scf", "Multiple SCF completion markers were found.", scf_events[1][0]))
     if normal is None:
-        issues.append(OutputIssue("incomplete_output", "未找到 ORCA 正常结束标记。"))
+        issues.append(OutputIssue("incomplete_output", "The normal ORCA termination marker is missing."))
     elif normal is False:
-        issues.append(OutputIssue("abnormal_termination", "输出包含异常结束标记。", termination_line))
+        issues.append(OutputIssue("abnormal_termination", "The output contains an abnormal termination marker.", termination_line))
     expected_order = (
         version_line, next(iter(single_point), None), geometry_line, scf_line, energy_line, termination_line,
     )
     observed = [line for line in expected_order if line is not None]
     if observed != sorted(set(observed)):
-        issues.append(OutputIssue("inconsistent_evidence", "单点任务的版本、几何、SCF、能量或结束证据顺序冲突。"))
+        issues.append(OutputIssue("inconsistent_evidence", "Version, geometry, SCF, energy or termination evidence is out of order for a single-point job."))
     if normal is True and len(normal_lines) == 1:
         trailing = [(number, line) for number, line in enumerate(lines[termination_line:], termination_line + 1) if line]
         if trailing and (len(trailing) != 1 or not _TOTAL_RUN_TIME.fullmatch(trailing[0][1])):
             extra_line = next((number for number, line in trailing if not _TOTAL_RUN_TIME.fullmatch(line)), trailing[0][0])
-            issues.append(OutputIssue("multiple_jobs", "正常结束标记之后有无法归入本次计算的文本。", extra_line))
+            issues.append(OutputIssue("multiple_jobs", "Text after the normal termination marker cannot be attributed to this calculation.", extra_line))
 
     return NativeOutputEvidence(
         program_version=program_version, atoms=atoms, charge=charge, multiplicity=multiplicity,
@@ -458,7 +458,7 @@ def population_tables(lines, geometry_line, molecule):
                 idx = len(values)
                 if (not m or idx >= len(molecule.atoms) or int(m[1]) != idx
                         or m[2] != molecule.atoms[idx].element or bool(m[4]) != bool(title[2])):
-                    raise ValueError("布居表中的原子身份或行格式不匹配")
+                    raise ValueError("Population table atom identities or row format do not match")
                 values.append(_finite(m[3]))
                 if m[4]:
                     spins.append(_finite(m[4]))

@@ -74,7 +74,7 @@ class UpdateDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setObjectName("updateDialog")
-        self.setWindowTitle(tr("检查更新"))
+        self.setWindowTitle(tr("Check for Updates"))
         self.setMinimumWidth(480)
         self.release = None
         self._task = None
@@ -83,7 +83,7 @@ class UpdateDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 18, 20, 16)
         layout.setSpacing(12)
-        layout.addWidget(QLabel(tr("当前版本 {version}", version=__version__)))
+        layout.addWidget(QLabel(tr("Current version {version}", version=__version__)))
         self.status = QLabel()
         self.status.setObjectName("updateStatus")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
@@ -94,28 +94,28 @@ class UpdateDialog(QDialog):
         self.progress.setObjectName("updateProgress")
         layout.addWidget(self.progress)
         buttons = QHBoxLayout()
-        self.page_button = QPushButton(tr("GitHub 发布页"))
+        self.page_button = QPushButton(tr("GitHub releases"))
         self.page_button.clicked.connect(self.open_release_page)
         buttons.addWidget(self.page_button)
         buttons.addStretch()
-        self.check_button = QPushButton(tr("重新检查"))
+        self.check_button = QPushButton(tr("Check again"))
         self.check_button.clicked.connect(self.check)
         buttons.addWidget(self.check_button)
-        self.install_button = QPushButton(tr("下载并安装…"))
+        self.install_button = QPushButton(tr("Download and install…"))
         self.install_button.setObjectName("installUpdateButton")
         self.install_button.clicked.connect(self.download)
         buttons.addWidget(self.install_button)
-        self.manual_button = QPushButton(tr("手动安装…"))
+        self.manual_button = QPushButton(tr("Install manually…"))
         self.manual_button.clicked.connect(lambda: self.download(manual=True))
         buttons.addWidget(self.manual_button)
-        self.restart_button = QPushButton(tr("退出并更新"))
+        self.restart_button = QPushButton(tr("Quit and update"))
         self.restart_button.setObjectName("restartForUpdate")
         self.restart_button.clicked.connect(parent.close)
         buttons.addWidget(self.restart_button)
-        self.cancel_button = QPushButton(tr("取消"))
+        self.cancel_button = QPushButton(tr("Cancel"))
         self.cancel_button.clicked.connect(self.cancel)
         buttons.addWidget(self.cancel_button)
-        close = QPushButton(tr("关闭"))
+        close = QPushButton(tr("Close"))
         close.clicked.connect(self.reject)
         buttons.addWidget(close)
         layout.addLayout(buttons)
@@ -146,13 +146,13 @@ class UpdateDialog(QDialog):
     def check(self):
         if self._task is None and self._prepared is None:
             self.release = None
-            self.status.setText(tr("正在检查 GitHub 发布版本…"))
+            self.status.setText(tr("Checking GitHub releases…"))
             self._start(_UpdateTask())
 
     def open_release_page(self):
         url = self.release.page_url if self.release else RELEASES_URL
         if not QDesktopServices.openUrl(QUrl(url)):
-            self.status.setText(tr("请在浏览器中打开 {url}", url=url))
+            self.status.setText(tr("Open {url} in your browser.", url=url))
 
     def download(self, *, manual=False):
         if self._prepared is not None or self._task is not None or not self.release or not self.release.asset:
@@ -162,13 +162,13 @@ class UpdateDialog(QDialog):
         target = None if manual else self._current_installation()
         directory = None
         if target is None:
-            title = tr("选择安装包保存位置") if is_dmg else tr("选择安装位置（选择现有 OrcaView 目录可覆盖安装）")
+            title = tr("Choose where to save the installer") if is_dmg else tr("Choose an installation location (select an existing OrcaView folder to replace it)")
             directory = QFileDialog.getExistingDirectory(
                 self, title, QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation))
             if manual and directory and not is_dmg and Path(directory).resolve() == self._current_installation():
                 target = Path(directory).resolve()
         if (target is not None or directory) and self.isVisible():
-            self.status.setText(tr("正在下载并校验 {name}…", name=asset.name))
+            self.status.setText(tr("Downloading and verifying {name}…", name=asset.name))
             self._start(_UpdateTask(asset, Path(directory) if directory else None, target))
 
     def _current_installation(self):
@@ -180,12 +180,12 @@ class UpdateDialog(QDialog):
         if self._task is not None:
             self._task.stop.set()
             self.cancel_button.setEnabled(False)
-            self.status.setText(tr("正在取消…"))
+            self.status.setText(tr("Canceling…"))
         elif self._prepared is not None:
             self._prepared.discard()
             self._prepared = None
             self._controls(offer_download=True)
-            self.status.setText(tr("已取消。"))
+            self.status.setText(tr("Canceled."))
 
     def done(self, result):
         if self._task is not None:
@@ -203,7 +203,7 @@ class UpdateDialog(QDialog):
     def _installing(self, task):
         if task is self._task and not task.stop.is_set():
             self.progress.setRange(0, 0)
-            self.status.setText(tr("正在将新版本解压到安装目录…"))
+            self.status.setText(tr("Extracting the new version to the installation folder…"))
 
     @Slot(object, object, object)
     def _finished(self, task, result, error):
@@ -213,25 +213,25 @@ class UpdateDialog(QDialog):
             if task is self._task:
                 self._task = None
                 self._controls(offer_download=True)
-                self.status.setText(tr("已取消。"))
+                self.status.setText(tr("Canceled."))
             return
         self._task = None
         self._controls(offer_download=task.asset is not None)
         if task.stop.is_set() and (task.asset is None or result is None):
-            self.status.setText(tr("已取消。"))
+            self.status.setText(tr("Canceled."))
         elif error is not None:
             detail = diagnostic_text(error)
-            self.status.setText(tr("检查更新失败。\n{error}", error=detail) if task.asset is None
-                                else tr("下载或安装失败。\n{error}", error=detail))
+            self.status.setText(tr("Could not check for updates.\n{error}", error=detail) if task.asset is None
+                                else tr("Could not download or install the update.\n{error}", error=detail))
         elif task.asset is None:
             self._show_release(result)
         elif task.replace_target is not None:
             self._prepared = result
             self._controls()
-            message = tr("更新已准备好。可以先保存项目，正常退出时将在原位置覆盖安装并重新启动。\n{path}",
+            message = tr("The update is ready. You can save your project now. OrcaView will update in place and restart when you quit.\n{path}",
                          path=task.replace_target)
             if not isinstance(result, PreparedMacUpdate):
-                message += "\n" + tr("旧版备份位置：{path}", path=result.backup)
+                message += "\n" + tr("Previous version backup: {path}", path=result.backup)
             self.status.setText(message)
         else:
             self._show_installation(task, result)
@@ -239,31 +239,31 @@ class UpdateDialog(QDialog):
     def _show_release(self, release):
         self.release = release
         if release is None:
-            self.status.setText(tr("GitHub 上没有更新的版本。"))
+            self.status.setText(tr("No newer version is available on GitHub."))
             return
-        message = tr("发现新版本 {version}。", version=release.version)
+        message = tr("Version {version} is available.", version=release.version)
         if release.asset:
             size = QLocale().formattedDataSize(release.asset.size)
             target = self._current_installation()
             if target is not None:
-                message += "\n" + tr("将覆盖更新当前安装：{path}", path=target)
-            self.install_button.setText(tr("下载并覆盖安装…") if target is not None else tr("下载并安装…"))
+                message += "\n" + tr("This installation will be updated in place: {path}", path=target)
+            self.install_button.setText(tr("Download and replace…") if target is not None else tr("Download and install…"))
             self.status.setText(f"{message}\n{release.asset.name}  ({size})")
             self._controls(offer_download=True)
         else:
-            self.status.setText(message + "\n" + tr("此版本没有适用于当前系统的可校验安装包。"))
+            self.status.setText(message + "\n" + tr("This release has no verifiable installer for this system."))
 
     def _show_installation(self, task, path):
         self._controls()
         if task.asset.name.lower().endswith(".dmg"):
             target = path
-            message = tr("请打开磁盘映像，退出旧版，将 OrcaView 拖至原安装位置并选择“替换”。\n{path}", path=path)
+            message = tr("Open the disk image, quit the old version, drag OrcaView to its original location and choose Replace.\n{path}", path=path)
         else:
             target = path.parent
-            message = tr("新版已安装到 {folder}\n从此目录运行 {name} 即可打开新版本。",
+            message = tr("Installed to {folder}\nRun {name} from this folder to open the new version.",
                          folder=target, name=path.name)
         if not task.stop.is_set() and not QDesktopServices.openUrl(QUrl.fromLocalFile(str(target))):
-            message += "\n" + tr("系统未能打开此位置，请手动打开。")
+            message += "\n" + tr("Please open this location manually.")
         self.status.setText(message)
 
     def finish_on_exit(self):
@@ -280,7 +280,7 @@ class UpdateDialog(QDialog):
         except (OSError, RuntimeError) as error:
             update.discard()
             self._controls(offer_download=True)
-            self.status.setText(tr("下载或安装失败。\n{error}", error=diagnostic_text(error)))
+            self.status.setText(tr("Could not download or install the update.\n{error}", error=diagnostic_text(error)))
             self.show()
             self.raise_()
             return False

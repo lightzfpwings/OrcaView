@@ -17,13 +17,13 @@ SketchCoordinates = Tuple[Tuple[float, float], ...]
 
 
 def validate_sketch_xy(points: SketchCoordinates) -> None:
-    require_tuple(points, "二维草图坐标")
+    require_tuple(points, "2D sketch coordinates")
     for point in points:
-        require_tuple(point, "二维草图坐标")
+        require_tuple(point, "2D sketch coordinates")
         if len(point) != 2:
-            raise ValueError("每个草图原子需要两个坐标")
+            raise ValueError("Each atom in the sketch needs two coordinates.")
         for value in point:
-            finite_number(value, "二维草图坐标")
+            finite_number(value, "2D sketch coordinates")
 
 
 @dataclass(frozen=True)
@@ -54,21 +54,21 @@ class GeometrySnapshot(Versioned):
 
     def __post_init__(self):
         if not isinstance(self.ref, GeometryRef) or not isinstance(self.molecule, Molecule):
-            raise ValueError("几何快照需要 GeometryRef 和 Molecule")
+            raise ValueError("A geometry snapshot requires a GeometryRef and a Molecule")
         if self.parent is not None and not isinstance(self.parent, GeometryRef):
-            raise ValueError("父几何必须是 GeometryRef")
+            raise ValueError("The parent geometry must be a GeometryRef")
         if not isinstance(self.provenance, Provenance) or self.source_unit not in LENGTH_UNITS:
-            raise ValueError("需要有效的几何来源和源长度单位")
+            raise ValueError("A valid geometry source and source length unit are required")
         self.molecule.validate_structure(allow_empty=self.ref.frame_id is None)
-        integer(self.molecule.charge, "总电荷")
-        integer(self.molecule.multiplicity, "自旋多重度", 1)
-        identifiers(self.atom_ids, "原子 ID")
+        integer(self.molecule.charge, "Total charge")
+        integer(self.molecule.multiplicity, "Spin multiplicity", 1)
+        identifiers(self.atom_ids, "Atom ID")
         if len(self.atom_ids) != len(self.molecule.atoms):
-            raise ValueError("原子 ID 数目必须与坐标行数相同")
+            raise ValueError("The number of atom IDs must equal the number of coordinate rows")
         if self.sketch_xy is not None:
             validate_sketch_xy(self.sketch_xy)
             if len(self.sketch_xy) != len(self.atom_ids) or self.ref.frame_id is not None:
-                raise ValueError("二维草图坐标必须逐行对应可编辑修订中的原子")
+                raise ValueError("Sketch positions must match the atoms in an editable revision, in order.")
         digest = sha256(b"orcaview/geometry/1/angstrom\0")
         for atom in self.molecule.atoms:
             # Canonical binary64, big endian. Normalize the two IEEE zeroes.
@@ -77,16 +77,16 @@ class GeometrySnapshot(Versioned):
         object.__setattr__(self, "content_hash", digest.hexdigest())
 
     def id_at(self, index: int) -> str:
-        integer(index, "原子索引", 0)
+        integer(index, "Atom index", 0)
         if index >= len(self.atom_ids):
-            raise ValueError("原子索引越界")
+            raise ValueError("Atom index out of range")
         return self.atom_ids[index]
 
     def index_of(self, atom_id: str) -> int:
         try:
             return self.atom_ids.index(atom_id)
         except ValueError as exc:
-            raise ValueError("当前快照不存在该原子 ID") from exc
+            raise ValueError("This snapshot does not contain the atom ID") from exc
 
     def coordinates(self, unit: str = "angstrom") -> Tuple[Tuple[float, ...], ...]:
         return tuple(tuple(convert_length(v, "angstrom", unit) for v in (a.x, a.y, a.z))
@@ -115,9 +115,9 @@ class SelectionContext(Versioned):
 
     def __post_init__(self):
         if not isinstance(self.geometry, GeometryRef):
-            raise ValueError("选择必须绑定实际几何")
-        identifiers(self.atom_ids, "选择的原子 ID")
-        nonempty(self.mode, "选择模式")
+            raise ValueError("The selection must reference an actual geometry")
+        identifiers(self.atom_ids, "Selected atom IDs")
+        nonempty(self.mode, "Selection mode")
 
     @property
     def atom_set(self):
@@ -125,9 +125,9 @@ class SelectionContext(Versioned):
 
     def indices(self, snapshot: GeometrySnapshot) -> Tuple[int, ...]:
         if snapshot.ref != self.geometry:
-            raise ValueError("选择与快照的几何引用不一致")
+            raise ValueError("The selection and snapshot reference different geometries")
         lookup = {atom_id: i for i, atom_id in enumerate(snapshot.atom_ids)}
         try:
             return tuple(lookup[atom_id] for atom_id in self.atom_ids)
         except KeyError as exc:
-            raise ValueError("选择包含未知原子 ID") from exc
+            raise ValueError("The selection contains unknown atom IDs") from exc

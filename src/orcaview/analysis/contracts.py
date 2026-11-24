@@ -34,25 +34,25 @@ class WavefunctionRef(Versioned):
 
     def __post_init__(self):
         if not isinstance(self.artifact, ArtifactRef) or self.artifact.sha256 is None:
-            raise ValueError("波函数文件必须具有 SHA-256")
+            raise ValueError("A wavefunction file must have a SHA-256 digest")
         if not isinstance(self.geometry, GeometryRef) or not isinstance(self.provenance, Provenance):
-            raise ValueError("波函数必须绑定几何和来源")
+            raise ValueError("The wavefunction must reference a geometry and provenance")
         if not isinstance(self.geometry_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", self.geometry_sha256):
-            raise ValueError("需要规范几何 SHA-256")
-        identifiers(self.atom_ids, "波函数源行原子 ID")
+            raise ValueError("A canonical geometry SHA-256 digest is required")
+        identifiers(self.atom_ids, "Wavefunction source-row atom ID")
         if not self.atom_ids:
-            raise ValueError("波函数必须映射至少一个原子")
+            raise ValueError("The wavefunction must map at least one atom")
         if self.source_unit is not None and self.source_unit not in LENGTH_UNITS:
-            raise ValueError("源坐标单位必须是 angstrom 或 bohr")
+            raise ValueError("Source coordinate units must be angstrom or bohr")
         for name in ("basis_convention", "spin_type"):
             if getattr(self, name) is not None:
                 nonempty(getattr(self, name), name)
         for name in ("has_basis", "has_orbitals", "has_occupations", "has_ecp", "has_state_data", "periodic"):
             value = getattr(self, name)
             if value is not None and type(value) is not bool:
-                raise ValueError(f"{name} 必须是布尔值或 None")
+                raise ValueError(f"{name} must be a boolean or None")
         if self.densities is not None:
-            identifiers(self.densities, "已核对的密度类型")
+            identifiers(self.densities, "Verified density types")
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ class AnalysisCapability(Versioned):
     unit: str
 
     def __post_init__(self):
-        integer(self.feature_version, "功能版本", 1)
+        integer(self.feature_version, "Capability version", 1)
         for name in ("capability_id", "result_kind", "method", "dtype", "unit"):
             nonempty(getattr(self, name), name)
         for name in ("formats", "densities", "required_metadata"):
@@ -87,18 +87,18 @@ class AnalysisRequest(Versioned):
     resources: Optional[ResourceBudget] = None
 
     def __post_init__(self):
-        nonempty(self.capability_id, "分析功能 ID")
-        nonempty(self.density, "请求密度")
-        integer(self.feature_version, "功能版本", 1)
+        nonempty(self.capability_id, "Analysis capability ID")
+        nonempty(self.density, "Requested density")
+        integer(self.feature_version, "Capability version", 1)
         if not isinstance(self.wavefunction, WavefunctionRef):
-            raise ValueError("分析请求必须引用波函数")
+            raise ValueError("An analysis request must reference a wavefunction")
         if self.resources is not None and not isinstance(self.resources, ResourceBudget):
-            raise ValueError("分析资源必须使用 ResourceBudget")
-        require_tuple(self.parameters, "分析参数")
+            raise ValueError("Analysis resources must use ResourceBudget")
+        require_tuple(self.parameters, "Analysis parameters")
         for item in self.parameters:
             if not isinstance(item, tuple) or len(item) != 2 or not isinstance(item[1], str):
-                raise ValueError("分析参数必须是（名称，字符串值）对")
-        identifiers(tuple(key for key, _ in self.parameters), "分析参数名称")
+                raise ValueError("Analysis parameters must be (name, string value) pairs")
+        identifiers(tuple(key for key, _ in self.parameters), "Analysis parameter name")
 
 
 @dataclass(frozen=True)
@@ -111,14 +111,14 @@ class AnalysisTaskRecord(Versioned):
     task_id: str = field(default_factory=new_id)
 
     def __post_init__(self):
-        nonempty(self.task_id, "分析任务 ID")
+        nonempty(self.task_id, "Analysis task ID")
         if not isinstance(self.request, AnalysisRequest):
-            raise ValueError("分析记录缺少请求")
+            raise ValueError("The analysis record is missing its request")
         if self.status == "unavailable" and isinstance(self.error, ErrorInfo):
             return
         if self.status == "synthetic-fixture" and self.error is None:
             return
-        raise ValueError("分析任务状态与错误证据不符，当前仅支持不可用与合成样例记录")
+        raise ValueError("The analysis status conflicts with its error evidence. Only unavailable and synthetic records are supported")
 
 
 @dataclass(frozen=True)
@@ -130,14 +130,14 @@ class AnalysisResult(Versioned):
 
     def __post_init__(self):
         if not isinstance(self.task, AnalysisTaskRecord) or self.task.status != "synthetic-fixture":
-            raise ValueError("当前分析结果只接受合成样例记录")
-        require_tuple(self.datasets, "分析数据集")
+            raise ValueError("Only synthetic analysis records are supported for this result")
+        require_tuple(self.datasets, "Analysis datasets")
         if not self.datasets or any(not isinstance(item, ResultDataset) for item in self.datasets):
-            raise ValueError("分析结果必须包含公共数据集")
-        identifiers(tuple(item.dataset_id for item in self.datasets), "分析数据集 ID")
+            raise ValueError("The analysis result must contain shared datasets")
+        identifiers(tuple(item.dataset_id for item in self.datasets), "Analysis dataset ID")
         request = self.task.request
         for item in self.datasets:
             if (item.geometry != request.wavefunction.geometry or item.density != request.density
                     or "synthetic-fixture" not in item.quality
                     or request.wavefunction.artifact not in item.provenance.parents):
-                raise ValueError("数据集的几何、密度、源文件或质量标记与样例请求不符")
+                raise ValueError("The dataset geometry, density, source file or quality flag does not match the sample request")

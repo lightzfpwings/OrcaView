@@ -17,7 +17,7 @@ from .document import MoleculeDocument
 
 def check_fields(record, names, label):
     if not isinstance(record, dict) or record.keys() != set(names):
-        raise ValueError(f"{label}字段不完整或含未知字段")
+        raise ValueError(f"{label} has missing or unknown fields")
     return record
 
 
@@ -27,7 +27,7 @@ def _fields_for(record, cls):
 
 def _array(value):
     if not isinstance(value, list):
-        raise ValueError("项目数组字段必须是 JSON 数组")
+        raise ValueError("Project array fields must be JSON arrays")
     return value
 
 
@@ -36,7 +36,7 @@ def read_molecule(record, version):
     data = dict(check_fields(record, keys, "Molecule"))
     data["atoms"] = tuple(Atom(**_fields_for(a, Atom)) for a in _array(data["atoms"]))
     if not data["atoms"] and version < EMPTY_DRAFT_PROJECT_SCHEMA_VERSION:
-        raise ValueError("分子至少需要一个原子")
+        raise ValueError("A molecule requires at least one atom")
     bond_fields = ("a", "b", "order", "style") if version >= BOND_STYLE_PROJECT_SCHEMA_VERSION else ("a", "b", "order")
     data["bonds"] = tuple(Bond(**check_fields(b, bond_fields, "Bond")) for b in _array(data["bonds"]))
     return Molecule(**data)
@@ -86,19 +86,19 @@ def write_calculation(spec, version):
 def read_calculation(record, version):
     keys = _calculation_fields(version)
     if version >= BLOCK_PROJECT_SCHEMA_VERSION:
-        data = dict(check_fields(record, (*keys, "block_options"), "计算设置"))
+        data = dict(check_fields(record, (*keys, "block_options"), "Calculation settings"))
         data["block_options"] = tuple(BlockOverride(**_fields_for(item, BlockOverride))
                                       for item in _array(data["block_options"]))
     else:
-        data = check_fields(record, keys, "计算设置")
+        data = check_fields(record, keys, "Calculation settings")
     spec = CalculationSpec(**data)
     spec.validate()
     if version < SOLVATION_PROJECT_SCHEMA_VERSION and spec.job_type in PATH_JOBS:
-        raise ValueError("反应路径作业需要 schema 6")
+        raise ValueError("Reaction path jobs require schema 6")
     if version < ADVANCED_PROJECT_SCHEMA_VERSION and has_advanced_settings(spec):
-        raise ValueError("当前计算设置需要 schema 4")
+        raise ValueError("These calculation settings require schema 4")
     if version == STATE_PROJECT_SCHEMA_VERSION and not has_calculation_parameters(spec):
-        raise ValueError("schema 3 需要带方法参数的计算设置")
+        raise ValueError("Schema 3 requires calculation settings with method parameters")
     return spec
 
 
@@ -144,7 +144,7 @@ def _snapshot(record, version):
     data["provenance"] = _provenance(data["provenance"])
     snapshot = GeometrySnapshot(**data)
     if snapshot.content_hash != expected_hash:
-        raise ValueError("几何内容哈希校验失败")
+        raise ValueError("Geometry content hash verification failed")
     return snapshot
 
 
@@ -170,9 +170,9 @@ def _dataset(record):
 
 
 def read_document(record, version):
-    check_fields(record, ("coordinate_unit", "snapshots", "datasets"), "文档")
+    check_fields(record, ("coordinate_unit", "snapshots", "datasets"), "Document")
     if record["coordinate_unit"] != "angstrom":
-        raise ValueError("项目科学坐标必须使用 angstrom")
+        raise ValueError("Project coordinates must be in angstroms")
     return MoleculeDocument.restore(
         tuple(_snapshot(s, version) for s in _array(record["snapshots"])),
         tuple(_dataset(d) for d in _array(record["datasets"])),

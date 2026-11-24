@@ -35,7 +35,7 @@ def build_foundation_demo() -> Session:
         (("synthetic_fixture", "true"),),
     )
     molecule = Molecule(
-        "水分子 · M1 合成演示",
+        "Water · M1 synthetic example",
         (Atom("O", 0.0, 0.0, 0.0), Atom("H", 0.758602, 0.0, 0.586541),
          Atom("H", -0.758602, 0.0, 0.586541)),
         (Bond(0, 1), Bond(0, 2)),
@@ -55,12 +55,12 @@ def build_foundation_demo() -> Session:
     document.add_dataset(ResultDataset(
         "atomic_charge", frame.ref, source, "float64", (3,), "e", (-0.8, None, 0.4),
         (DatasetAxis("atom", frame.atom_ids),),
-        missing_reason="合成样例未提供第一个氢原子的电荷",
-        method="Mulliken（合成）", density="total", quality=("synthetic-fixture",),
+        missing_reason="The sample provides no charge for the first hydrogen atom",
+        method="Mulliken (synthetic)", density="total", quality=("synthetic-fixture",),
     ))
     deleted = document.publish_revision(
         root.ref,
-        replace(molecule, name="OH · 删除演示（合成）", atoms=(oxygen, hydrogen1),
+        replace(molecule, name="OH · Deletion demo (synthetic)", atoms=(oxygen, hydrogen1),
                 bonds=(Bond(0, 1),), multiplicity=2),
         root.atom_ids[:2], source,
     )

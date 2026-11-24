@@ -1,1 +1,1 @@
-"""结构文件的独立读写适配器。"""
+"""Standalone readers and writers for structure files."""

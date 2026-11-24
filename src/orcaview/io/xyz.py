@@ -1,4 +1,4 @@
-"""严格读取单帧 XYZ；不从注释行猜测电荷与自旋。"""
+"""Read a single XYZ frame without inferring charge or spin from comments."""
 
 import json
 from pathlib import Path
@@ -29,14 +29,14 @@ def _source_unit(comment: str) -> Tuple[str, str]:
         if key == "pbc":
             flags = value.split()
             if len(flags) not in (1, 3) or any(flag not in ("f", "false", "0") for flag in flags):
-                raise ValueError("XYZ 含周期边界或无法识别的 PBC 声明")
+                raise ValueError("The XYZ file contains periodic boundaries or an unrecognized PBC declaration.")
         elif key in ("unit", "units"):
             declared = _UNITS.get(value)
             if declared is None or (unit is not None and unit != declared):
-                raise ValueError("XYZ 声明了未知或冲突的长度单位")
+                raise ValueError("Unknown or conflicting XYZ length units")
             unit = declared
         elif key == "lattice" or re.fullmatch(r"k[-_]?points?", key):
-            raise ValueError("分子 XYZ 不支持晶胞或 k 点元数据")
+            raise ValueError("Molecular XYZ does not support unit cell or k-point metadata.")
     return (unit, "xyz-comment") if unit is not None else ("angstrom", "xyz-default")
 
 
@@ -48,28 +48,28 @@ def parse_xyz_record(text: str, name: str = "Molecule") -> XYZRecord:
     """Keep whether the length unit was declared or supplied by the XYZ default."""
     lines = text.splitlines()
     if len(lines) < 2:
-        raise ValueError("XYZ 必须包含原子数和注释行")
+        raise ValueError("XYZ must include the atom count and a comment line.")
     try:
         count = int(lines[0].strip())
     except ValueError as exc:
-        raise ValueError("XYZ 第一行必须是正整数原子数") from exc
+        raise ValueError("The first XYZ line must contain a positive integer atom count.") from exc
     if count <= 0:
-        raise ValueError("XYZ 原子数必须大于零")
+        raise ValueError("XYZ atom count must be positive.")
     if len(lines) < count + 2:
-        raise ValueError(f"XYZ 声明 {count} 个原子，但坐标行不足")
+        raise ValueError(f"XYZ declares {count} atoms but contains too few coordinate rows.")
     if any(line.strip() for line in lines[count + 2:]):
-        raise ValueError("当前原型只支持单帧 XYZ；检测到额外内容或多帧轨迹")
+        raise ValueError("Only a single XYZ frame is supported. Extra content or multiple frames detected.")
     unit, unit_source = _source_unit(lines[1])
     atoms = []
     for index, line in enumerate(lines[2:count + 2], start=3):
         fields = line.split()
         if len(fields) != 4:
-            raise ValueError(f"XYZ 第 {index} 行必须是元素和三个坐标")
+            raise ValueError(f"XYZ line {index} must contain an element and three coordinates.")
         try:
             atom = Atom(fields[0], *(convert_length(float(value), unit, "angstrom") for value in fields[1:]))
             atom.validate()
         except ValueError as exc:
-            raise ValueError(f"XYZ 第 {index} 行无效：{exc}") from exc
+            raise ValueError(f"Invalid XYZ line {index}: {exc}") from exc
         atoms.append(atom)
     molecule = Molecule(name=name, atoms=tuple(atoms))
     molecule.validate_structure()
@@ -83,7 +83,7 @@ def load_xyz(path: Union[str, Path]) -> Molecule:
 
 def write_xyz(molecule: Molecule) -> str:
     molecule.validate_structure()
-    # 注释中的换行不能改变 XYZ 帧结构。
+    # Embedded newlines in comments must not change the XYZ frame layout.
     comment = " ".join(molecule.name.splitlines())
     if _METADATA.search(comment):
         comment = "name=" + json.dumps(comment, ensure_ascii=False)

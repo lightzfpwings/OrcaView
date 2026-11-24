@@ -71,7 +71,7 @@ class CarbonRingTests(unittest.TestCase):
                            1.4 * math.sin(i * math.tau / 24), 0.) for i in range(24))
         editor = EditorService(Session(Molecule("crowded", atoms, bonds_explicit=True)).document)
         initial = editor.expected
-        with self.assertRaisesRegex(ValueError, "重叠"):
+        with self.assertRaisesRegex(ValueError, "overlaps"):
             apply(editor, InsertRing(6, True, "XY", center=(0., 0., 0.)))
         self.assertEqual(editor.expected, initial)
         self.assertFalse(editor.can_undo)

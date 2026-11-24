@@ -18,7 +18,7 @@ class InspectorScrollArea(QScrollArea):
         panel = self.widget()
         if panel is not None:
             # Retain space for the editors and the disclosure button in the 1/8 sidebar.
-            inset = max(6, min(16, (self.width() - 112) // 4))
+            inset = max(6, min(16, (self.width() - 128) // 10))
             panel.layout().setContentsMargins(inset, 18, inset, 14)
 
 
@@ -84,7 +84,7 @@ class InspectorForm(QWidget):
 
     def resizeEvent(self, event):
         width = event.size().width()
-        em = max(1, self.fontMetrics().horizontalAdvance("宽"))
+        em = max(1, self.fontMetrics().height())
         # Independent blocks receive the same available width. Their contents
         # and disclosure state have no influence on the position of a column.
         stacked = width < 19 * em

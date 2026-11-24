@@ -34,17 +34,17 @@ class UpdateCancelled(UpdateDownloadError):
 
 _BLOCK = 256 * 1024
 _PACKAGE = re.compile(r"OrcaView-([A-Za-z0-9.+_-]+)-(?:macOS-arm64\.dmg|Windows-x64(?:-portable)?\.zip|Linux-x86_64\.tar\.gz)")
-_BAD_ASSET = "更新包信息无效。"
-_BAD_HASH = "安装包的 SHA-256 与发布记录不一致。"
-_BAD_SIZE = "安装包大小与发布记录不一致。"
-_BAD_ARCHIVE = "便携安装包的内容无效。"
-_FILE_EXISTS = "所选目录已有同名文件，请另选目录。"
-_INSTALL_EXISTS = "所选目录已有同名安装目录，请另选目录。"
+_BAD_ASSET = "The update package information is invalid."
+_BAD_HASH = "The installer's SHA-256 does not match the release."
+_BAD_SIZE = "The installer size does not match the release."
+_BAD_ARCHIVE = "The portable package contents are invalid."
+_FILE_EXISTS = "A file with this name already exists. Choose another folder."
+_INSTALL_EXISTS = "An installation folder with this name already exists. Choose another folder."
 
 
 def _check_cancelled(cancelled):
     if cancelled is not None and cancelled():
-        raise UpdateCancelled("更新已取消。")
+        raise UpdateCancelled("Update canceled.")
 
 
 def _check_asset(asset):
@@ -90,7 +90,7 @@ def verify_download(asset: UpdateAsset, archive: Path, *, progress=None, cancell
         with Path(archive).open("rb") as source:
             _read_verified(asset, source, progress=progress, cancelled=cancelled)
     except OSError as exc:
-        raise UpdateDownloadError("无法读取下载的安装包。") from exc
+        raise UpdateDownloadError("Cannot read the downloaded installer.") from exc
 
 
 def download_update(asset: UpdateAsset, directory: Path, *, progress=None, cancelled=None) -> Path:
@@ -134,7 +134,7 @@ def download_update(asset: UpdateAsset, directory: Path, *, progress=None, cance
     except (OSError, HTTPException) as exc:
         if isinstance(exc, HTTPError):
             exc.close()
-        raise UpdateDownloadError("无法下载或保存安装包，请检查网络连接和所选目录。") from exc
+        raise UpdateDownloadError("Cannot download or save the installer. Check your network connection and the selected folder.") from exc
 
 
 def _member_path(name, stage, root):
@@ -242,7 +242,7 @@ def _bundle(asset):
         return asset.name.removesuffix(".zip"), "OrcaView.exe", _unpack_windows
     if asset.name.endswith(".tar.gz"):
         return asset.name.removesuffix(".tar.gz"), "OrcaView", _unpack_linux
-    raise UpdateDownloadError("请选择 Windows 或 Linux 便携安装包。")
+    raise UpdateDownloadError("Choose a Windows or Linux portable package.")
 
 
 def _extract(asset, archive, stage, cancelled):
@@ -282,7 +282,7 @@ def prepare_portable_update(asset, archive, target, *, cancelled=None):
     windows = launcher == "OrcaView.exe"
     target = Path(target)
     if not portable_replace.installation(target, windows):
-        raise UpdateDownloadError("所选目录不是可覆盖的 OrcaView 安装目录。")
+        raise UpdateDownloadError("The selected folder is not an existing OrcaView installation.")
     target = target.resolve()
     backup = target.with_name(target.name + ".previous")
     work = None
@@ -297,7 +297,7 @@ def prepare_portable_update(asset, archive, target, *, cancelled=None):
         if work is not None:
             shutil.rmtree(work, ignore_errors=True)
         if isinstance(exc, (OSError, EOFError, zipfile.BadZipFile, tarfile.TarError)):
-            raise UpdateDownloadError("无法解压安装包，请检查磁盘空间和所选目录。") from exc
+            raise UpdateDownloadError("Cannot extract the installer. Check the available disk space and the selected folder.") from exc
         raise
 
 
@@ -312,14 +312,14 @@ def schedule_portable_update(prepared):
         # The Windows launcher unpacks a private runtime and holds the public
         # EXE until the GUI has quit and that runtime has been removed.
         if current_portable_installation() != prepared.target:
-            raise UpdateDownloadError("所选目录不是可覆盖的 OrcaView 安装目录。")
+            raise UpdateDownloadError("The selected folder is not an existing OrcaView installation.")
         runtime = Path(sys.executable).parent
         try:
             pid = int(os.environ["ORCAVIEW_PORTABLE_PID"])
             if pid <= 0:
                 raise ValueError
         except (KeyError, ValueError) as exc:
-            raise UpdateDownloadError("覆盖安装助手未能启动。") from exc
+            raise UpdateDownloadError("The update helper failed to start.") from exc
     tool = Path(mkdtemp(prefix="orcaview-update-helper-"))
     worker = None
     try:
@@ -346,7 +346,7 @@ def schedule_portable_update(prepared):
         deadline = time.monotonic() + 15
         while not (work / "ready").exists():
             if worker.poll() is not None or time.monotonic() > deadline:
-                raise OSError("覆盖安装助手未能启动。")
+                raise OSError("The update helper failed to start.")
             time.sleep(.05)
     except (OSError, ValueError) as exc:
         if worker is not None and worker.poll() is None:
@@ -354,7 +354,7 @@ def schedule_portable_update(prepared):
             worker.wait(timeout=5)
         shutil.rmtree(tool, ignore_errors=True)
         (work / "ready").unlink(missing_ok=True)
-        raise UpdateDownloadError(f"无法启动覆盖安装助手。{exc}") from exc
+        raise UpdateDownloadError(f"Could not start the update helper: {exc}") from exc
 
 
 def install_portable(asset: UpdateAsset, archive: Path, directory: Path, *, cancelled=None) -> Path:
@@ -369,13 +369,13 @@ def install_portable(asset: UpdateAsset, archive: Path, directory: Path, *, canc
         target = directory
     if portable_replace.installation(target, windows):
         if current_portable_installation() == target.resolve():
-            raise UpdateDownloadError("请从当前安装中选择覆盖更新，并在保存项目后退出。")
+            raise UpdateDownloadError("Use Download and replace for the running installation, then save your project and quit.")
         pending = prepare_portable_update(asset, archive, target, cancelled=cancelled)
         try:
             _check_cancelled(cancelled)
             return portable_replace.activate(pending.staged, pending.target, pending.backup, windows, pending.expected)
         except (OSError, ValueError) as exc:
-            raise UpdateDownloadError(f"无法覆盖安装：{exc}") from exc
+            raise UpdateDownloadError(f"Could not update the installation: {exc}") from exc
         finally:
             pending.discard()
     directory = directory.resolve()
@@ -397,4 +397,4 @@ def install_portable(asset: UpdateAsset, archive: Path, directory: Path, *, canc
     except (tarfile.TarError, zipfile.BadZipFile, EOFError, RuntimeError) as exc:
         raise UpdateDownloadError(_BAD_ARCHIVE) from exc
     except OSError as exc:
-        raise UpdateDownloadError("无法解压安装包，请检查磁盘空间和所选目录。") from exc
+        raise UpdateDownloadError("Cannot extract the installer. Check the available disk space and the selected folder.") from exc

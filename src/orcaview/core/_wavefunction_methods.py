@@ -8,7 +8,7 @@ https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/mdci.html
 
 
 OTHER_METHOD_GROUPS = (
-    ("3c 复合方法", (
+    ("3c composite methods", (
         ("HF-3c", "fixed"),
         ("B97-3c", "fixed"),
         ("r2SCAN-3c", "fixed"),
@@ -16,18 +16,18 @@ OTHER_METHOD_GROUPS = (
         ("B3LYP-3c", "fixed"),
         ("wB97X-3c", "fixed"),
     )),
-    ("半经验 NDDO", (
+    ("Semiempirical NDDO", (
         ("MNDO", "semiempirical"),
         ("AM1", "semiempirical"),
         ("PM3", "semiempirical"),
     )),
-    ("原生 xTB", (
+    ("Native xTB", (
         ("Native-GFN1-xTB", "semiempirical"),
         ("Native-GFN2-xTB", "semiempirical"),
         ("Native-spGFN1-xTB", "semiempirical"),
         ("Native-spGFN2-xTB", "semiempirical"),
     )),
-    ("微扰理论", (
+    ("Perturbation theory", (
         ("MP2", "numeric-freq"),
         ("SCS-MP2", "numeric-freq"),
         ("RI-MP2", "mp2-aux"),
@@ -43,7 +43,7 @@ OTHER_METHOD_GROUPS = (
         ("MP3", "sp"),
         ("SCS-MP3", "sp"),
     )),
-    ("耦合簇", (
+    ("Coupled cluster", (
         ("CCSD", "sp"),
         ("CCSD(T)", "sp"),
         ("RI-CCSD", "sp-aux"),
@@ -55,7 +55,7 @@ OTHER_METHOD_GROUPS = (
         ("DLPNO-CCSD(T1)", "sp-aux"),
         ("DLPNO-pCCSD/1a", "sp-aux"),
     )),
-    ("组态相互作用与电子对方法", (
+    ("Configuration interaction and electron-pair methods", (
         ("CISD", "sp"),
         ("QCISD", "sp"),
         ("QCISD(T)", "sp"),
@@ -83,7 +83,7 @@ OTHER_METHOD_GROUPS = (
 # The spectroscopic S parameterizations are restricted to fixed nuclei.
 NDO_BLOCK = {f"{name}/{variant}": f"{name}_{variant}" for name in ("CNDO", "INDO")
              for variant in ("1", "2", "S")}
-EXTRA_NDO_GROUPS = (("半经验 CNDO、INDO 与 ZNDDO", tuple(
+EXTRA_NDO_GROUPS = (("Semiempirical CNDO, INDO and ZNDDO", tuple(
     (name, "semiempirical-sp" if name.endswith("/S") else "semiempirical")
     for name in (*NDO_BLOCK, "ZINDO/1", "ZINDO/2", "ZINDO/S", "ZNDDO/1", "ZNDDO/2")
 )),)
@@ -92,7 +92,7 @@ EXTRA_NDO_GROUPS = (("半经验 CNDO、INDO 与 ZNDDO", tuple(
 # select KC_RI, which is unavailable for UHF (§3.10.14).
 RI_CANONICAL_CC = ("RI-CCSD", "RI-CCSD(T)")
 CANONICAL_MDCI = frozenset(name for family, entries in OTHER_METHOD_GROUPS
-                           if family in ("耦合簇", "组态相互作用与电子对方法")
+                           if family in ("Coupled cluster", "Configuration interaction and electron-pair methods")
                            for name, _ in entries if not name.startswith("DLPNO-"))
 
 # The 6.1.1 manual lists the 3c ranges individually in section 3.6.

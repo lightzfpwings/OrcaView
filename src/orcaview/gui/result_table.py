@@ -43,11 +43,11 @@ def _copy_table(table, *, entire=False):
 
 def enable_table_copy(table):
     table.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
-    selected = QAction(tr("复制所选"), table)
+    selected = QAction(tr("Copy selection"), table)
     selected.setShortcuts(QKeySequence.StandardKey.Copy)
     selected.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     selected.triggered.connect(lambda: _copy_table(table))
-    entire = QAction(tr("复制整表（含表头）"), table)
+    entire = QAction(tr("Copy entire table (with headers)"), table)
     entire.triggered.connect(lambda: _copy_table(table, entire=True))
     table.addActions([selected, entire])
 
@@ -78,8 +78,8 @@ class CalculationResultTable(QTableWidget):
     def __init__(self):
         super().__init__(0, 4)
         self.setObjectName("resultDatasets")
-        self.setAccessibleName(tr("计算结果"))
-        self.setHorizontalHeaderLabels((tr("名称"), tr("结果"), tr("名称"), tr("结果")))
+        self.setAccessibleName(tr("Calculation results"))
+        self.setHorizontalHeaderLabels((tr("Name"), tr("Result"), tr("Name"), tr("Result")))
         self.setAlternatingRowColors(True)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)

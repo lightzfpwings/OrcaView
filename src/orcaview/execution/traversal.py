@@ -50,27 +50,27 @@ def probe_orca(
 ) -> OrcaPreflight:
     """Check an explicit ORCA path and read its version in an isolated directory."""
 
-    timeout = finite_number(timeout_seconds, "版本探测超时")
+    timeout = finite_number(timeout_seconds, "Version probe timeout")
     if timeout <= 0:
-        raise ValueError("版本探测超时必须大于 0")
+        raise ValueError("The version probe timeout must be positive")
 
     if executable is None:
-        return _failure(None, "orca_path_required", "请提供 ORCA 可执行文件的绝对路径")
+        return _failure(None, "orca_path_required", "Provide the absolute path to the ORCA executable")
     path = Path(executable)
     try:
         path = path.expanduser()
         if not path.is_absolute():
-            return _failure(path, "orca_path_not_absolute", "ORCA 可执行文件必须使用绝对路径")
+            return _failure(path, "orca_path_not_absolute", "The ORCA executable path must be absolute")
         path = path.resolve(strict=True)
         info = path.stat()
         if not stat.S_ISREG(info.st_mode) or not os.access(path, os.X_OK):
-            return _failure(path, "orca_not_executable", f"ORCA 路径不是可执行文件 {path}")
+            return _failure(path, "orca_not_executable", f"The ORCA path is not an executable file: {path}")
     except FileNotFoundError:
-        return _failure(path, "orca_not_found", f"找不到 ORCA 可执行文件 {path}")
+        return _failure(path, "orca_not_found", f"The ORCA executable was not found: {path}")
     except (OSError, RuntimeError, ValueError) as exc:
-        return _failure(path, "orca_path_unavailable", f"无法核对 ORCA 可执行文件 {path}。{exc}")
+        return _failure(path, "orca_path_unavailable", f"Could not verify the ORCA executable {path}: {exc}")
     if os.name != "posix":
-        return _failure(path, "orca_platform_unsupported", "ORCA 本地执行需要 POSIX 进程组")
+        return _failure(path, "orca_platform_unsupported", "Local ORCA execution requires POSIX process groups")
 
     try:
         with tempfile.TemporaryDirectory(prefix="orcaview-orca-probe-") as directory:
@@ -94,30 +94,30 @@ def probe_orca(
                     output = _read_output(output_file)
                     if not stopped:
                         return _failure(
-                            path, "orca_version_stop_unconfirmed", "无法确认版本探测进程组已停止",
+                            path, "orca_version_stop_unconfirmed", "Could not confirm that the version probe process group stopped",
                             output, retryable=False,
                         )
                     if timed_out:
-                        return _failure(path, "orca_version_timeout", "ORCA 版本探测超时", output)
+                        return _failure(path, "orca_version_timeout", "The ORCA version probe timed out", output)
                     return _failure(
                         path,
                         "orca_version_child_remaining",
-                        "版本探测主进程退出后仍有活动的子进程",
+                        "Child processes remained active after the version probe exited",
                         output,
                     )
                 output = _read_output(output_file)
     except (OSError, ValueError) as exc:
-        return _failure(path, "orca_version_probe_failed", f"ORCA 版本探测失败。{exc}")
+        return _failure(path, "orca_version_probe_failed", f"The ORCA version probe failed: {exc}")
 
     match = _VERSION_BANNER.search(output or "")
     if match is None:
-        return _failure(path, "orca_version_missing", "未识别到 ORCA Program Version 横幅", output)
+        return _failure(path, "orca_version_missing", "No ORCA Program Version banner was found", output)
     # Traversal v0.1.2 accepts exit 2 only with the expected ORCA banner.
     if return_code not in (0, 2):
-        return _failure(path, "orca_version_exit", f"ORCA 版本探测退出码为 {return_code}", output)
+        return _failure(path, "orca_version_exit", f"The ORCA version probe exited with code {return_code}", output)
     result = OrcaPreflight(path, match[1], output, executable_fingerprint=_fingerprint(info))
     if not result.matches_executable():
-        return _failure(path, "orca_executable_changed", "ORCA 可执行文件在版本探测期间发生变化", output)
+        return _failure(path, "orca_executable_changed", "The ORCA executable changed during the version probe", output)
     return result
 
 
@@ -151,11 +151,11 @@ class TraversalAdapter:
             from chem_traversal.modules import DiscoveryConfig, PreflightConfig
         except ImportError as exc:
             raise TraversalUnavailableError(
-                f"当前 Python 环境无法导入 chem-traversal {TRAVERSAL_VERSION}"
+                f"The current Python environment cannot import chem-traversal {TRAVERSAL_VERSION}"
             ) from exc
         if __version__ != TRAVERSAL_VERSION:
             raise TraversalUnavailableError(
-                f"Traversal 适配器需要 chem-traversal {TRAVERSAL_VERSION}，当前为 {__version__}"
+                f"The Traversal adapter requires chem-traversal {TRAVERSAL_VERSION} (installed: {__version__})"
             )
         return Traversal(), DiscoveryConfig, PreflightConfig
 
@@ -192,13 +192,13 @@ class TraversalAdapter:
                 executable = Path(executable).expanduser()
                 if not executable.is_absolute():
                     return _failure(
-                        executable, "orca_path_not_absolute", "ORCA 可执行文件必须使用绝对路径"
+                        executable, "orca_path_not_absolute", "The ORCA executable path must be absolute"
                     )
             located = traversal.check_environment(
                 preflight_config("orca", executable=executable, check_version=False)
             )
         except (OSError, RuntimeError, ValueError) as exc:
-            return _failure(executable, "orca_path_unavailable", f"无法核对 ORCA 可执行文件。{exc}")
+            return _failure(executable, "orca_path_unavailable", f"Could not verify the ORCA executable: {exc}")
         if not located.ready or located.executable is None:
             return _failure(located.executable or executable, f"orca_{located.status.value}", located.message)
         return probe_orca(located.executable, timeout_seconds=timeout_seconds)

@@ -33,7 +33,7 @@ def build_result_demo() -> Tuple[Session, str]:
     fixture = b'{"synthetic_fixture":true,"atom_order":["H2","O","H1"],"charges_e":[0.0,-0.2,null]}'
     result = adapt_hirshfeld_fixture(
         request, frame, ArtifactRef.from_bytes(fixture, "orcaview.synthetic-json", "synthetic-charges.json"),
-        tuple(json.loads(fixture)["charges_e"]), missing_reason="合成样例省略了第一个氢原子的电荷",
+        tuple(json.loads(fixture)["charges_e"]), missing_reason="The synthetic example omits the first hydrogen atom’s charge",
     )
     dataset, = result.datasets
     document.add_dataset(dataset)

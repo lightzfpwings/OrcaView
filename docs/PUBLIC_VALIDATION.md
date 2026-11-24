@@ -1,4 +1,30 @@
-# OrcaView 验证记录
+# OrcaView validation history
+
+## 0.1.0a46 prerelease
+
+Structure image export offers integer scale factors from 1× to 8× and defaults to 2×. In the native Cocoa dialog, a 400 × 400 benzene view exported at 4× measured 1600 × 1600 pixels. Its atom labels and bonds retained their relative positions. Enlarging the canvas to 1801 × 1621 preserved the complete 1600 × 1600 region pixel for pixel. The BMP header identifies an uncompressed 24-bit image with a white background. PNG and BMP recorded the 384 dpi density of the 4× export.
+
+Vector PDF retains the printed structure size across multipliers. At 7× the tests also check fractional page dimensions and cross-reference offsets. [Export tests](../tests/test_structure_export.py) · [Dialog tests](../tests/test_structure_image_dialog.py)
+
+All 585 regression tests passed. The signed macOS arm64 application opened from the mounted disk image and its 124 frozen modules matched the checkout. The Windows executable made 36 exports under Wine across English, Simplified Chinese and Traditional Chinese. The Linux package's extracted code made the same 36 exports with the host's offscreen Qt. Native Linux desktop rendering remains unverified.
+
+## 0.1.0a45 local preview
+
+All 581 regression tests passed. The structure export tests exercise both Design views, the Input viewport and the selected Result frame, including transparent backgrounds, camera and label settings, canvas padding, cropping and vector PDF page sizes. The tests also cover cancellation and write failures. [Export tests](../tests/test_structure_export.py) · [Rendering tests](../tests/test_structure_rendering.py) · [File menu and dialog tests](../tests/test_structure_image_dialog.py)
+
+The mounted macOS arm64 image passed code-signature and native Cocoa startup checks. All 124 frozen OrcaView modules matched the checkout. Extending a transparent benzene export by 203 × 143 pixels preserved every original pixel. The 784 × 599 canvas produced a 588 × 449.25 pt PDF. Poppler rendered that PDF at 96 dpi, and the structure occupied the same bounds as the PNG.
+
+The Windows EXE ran under Wine with the English interface and each optional Chinese locale. It exported both Design views and the Input and Result geometries. Enlarging the canvas by 101 × 81 pixels preserved the original image. The Linux archive's extracted application modules passed the same export checks with host Qt; a native Linux desktop was unavailable.
+
+## 0.1.0a44 local preview
+
+The English desktop builds include 20 examples. The Chinese extension provides Simplified and Traditional Chinese for both OrcaView and the standard Qt controls. An installation with a saved Chinese language preference and no extension opens in English.
+
+The spectroscopy checks use real ORCA 6.1.1 IR, Raman, UV/Vis and CD output. The plotted CD spectrum retains the signs of the printed transitions. Tests cover the full width at half maximum, height normalization, coincident transitions, electronic-axis conversion, plotted limits, and separate exports of the curve and original sticks. An existing a43 project opens with its original input and peak data. [Figure and drawing controls](../artifacts/public/spectrum-plot.png) · [Broadening tests](../tests/test_spectral_broadening.py) · [Plot and export tests](../tests/test_spectrum_plot.py)
+
+All 568 regression tests passed. The mounted macOS arm64 image passed code-signature, native Cocoa startup and frozen-module checks. The plotted figure and CSV exports were checked with a real log. On Wine, the packaged Windows EXE opened in English, Simplified Chinese and Traditional Chinese. In each language the test changed the CD profile to pseudo-Voigt with a 6.5 nm FWHM, 70% Lorentzian fraction, 2,401 base samples and a 3.5 px stroke, then exported a 1,800 × 1,100 PNG. All 20 Windows examples opened. The Windows ZIP contains exactly `OrcaView.exe`, `LICENSE` and `Examples/` at its root.
+
+The Linux x86-64 archive's application code, executable permissions and all 3,062 inventoried files were verified on macOS. The published a43 portable updater was exercised against both final archives. Existing user examples and independently edited versions of the same example survived replacement and a second launch or recovery pass. Linux GUI execution on a native desktop remains unverified.
 
 ## 0.1.0a43 Windows 单文件发行包
 

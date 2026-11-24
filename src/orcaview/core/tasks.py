@@ -31,13 +31,13 @@ class ErrorInfo(Versioned):
     evidence: Tuple[ArtifactRef, ...] = ()
 
     def __post_init__(self):
-        nonempty(self.code, "错误码")
-        nonempty(self.reason, "错误原因")
+        nonempty(self.code, "Error code")
+        nonempty(self.reason, "Error reason")
         if self.retryable is not None and type(self.retryable) is not bool:
-            raise ValueError("retryable 只接受布尔值或 None")
-        require_tuple(self.evidence, "错误证据")
+            raise ValueError("retryable must be a boolean or None")
+        require_tuple(self.evidence, "Error evidence")
         if any(not isinstance(item, ArtifactRef) for item in self.evidence):
-            raise ValueError("错误证据必须使用 ArtifactRef")
+            raise ValueError("Error evidence must use an ArtifactRef")
 
 
 @dataclass(frozen=True)
@@ -57,17 +57,17 @@ class TaskEvent(Versioned):
             nonempty(getattr(self, label), label)
         if self.attempt_id is not None:
             nonempty(self.attempt_id, "attempt_id")
-        integer(self.sequence, "事件序号", 0)
+        integer(self.sequence, "Event sequence number", 0)
         if not isinstance(self.timestamp, datetime) or self.timestamp.utcoffset() is None:
-            raise ValueError("事件时间必须带时区")
-        if self.progress is not None and not 0 <= finite_number(self.progress, "进度") <= 1:
-            raise ValueError("进度必须位于 [0, 1]")
+            raise ValueError("The event timestamp must include a time zone")
+        if self.progress is not None and not 0 <= finite_number(self.progress, "Progress") <= 1:
+            raise ValueError("Progress must be in [0, 1]")
         if self.log is not None and not isinstance(self.log, ArtifactRef):
-            raise ValueError("日志引用必须是 ArtifactRef")
+            raise ValueError("The log reference must be an ArtifactRef")
         if self.error is not None and not isinstance(self.error, ErrorInfo):
-            raise ValueError("错误必须使用 ErrorInfo")
+            raise ValueError("Errors must use ErrorInfo")
 
     def check_after(self, previous: "TaskEvent") -> None:
         if ((self.task_id, self.attempt_id) != (previous.task_id, previous.attempt_id)
                 or self.sequence <= previous.sequence):
-            raise ValueError("同一任务尝试内的事件序号必须严格递增")
+            raise ValueError("Event sequence numbers must increase strictly within a task attempt")

@@ -10,31 +10,31 @@ class Versioned:
 
 def integer(value, label, minimum=None):
     if type(value) is not int:
-        raise ValueError(f"{label} 必须是整数")
+        raise ValueError(f"{label} must be an integer")
     if minimum is not None and value < minimum:
-        raise ValueError(f"{label} 必须不小于 {minimum}")
+        raise ValueError(f"{label} must be at least {minimum}")
 
 
 def finite_number(value, label):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{label} 必须是有限实数")
+        raise ValueError(f"{label} must be a finite real number")
     try:
         number = float(value)
     except OverflowError as exc:
-        raise ValueError(f"{label} 超出浮点范围") from exc
+        raise ValueError(f"{label} is outside the floating-point range") from exc
     if not math.isfinite(number):
-        raise ValueError(f"{label} 不能是 NaN 或无穷大")
+        raise ValueError(f"{label} cannot be NaN or infinite")
     return number
 
 
 def nonempty(value, label):
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{label} 必须是非空字符串")
+        raise ValueError(f"{label} must be a nonempty string")
 
 
 def require_tuple(value, label):
     if not isinstance(value, tuple):
-        raise ValueError(f"{label} 必须使用不可变 tuple")
+        raise ValueError(f"{label} must be an immutable tuple")
 
 
 def identifiers(values, label):
@@ -42,4 +42,4 @@ def identifiers(values, label):
     for value in values:
         nonempty(value, label)
     if len(set(values)) != len(values):
-        raise ValueError(f"{label} 不能重复")
+        raise ValueError(f"{label} must be unique")

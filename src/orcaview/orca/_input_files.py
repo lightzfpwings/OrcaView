@@ -16,12 +16,12 @@ _COMPANION_EXTENSIONS = {"external_xyz": ".xyz", "initial_gbw": ".gbw"}
 
 def _validate_destination(relative_path: str, extension: str) -> None:
     if not isinstance(relative_path, str) or not _BASENAME.fullmatch(relative_path):
-        raise ValueError("目标路径必须是工作目录下的可移植 ASCII 文件名")
+        raise ValueError("The target path must be a portable ASCII file name in the working directory")
     folded = relative_path.lower()
     if not folded.endswith(extension):
-        raise ValueError(f"目标文件名必须以 {extension} 结尾")
+        raise ValueError(f"The target file name must end in {extension}")
     if _RESERVED_DEVICE.fullmatch(folded.split(".", 1)[0]):
-        raise ValueError("目标文件名使用了系统保留名称")
+        raise ValueError("The target file name uses a reserved system name")
 
 
 def validate_main_input_path(relative_path: str) -> None:
@@ -30,7 +30,7 @@ def validate_main_input_path(relative_path: str) -> None:
 
 def _validate_companion_path(role: str, relative_path: str) -> None:
     if not isinstance(role, str) or role not in _COMPANION_EXTENSIONS:
-        raise ValueError("伴随文件角色必须为 external_xyz 或 initial_gbw")
+        raise ValueError("The companion file role must be external_xyz or initial_gbw")
     _validate_destination(relative_path, _COMPANION_EXTENSIONS[role])
 
 
@@ -46,7 +46,7 @@ class InputCompanionFile(Versioned):
     def __post_init__(self) -> None:
         _validate_companion_path(self.role, self.relative_path)
         if type(self.content) is not bytes or not self.content:
-            raise ValueError("伴随文件内容必须是非空的不可变 bytes")
+            raise ValueError("Companion file content must be nonempty immutable bytes")
         object.__setattr__(self, "sha256", sha256(self.content).hexdigest())
 
     @classmethod
@@ -56,10 +56,10 @@ class InputCompanionFile(Versioned):
         path = Path(source)
         try:
             if not path.is_file():
-                raise ValueError(f"伴随文件不存在或不是普通文件：{path}")
+                raise ValueError(f"The companion file is missing or not a regular file: {path}")
             content = path.read_bytes()
         except OSError as exc:
-            raise ValueError(f"无法读取伴随文件：{path}") from exc
+            raise ValueError(f"Could not read the companion file: {path}") from exc
         return cls(role, relative_path, content)
 
 
@@ -68,22 +68,22 @@ def validate_companion_manifest(
 ) -> Tuple[InputCompanionFile, ...]:
     """Validate all destinations together and return them in canonical order."""
     validate_main_input_path(main_input_path)
-    require_tuple(companions, "伴随文件清单")
+    require_tuple(companions, "Companion file manifest")
     main_folded = main_input_path.lower()
     main_stem = main_folded.rsplit(".", 1)[0]
     seen_paths = {main_folded}
     seen_roles = set()
     for companion in companions:
         if not isinstance(companion, InputCompanionFile):
-            raise ValueError("伴随文件清单必须使用 InputCompanionFile")
+            raise ValueError("The companion file manifest must use InputCompanionFile")
         path = companion.relative_path.lower()
         stem = path.rsplit(".", 1)[0]
         if path in seen_paths:
-            raise ValueError(f"输入文件目标路径冲突：{companion.relative_path}")
+            raise ValueError(f"Input file target path conflict: {companion.relative_path}")
         if stem == main_stem or stem.startswith(main_stem + "_"):
-            raise ValueError(f"伴随文件与 ORCA 输出文件名冲突：{companion.relative_path}")
+            raise ValueError(f"The companion file conflicts with the ORCA output name: {companion.relative_path}")
         if companion.role in seen_roles:
-            raise ValueError(f"伴随文件角色重复：{companion.role}")
+            raise ValueError(f"Duplicate companion file role: {companion.role}")
         seen_paths.add(path)
         seen_roles.add(companion.role)
     return tuple(sorted(companions, key=lambda companion: companion.relative_path.lower()))

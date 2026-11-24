@@ -34,7 +34,7 @@ def _add_populations(lines, source, document, frame, geometry_line):
         prefix = {"Mulliken": "mulliken", "Löwdin": "loewdin", "Hirshfeld": "hirshfeld"}[method]
         loc = (("population_line", str(line)),)
         if counts[method] > 1:
-            loc += (("population_series", f"第 {line} 行"),)
+            loc += (("population_series", f"Line {line}"),)
         origin = Provenance("orca-native-import", "orcaview.orca.population", "1", (source,), loc)
         for kind, unit, series in ((prefix + "-charge", "e", values), (prefix + "-spin", "1", spins)):
             if series and (kind, str(line)) not in existing:
@@ -47,7 +47,7 @@ def read_native_session(path: Path, confirmation=None):
     path = path.resolve()
     if confirmation is None:
         if not path.is_file():
-            raise OSError(tr("来源需要是可读取的普通文件"))
+            raise OSError(tr("Select a readable regular file"))
         raw = path.read_bytes()
     else:
         raw = confirmation.raw
@@ -57,7 +57,7 @@ def read_native_session(path: Path, confirmation=None):
     if periodic:
         geometry = reported_geometry(raw.decode("utf-8-sig"))
         if geometry is None:
-            raise ValueError(tr("日志中缺少可独立识别的笛卡尔坐标，无法显示去掉周期性的结构。"))
+            raise ValueError(tr("No Cartesian coordinates could be identified in the log to display a finite structure."))
         atoms, charge, mult, _ = geometry
         mol = Molecule(path.stem, atoms, charge=charge, multiplicity=mult)
         return OpenedStructure(StructureRecord(mol, removed_periodicity=True),
@@ -97,12 +97,12 @@ class SummaryView:
 
 def read_summary_view(path, job):
     if path.stat().st_size > 64 * 1024 * 1024:
-        raise ValueError(tr("摘要入口支持不超过 64 MB 的输出文件。"))
+        raise ValueError(tr("The summary reader supports output files up to 64 MB."))
     raw = path.read_bytes()
     text = raw.decode("utf-8-sig", errors="replace")
     result = parse_output(text, job)
     fields = json.dumps(asdict(result), ensure_ascii=False, indent=2)
-    summary = tr("来源：{path}\n作业类型：{job}\n独立导入，尚未绑定当前结构。", path=path, job=job) + "\n\n" + fields
+    summary = tr("Source: {path}\nJob type: {job}\nSeparate import, not linked to the current structure.", path=path, job=job) + "\n\n" + fields
     report = parse_log_report(text.splitlines(), ArtifactRef.from_bytes(raw, "orca-out", str(path.resolve())))
     return SummaryView(summary, report)
 

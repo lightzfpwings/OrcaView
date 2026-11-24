@@ -24,26 +24,26 @@ def report_text(source):
         return translated
     if " · " in source:
         return " · ".join(report_text(part) for part in source.split(" · "))
-    for pattern, template in ((r"作业 (\d+)", "作业 {value}"), (r"第 (\d+) 行", "第 {value} 行"),
-                              (r"优化第 (\d+) 步", "优化第 {value} 步"),
-                              (r"(\S+) 相关能", "{value} 相关能")):
+    for pattern, template in (("Job (\\d+)", "Job {value}"), ("Line (\\d+)", "Line {value}"),
+                              ("Optimization step (\\d+)", "Optimization step {value}"),
+                              ("(\\S+) correlation energy", "{value} correlation energy")):
         match = re.fullmatch(pattern, source)
         if match:
             return tr(template, value=match[1])
-    for prefix in ("多重度", "不可约表示", "根", "态", "转动常数", "静态极化率", "偶极矩"):
+    for prefix in ("Multiplicity", "Irreducible representation", "Root", "State", "Rotational constants", "Static polarizability", "Dipole moment"):
         if source.startswith(prefix + " "):
             return tr(prefix) + " " + source[len(prefix) + 1:]
     # Optical titles combine the spectrum name, gauge and optional moment convention.
-    if source.startswith(("紫外–可见吸收（", "电子圆二色谱 CD（")) and source.endswith("）"):
-        name, _, qualifiers = source[:-1].partition("（")
-        detail = tr("，").join(tr(part) for part in qualifiers.split("，"))
-        return tr("{label}（{suffix}）", label=tr(name), suffix=detail)
+    if source.startswith(("UV–visible absorption (", "Electronic circular dichroism (CD) (")) and source.endswith(")"):
+        name, _, qualifiers = source[:-1].rpartition(" (")
+        detail = tr(", ").join(tr(part) for part in qualifiers.split(", "))
+        return tr("{label} ({suffix})", label=tr(name), suffix=detail)
     return source
 
 
 def log_overview_status(report):
     if report.source.sha256 == _M5_FIXTURE_SHA256:
-        return report_text(report.status) + "\n" + tr("来源类型  ") + tr("合成样例")
+        return report_text(report.status) + "\n" + tr("Source type  ") + tr("Synthetic example")
     return report_text(report.status)
 
 
@@ -64,25 +64,25 @@ def _file_type(path, file_format):
     name = (path or "").replace("\\", "/").lower()
     suffix = _file_suffix(name)
     if file_format in ("orca-out", "orca-output"):
-        label = "ORCA 日志文件" if suffix == ".log" else "ORCA 输出文件"
+        label = "ORCA log file" if suffix == ".log" else "ORCA output file"
     else:
         labels = {
-            "xyz": "XYZ 坐标文件", "mol": "MDL MOL 结构文件", "sdf": "SDF 结构文件",
-            "mol2": "Tripos MOL2 结构文件", "pdb": "PDB 结构文件", "smi": "SMILES 分子表示",
-            "inchi": "InChI 分子标识", "cdxml": "ChemDraw 结构文件", "cml": "CML 结构文件",
-            "cif": "CIF 晶体结构文件", "poscar": "VASP 结构文件",
-            "gaussian-input": "Gaussian 输入文件", "orca-input": "ORCA 输入文件",
-            "qchem-input": "Q-Chem 输入文件", "nwchem-input": "NWChem 输入文件",
-            "molden": "Molden 波函数文件", "gaussian-fchk": "Gaussian 格式化检查点文件",
-            "wfn": "WFN 波函数文件", "wfx": "WFX 波函数文件", "mwfn": "MWFN 波函数文件",
-            "orca-gbw": "ORCA GBW 波函数文件", "orcaview-project": "OrcaView 项目文件",
-            "orcaview.schema1": "OrcaView 项目文件", "orcaview.synthetic-json": "JSON 样例文件",
+            "xyz": "XYZ coordinate file", "mol": "MDL MOL structure file", "sdf": "SDF structure file",
+            "mol2": "Tripos MOL2 structure file", "pdb": "PDB structure file", "smi": "SMILES notation",
+            "inchi": "InChI identifier", "cdxml": "ChemDraw structure file", "cml": "CML structure file",
+            "cif": "CIF crystal structure file", "poscar": "VASP structure file",
+            "gaussian-input": "Gaussian input file", "orca-input": "ORCA input file",
+            "qchem-input": "Q-Chem input file", "nwchem-input": "NWChem input file",
+            "molden": "Molden wavefunction file", "gaussian-fchk": "Gaussian formatted checkpoint file",
+            "wfn": "WFN wavefunction file", "wfx": "WFX wavefunction file", "mwfn": "MWFN wavefunction file",
+            "orca-gbw": "ORCA GBW wavefunction file", "orcaview-project": "OrcaView project file",
+            "orcaview.schema1": "OrcaView project file", "orcaview.synthetic-json": "JSON sample file",
         }
         label = labels.get(file_format, file_format)
         if file_format == "unknown":
-            label = {".xyz": "XYZ 坐标文件", ".oview.json": "OrcaView 项目文件"}.get(
-                suffix, tr("{format} 文件", format=suffix[1:].upper()) if suffix else "未知")
-    return tr("{label}（{suffix}）", label=tr(label), suffix=suffix) if suffix else tr(label)
+            label = {".xyz": "XYZ coordinate file", ".oview.json": "OrcaView project file"}.get(
+                suffix, tr("{format} file", format=suffix[1:].upper()) if suffix else "Unknown")
+    return tr("{label} ({suffix})", label=tr(label), suffix=suffix) if suffix else tr(label)
 
 
 def source_file_details(artifacts, *, input_path="", project_path=""):
@@ -93,8 +93,8 @@ def source_file_details(artifacts, *, input_path="", project_path=""):
     if not files and project_path:
         files = [(project_path, "orcaview-project")]
     if not files:
-        return tr("文件地址  {path}\n文件类型  {type}", path=tr("无"), type=tr("无"))
-    return "\n\n".join(tr("文件地址  {path}\n文件类型  {type}", path=path or tr("未记录"), type=_file_type(path, fmt))
+        return tr("File path  {path}\nFile type  {type}", path=tr("None"), type=tr("None"))
+    return "\n\n".join(tr("File path  {path}\nFile type  {type}", path=path or tr("Not recorded"), type=_file_type(path, fmt))
                         for path, fmt in dict.fromkeys(files))
 
 
@@ -135,16 +135,16 @@ def matched_energy_lines(datasets, source):
 
 def dataset_name(data):
     if data.kind == "energy" and "orca-final-single-point-energy" in data.quality:
-        return tr("单点能")
+        return tr("Single-point energy")
     names = {
-        "energy": "能量",
-        "mulliken-charge": "Mulliken 电荷",
-        "mulliken-spin": "Mulliken 自旋布居",
-        "loewdin-charge": "Löwdin 电荷",
-        "loewdin-spin": "Löwdin 自旋布居",
-        "hirshfeld-charge": "Hirshfeld 电荷",
-        "hirshfeld-spin": "Hirshfeld 自旋布居",
-        "atomic_charge": "原子电荷",
+        "energy": "Energy",
+        "mulliken-charge": "Mulliken charge",
+        "mulliken-spin": "Mulliken spin population",
+        "loewdin-charge": "Löwdin charge",
+        "loewdin-spin": "Löwdin spin population",
+        "hirshfeld-charge": "Hirshfeld charge",
+        "hirshfeld-spin": "Hirshfeld spin population",
+        "atomic_charge": "Atomic charge",
     }
     return tr(names[data.kind]) if data.kind in names else data.method or data.kind
 
@@ -153,18 +153,18 @@ def result_summary(data):
     name = dataset_name(data)
     if data.shape == () and data.array_ref is None:
         value = data.values[0] if data.values is not None else None
-        return f"{name}    {tr('缺失') if value is None else value} {data.unit}"
+        return f"{name}    {(tr('Missing') if value is None else value)} {data.unit}"
     return f"{name}   ·   {data.unit}"
 
 
 def frame_name(frame):
     if frame.startswith("orca-out:"):
-        frame = tr("ORCA 帧 ") + frame[len("orca-out:"):][:8]
+        frame = tr("ORCA frame ") + frame[len("orca-out:"):][:8]
     return frame
 
 
 def geometry_name(ref):
-    revision = tr("修订 {revision}", revision=ref.revision)
+    revision = tr("Revision {revision}", revision=ref.revision)
     return revision + " / " + frame_name(ref.frame_id) if ref.frame_id is not None else revision
 
 
@@ -177,12 +177,12 @@ def _is_fixture(origin):
 def source_label(snapshot, data):
     origin = data.provenance if data is not None else snapshot.provenance
     if _is_fixture(origin) or (data is not None and "synthetic-fixture" in data.quality):
-        return tr("合成样例")
+        return tr("Synthetic example")
     if origin.kind == "orca-native-import":
-        return tr("ORCA 输出导入")
+        return tr("ORCA output import")
     if origin.kind == "orca-log-geometry":
-        return tr("ORCA 日志结构")
-    labels = {"created": "项目结构", "history-restore": "恢复修订", "edit": "编辑修订"}
+        return tr("ORCA log geometry")
+    labels = {"created": "Project structure", "history-restore": "Restore revision", "edit": "Edited revision"}
     return tr(labels[origin.kind]) if origin.kind in labels else origin.kind
 
 
@@ -192,34 +192,34 @@ def describe(snapshot, data):
     lines = []
     if data is not None:
         lines.append(result_summary(data))
-        fields = (("方法", data.method), ("密度", data.density), ("自旋", data.spin), ("态", data.state_id))
+        fields = (("Method", data.method), ("Density", data.density), ("Spin", data.spin), ("State", data.state_id))
         tags = [f"{tr(label)}  {value}" for label, value in fields if value]
         if tags:
             lines.append("    ·    ".join(tags))
         if data.quality:
-            lines.append(tr("质量标记  ") + "，".join(data.quality))
+            lines.append(tr("Quality flags  ") + ", ".join(data.quality))
         if data.missing_reason:
-            lines.append(tr("缺失原因  ") + data.missing_reason)
+            lines.append(tr("Reason for missing value  ") + data.missing_reason)
         if data.array_ref is not None:
-            lines.append(tr("外部数组尚未加载"))
+            lines.append(tr("External array not loaded"))
         if data.shape and (len(data.shape) != 1 or data.axes[0].kind != "atom"):
-            lines.append(tr("此轴类型仅展示元数据"))
+            lines.append(tr("Only metadata are shown for this axis type"))
     else:
         molecule = snapshot.molecule
-        lines.extend((molecule.name, tr("电荷  {charge}    ·    多重度  {multiplicity}", charge=molecule.charge, multiplicity=molecule.multiplicity),
-                      tr("源坐标单位  {unit}", unit=snapshot.source_unit)))
-    lines.append(tr("来源类型  ") + source_label(snapshot, data))
+        lines.extend((molecule.name, tr("Charge  {charge}    ·    Multiplicity  {multiplicity}", charge=molecule.charge, multiplicity=molecule.multiplicity),
+                      tr("Source coordinate unit  {unit}", unit=snapshot.source_unit)))
+    lines.append(tr("Source type  ") + source_label(snapshot, data))
     parameters = dict(origin.parameters)
     population_line = parameters.get("population_line") or parameters.get("mulliken_line")
     if population_line:
-        lines.append(tr("来源行  ") + population_line)
+        lines.append(tr("Source line  ") + population_line)
     if "orca_version" in parameters:
         lines.append("ORCA " + parameters["orca_version"])
     if origin.parents:
         filenames = [PurePath(parent.path_hint.replace("\\", "/")).name if parent.path_hint else parent.format
                      for parent in origin.parents]
-        lines.append(tr("来源文件  ") + "，".join(filenames))
+        lines.append(tr("Source file  ") + ", ".join(filenames))
     if producer:
-        lines.append(tr("记录来源  ") + producer)
+        lines.append(tr("Record source  ") + producer)
 
     return "\n".join(lines)

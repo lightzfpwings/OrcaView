@@ -25,7 +25,7 @@ def _merge_body(body, additions, indent="  "):
                 body[index + 1:end] = _merge_body(body[index + 1:end], value, indent + "  ")
                 continue
         if index is not None:
-            raise ValueError(f"参数 {key} 已由所选计算模板设置")
+            raise ValueError(f"The selected calculation template already sets {key}")
         body.append(f"{indent}{key} {_native_value(value)}")
     return body
 
@@ -47,7 +47,7 @@ def merge_block_lines(template, values):
         if line.startswith("%"):
             name = line[1:]
             if name in blocks:
-                raise ValueError(f"计算模板中出现重复的 %{name} 块")
+                raise ValueError(f"Duplicate %{name} block in the calculation template")
             blocks[name] = []
         else:
             blocks[name].append(line)

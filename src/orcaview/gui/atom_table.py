@@ -23,8 +23,8 @@ class AtomCoordinateTable(QTableWidget):
     def __init__(self):
         super().__init__(0, 6)
         self.setObjectName("foundationAtoms")
-        self.setHorizontalHeaderLabels((tr("序号"), tr("元素"), tr("结果"), "X", "Y", "Z"))
-        self.horizontalHeaderItem(0).setToolTip(tr("当前几何快照的原子序号，从 1 开始"))
+        self.setHorizontalHeaderLabels((tr("No."), tr("Element"), tr("Result"), "X", "Y", "Z"))
+        self.horizontalHeaderItem(0).setToolTip(tr("Atom number in the current geometry, starting at 1"))
         self.setAlternatingRowColors(True)
         self.setWordWrap(False)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)

@@ -62,7 +62,7 @@ def _preset(method):
     # The method registry also serves the model layer that imports BASES.
     from .methods import METHODS
     if not isinstance(method, str) or method not in METHODS:
-        raise ValueError(f"未收录计算方法 {method!r}")
+        raise ValueError(f"Unknown computational method {method!r}")
     return METHODS[method]
 
 
@@ -103,11 +103,11 @@ def _scf_kind(method):
         return "response"
     if method in ("CASSCF", "SC-NEVPT2"):
         return "casscf"
-    if "双杂化" in family:
+    if "double hybrid" in family.casefold().replace("-", " "):
         return "double-hybrid"
-    if "杂化" in family:
+    if "hybrid" in family.casefold():
         return "hybrid"
-    if family.startswith(("局域密度", "广义梯度", "动能密度", "LibXC")):
+    if family.startswith(("Local density", "Generalized gradient", "Kinetic energy density", "LibXC")):
         return "pure"
     if method == "RPAC(PBE)" or method.startswith("ADFT("):
         return "density-fit"
@@ -141,7 +141,7 @@ def integral_options(method_name, job=None):
 
 def grid_options(method, approximation="Auto"):
     if approximation not in integral_options(method):
-        raise ValueError(f"{method} 不支持积分设置 {approximation!r}")
+        raise ValueError(f"{method} does not support integral setting {approximation!r}")
     kind = _scf_kind(method)
     if (kind in ("pure", "hybrid", "double-hybrid", "double-hybrid-response", "casdft", "response") or method == "RPAC(PBE)"
             or approximation == "RIJCOSX"):
@@ -187,10 +187,10 @@ def _jk_fits(basis):
 def auxiliary_options(method_name, basis, approximation, block_options=()):
     """Return active slots and their explicit choices, with the default choice first."""
     if approximation not in integral_options(method_name):
-        raise ValueError(f"{method_name} 不支持积分设置 {approximation!r}")
+        raise ValueError(f"{method_name} does not support integral setting {approximation!r}")
     orbitals = basis_options(method_name)
     if not isinstance(basis, str) or basis not in (orbitals or BASES):
-        raise ValueError(f"{method_name} 不支持轨道基组 {basis!r}")
+        raise ValueError(f"{method_name} does not support orbital basis {basis!r}")
     if not orbitals:
         return {}
     kind = _scf_kind(method_name)
@@ -230,7 +230,7 @@ def _mdci_uses_correlation_fit(overrides):
 def _check_elements(molecule, name, supported):
     for atom in molecule.atoms:
         if ATOMIC_NUMBERS[atom.element] not in supported:
-            raise ValueError(f"基组 {name} 不覆盖元素 {atom.element}")
+            raise ValueError(f"Basis set {name} does not cover {atom.element}")
 
 
 def _core_sizes(*groups):
@@ -260,7 +260,7 @@ _ECP_CORES = {
 
 def effective_electron_count(basis, molecule):
     if not isinstance(basis, str) or basis not in BASES:
-        raise ValueError(f"未知轨道基组 {basis!r}")
+        raise ValueError(f"Unknown orbital basis {basis!r}")
     _check_elements(molecule, basis, ORBITAL_COVERAGE[basis])
     potential = BASIS_POTENTIALS.get(basis)
     if potential is None:
@@ -268,13 +268,13 @@ def effective_electron_count(basis, molecule):
     cores = _ECP_CORES[potential]
     for atom in molecule.atoms:
         if ATOMIC_NUMBERS[atom.element] not in cores:
-            raise ValueError(f"{basis} 的 {potential} 对 {atom.element} 的芯电子数未经核实")
+            raise ValueError(f"The core electron count for {atom.element} with {potential} in {basis} has not been verified")
     return molecule.electron_count - sum(cores[ATOMIC_NUMBERS[atom.element]] for atom in molecule.atoms)
 
 
 def validate_basis_system(basis, molecule):
     if effective_electron_count(basis, molecule) < molecule.multiplicity - 1:
-        raise ValueError("轨道基组和有效核势保留的显式电子数不足以构成所选多重度")
+        raise ValueError("The basis set and ECP leave too few explicit electrons for the selected multiplicity")
 
 
 _SLOT_KEYWORDS = {"aux_j": "AuxJ", "aux_jk": "AuxJK", "aux_c": "AuxC", "cabs": "CABS"}
@@ -284,7 +284,7 @@ def orbital_and_aux_input(spec, molecule=None):
     """Return the simple input keywords and the companion %basis block."""
     method, basis, approximation = spec.method, spec.basis, spec.integral_approximation
     if approximation not in integral_options(method, spec.job_type):
-        raise ValueError(f"{method} 的 {spec.job_type} 任务不支持 {approximation!r} 积分设置")
+        raise ValueError(f"{method} jobs of type {spec.job_type} do not support integral setting {approximation!r}")
     options = auxiliary_options(method, basis, approximation, spec.block_options)
     words = [basis] if _preset(method).uses_orbital_basis else []
     if words and molecule is not None:
@@ -293,9 +293,9 @@ def orbital_and_aux_input(spec, molecule=None):
             from ._solver_block_catalog import MDCI_RHF_ONLY_KC
             if any(isinstance(item, BlockOverride) and item.block == "mdci" and item.key == "KCOpt"
                    and item.value in MDCI_RHF_ONLY_KC for item in spec.block_options):
-                raise ValueError("所选 MDCI 积分算法需要闭壳层 RHF 参考波函数")
+                raise ValueError("This MDCI integral algorithm requires a closed-shell RHF reference")
     if spec.relativity not in scalar_options(method, basis):
-        raise ValueError(f"{method} / {basis} 不支持相对论设置 {spec.relativity!r}")
+        raise ValueError(f"{method} / {basis} does not support relativistic setting {spec.relativity!r}")
     if words and basis in SCALAR_BASES:
         model = SCALAR_BASES[basis][0] if spec.relativity == "Auto" else spec.relativity
         words.append(model)
@@ -304,7 +304,7 @@ def orbital_and_aux_input(spec, molecule=None):
     elif approximation != "Auto":
         words.append(approximation)
     if spec.integration_grid not in grid_options(method, approximation):
-        raise ValueError(f"{method} / {approximation} 不支持积分网格 {spec.integration_grid!r}")
+        raise ValueError(f"{method} / {approximation} does not support integration grid {spec.integration_grid!r}")
     if spec.integration_grid != "Auto":
         words.append(spec.integration_grid)
     assignments = []
@@ -312,7 +312,7 @@ def orbital_and_aux_input(spec, molecule=None):
         chosen = getattr(spec, slot)
         choices = options.get(slot, ())
         if chosen is not None and chosen not in choices:
-            raise ValueError(f"{method} / {basis} / {approximation} 不支持 {keyword}={chosen!r}")
+            raise ValueError(f"{method} / {basis} / {approximation} does not support {keyword}={chosen!r}")
         if not choices:
             continue
         fit = choices[0] if chosen is None else chosen

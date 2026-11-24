@@ -114,7 +114,7 @@ class DesignWorkspaceTests(unittest.TestCase):
                 self.assertAlmostEqual(actual, expected)
 
     def test_edit_loaded_3d_geometry_and_save_reopen(self):
-        self.assertEqual([self.tabs.tabText(i) for i in range(self.tabs.count())], ["输入", "设计", "结果"])
+        self.assertEqual([self.tabs.tabText(i) for i in range(self.tabs.count())], ["Input", "Design", "Result"])
         source = Path("examples/water.xyz").resolve()
         with patch.object(QFileDialog, "getOpenFileName", return_value=(str(source), "")):
             self.window.open_file()

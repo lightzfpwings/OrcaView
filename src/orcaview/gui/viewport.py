@@ -1,4 +1,4 @@
-"""轻量投影视口，验证选择、旋转和缩放；将来可替换为 VTK 适配器。"""
+"""Lightweight projection viewport for selection, rotation and zoom. A VTK adapter may be used in the future."""
 
 import math
 
@@ -88,14 +88,14 @@ class MoleculeViewport(QWidget):
             self.yaw = self.pitch = 0.
         self._frame = frame
         if self.principal_axis.direction is None:
-            alignment = tr("沿用输入坐标轴")
+            alignment = tr("Use input coordinate axes")
         else:
             order = "∞" if math.isinf(self.principal_axis.order) else str(self.principal_axis.order)
-            alignment = tr("C{order} 主轴 ∥ z", order=order)
-        self._point_group_label = tr("几何点群 {group}", group=group)
+            alignment = tr("C{order} principal axis ∥ z", order=order)
+        self._point_group_label = tr("Point group {group}", group=group)
         self.symmetry_label = f"{self._point_group_label}  ·  {alignment}"
         self.setAccessibleDescription(self.symmetry_label)
-        self.setToolTip(self.symmetry_label + "\n" + tr("几何匹配容差 {tolerance:g} Å。原子表及 ORCA 输入使用原始坐标。", tolerance=DEFAULT_TOLERANCE))
+        self.setToolTip(self.symmetry_label + "\n" + tr("Geometry matching tolerance: {tolerance:g} Å. The atom table and ORCA input use the original coordinates.", tolerance=DEFAULT_TOLERANCE))
         if keep_view:
             self._end_gesture()
             self.update()
@@ -159,31 +159,45 @@ class MoleculeViewport(QWidget):
             self._pan = QPointF(screen_x - self.width() / 2 - x * scale, screen_y - self.height() / 2 + y * scale)
         origin_x = self.width() / 2 + self._pan.x()
         origin_y = self.height() / 2 + self._pan.y()
-        self._projected = []
+        projected = []
         for atom in atoms:
             x, y, z = self.transform(atom.x - center[0], atom.y - center[1], atom.z - center[2])
             size = max(1.5, _BALL_RADII.get(atom.element, 0.32) * scale)
-            self._projected.append((origin_x + x * scale, origin_y - y * scale, z, size))
-        return scale
+            projected.append((origin_x + x * scale, origin_y - y * scale, z, size))
+        return scale, projected
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), _CANVAS)
-        if self.molecule is None or not self.molecule.atoms:
+    def has_exportable_structure(self):
+        return self.molecule is not None and bool(self.molecule.atoms)
+
+    def paint_structure(self, painter):
+        """Paint the current molecular projection in widget coordinates."""
+        if not self.has_exportable_structure():
             return
+        scale, projected = self._project_atoms()
+        painter.save()
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBackgroundMode(Qt.BGMode.TransparentMode)
+            font = self.font()
+            # Keep labels in viewport pixels even when printing to a high-DPI device.
+            font.setPixelSize(self.fontInfo().pixelSize())
+            painter.setFont(font)
+            self._draw_molecule(painter, scale, projected)
+        finally:
+            painter.restore()
+
+    def _draw_molecule(self, painter, scale, projected, selection_labels=()):
         atoms = self.molecule.atoms
-        scale = self._project_atoms()
-        points = [QPointF(x, y) for x, y, z, radius in self._projected]
+        points = [QPointF(x, y) for x, y, z, radius in projected]
         for bond in self.bonds:
             radius = max(0.7, (0.062 if "H" in (atoms[bond.a].element, atoms[bond.b].element) else 0.083) * scale)
             stick = radius if bond.order == 1 else max(.6, radius * .52)
             draw_bond(painter, points[bond.a], points[bond.b], bond.order, bond.style, _STICK,
                       2 * stick, 3.1 * stick, shaded=True,
-                      clearance=(self._projected[bond.a][3] + 1, self._projected[bond.b][3] + 1),
+                      clearance=(projected[bond.a][3] + 1, projected[bond.b][3] + 1),
                       interior=ring_center(self._aromatic_paths.get(bond), points))
-        for index in sorted(range(len(atoms)), key=lambda i: self._projected[i][2]):
-            x, y, z, size = self._projected[index]
+        for index in sorted(range(len(atoms)), key=lambda i: projected[i][2]):
+            x, y, z, size = projected[index]
             color = QColor(ELEMENT_COLORS.get(atoms[index].element, "#aa88bb"))
             gradient = QRadialGradient(QPointF(x - size * 0.28, y - size * 0.36), size * 1.47)
             gradient.setColorAt(0, color.lighter(110))
@@ -193,9 +207,19 @@ class MoleculeViewport(QWidget):
             painter.setBrush(gradient)
             painter.setPen(QPen(color.darker(128), 0.8))
             painter.drawEllipse(QPointF(x, y), size, size)
-            if self.labels and index not in self.selected:
+            if self.labels and index not in selection_labels:
                 painter.setPen(_MUTED)
                 painter.drawText(QPointF(x + size + 5, y - size - 2), "{}{}".format(atoms[index].element, index + 1))
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), _CANVAS)
+        if not self.has_exportable_structure():
+            return
+        atoms = self.molecule.atoms
+        scale, self._projected = self._project_atoms()
+        self._draw_molecule(painter, scale, self._projected, self.selected)
         # Table selection may address an atom behind another in this projection.
         if self.selected:
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -224,19 +248,19 @@ class MoleculeViewport(QWidget):
                 painter.fillRect(bounds.adjusted(-2, -1, 2, 1), _CANVAS)
                 painter.drawText(QPointF(label_x, label_y), label)
             if group_selection:
-                selection_text = tr("已选 {count} 个原子", count=len(self.selected))
+                selection_text = tr("{count} atoms selected", count=len(self.selected))
             else:
-                names = "、".join(f"{atoms[index].element}{index + 1}" for index in self.selected)
-                selection_text = tr("已选  ") + names
+                names = ", ".join(f"{atoms[index].element}{index + 1}" for index in self.selected)
+                selection_text = tr("Selected  ") + names
             painter.setPen(_ACCENT)
             painter.drawText(self.width() - 18 - painter.fontMetrics().horizontalAdvance(selection_text),
                              26, selection_text)
         painter.setPen(_MUTED)
         if self._result_view:
-            painter.drawText(18, 26, tr("哑光球棍"))
+            painter.drawText(18, 26, tr("Matte ball-and-stick"))
             painter.drawText(18, 47, self._point_group_label)
         else:
-            painter.drawText(18, 26, tr("几何  /  Å     ·     哑光球棍"))
+            painter.drawText(18, 26, tr("Geometry  /  Å     ·     Matte ball-and-stick"))
             painter.drawText(18, 47, self.symmetry_label)
         self._draw_axes(painter)
         if self._box_select and self._dragged:
@@ -247,7 +271,7 @@ class MoleculeViewport(QWidget):
             painter.drawRect(QRectF(self._press, self._last).normalized())
 
     def _draw_axes(self, painter):
-        # 轴标随相机旋转，避免固定标签误导空间方向。
+        # Rotate axis labels with the camera to keep orientations unambiguous.
         origin = QPointF(self.width() - 48, self.height() - 52)
         axes = zip(_INPUT_FRAME, "xyz", ("#AC534C", "#397E60", "#386FA7"))
         directions = [(self.camera_transform(*vector), label, QColor(color)) for vector, label, color in axes]
@@ -348,7 +372,7 @@ class MoleculeViewport(QWidget):
                     self.atom_targeted.emit(target)
                     if self.molecule is not previous:
                         point = self.mapFromGlobal(fixed)
-                        self._project_atoms((target, point.x(), point.y()))
+                        _, self._projected = self._project_atoms((target, point.x(), point.y()))
                         self.update()
                 return
             self._pick_atom(target)

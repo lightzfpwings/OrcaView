@@ -29,7 +29,7 @@ class ArtifactRef(Versioned):
         if self.sha256 is not None and (
             not isinstance(self.sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", self.sha256)
         ):
-            raise ValueError("sha256 必须是 64 位小写十六进制摘要")
+            raise ValueError("sha256 must be a 64-character lowercase hexadecimal digest")
 
     @classmethod
     def from_bytes(cls, data: bytes, format: str, path_hint: Optional[str] = None):
@@ -54,23 +54,23 @@ class Provenance(Versioned):
     parameters: Tuple[Tuple[str, str], ...] = ()
 
     def __post_init__(self):
-        nonempty(self.kind, "来源种类")
+        nonempty(self.kind, "Source type")
         for label in ("producer", "producer_version"):
             if getattr(self, label) is not None:
                 nonempty(getattr(self, label), label)
-        require_tuple(self.parents, "来源文件")
+        require_tuple(self.parents, "Source files")
         for parent in self.parents:
             if not isinstance(parent, ArtifactRef):
-                raise ValueError("来源文件必须是 ArtifactRef")
+                raise ValueError("Source files must be ArtifactRef objects")
         if len({p.artifact_id for p in self.parents}) != len(self.parents):
-            raise ValueError("来源文件 ID 不能重复")
-        require_tuple(self.parameters, "来源参数")
+            raise ValueError("Source file IDs must be unique")
+        require_tuple(self.parameters, "Source parameters")
         keys = set()
         for pair in self.parameters:
             if not isinstance(pair, tuple) or len(pair) != 2:
-                raise ValueError("来源参数必须是 (名称, 值) 对")
+                raise ValueError("Source parameters must be (name, value) pairs")
             key, value = pair
-            nonempty(key, "参数名")
+            nonempty(key, "Parameter name")
             if key in keys or not isinstance(value, str):
-                raise ValueError("来源参数必须使用唯一名称和字符串值")
+                raise ValueError("Source parameters require unique names and string values")
             keys.add(key)

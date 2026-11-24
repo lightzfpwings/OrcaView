@@ -20,7 +20,7 @@ _NEUTRAL_VALENCE = {"B": 3, "C": 4, "N": 3, "O": 2, "F": 1, "Si": 4,
 def missing_hydrogens(molecule):
     """Return new (parent index, H) pairs and any perceived coordinate-only bonds."""
     if molecule.charge or molecule.multiplicity != 1:
-        raise ValueError("自动补氢适用于中性单重态结构，其他电子态请手动添加氢原子")
+        raise ValueError("Automatic H addition supports neutral singlets. Add H manually for other electronic states.")
     bonds = display_bonds(molecule)
     perceived = None
     if bonds and not (molecule.bonds or molecule.bonds_explicit):
@@ -32,14 +32,14 @@ def missing_hydrogens(molecule):
         orders = run_babel_worker(json.dumps(payload, allow_nan=False).encode(), "perceive-orders").get("orders")
         if (not isinstance(orders, list) or len(orders) != len(bonds)
                 or any(type(order) is not int or order not in (1, 2, 3) for order in orders)):
-            raise ValueError("Open Babel 无法建立当前连接表")
+            raise ValueError("Open Babel could not construct this bond graph.")
         perceived = bonds = tuple(replace(bond, order=order) for bond, order in zip(bonds, orders))
     occupied = occupied_valences(molecule, bonds)
     # A neutral total can hide opposite local charges, for example in a nitro
     # group. No atom-local charge information distinguishes an O- from an OH.
     if any(atom.element in ("B", "N", "O", "F") and total > _NEUTRAL_VALENCE[atom.element]
            for atom, total in zip(molecule.atoms, occupied)):
-        raise ValueError("结构含可能带形式电荷的原子，请手动添加氢原子")
+        raise ValueError("The structure contains atoms with ambiguous formal charge. Add H manually.")
 
     result = []
     placed = molecule
@@ -62,7 +62,7 @@ def _directions(neighbors, cosine):
         # tangent keeps the first branches of a planar sketch easy to select.
         first = neighbors[0]
         tangent = (-first[1], first[0], 0.)
-        tangent = _unit(tangent, "键方向") if math.hypot(*tangent) > 1e-10 else (1., 0., 0.)
+        tangent = _unit(tangent, "Bond direction") if math.hypot(*tangent) > 1e-10 else (1., 0., 0.)
         normal = _cross(first, tangent)
         sine = math.sqrt(1 - cosine * cosine)
         for i in range(24):
@@ -77,8 +77,8 @@ def _directions(neighbors, cosine):
         total = tuple(a + b for a, b in zip(first, second))
         length = math.hypot(*total)
         if length > 1e-8 and math.hypot(*normal) > 1e-8:
-            bisector = _unit(total, "键方向")
-            normal = _unit(normal, "键方向")
+            bisector = _unit(total, "Bond direction")
+            normal = _unit(normal, "Bond direction")
             along = max(-1., 2 * cosine / length)
             across = math.sqrt(1 - along * along)
             for sign in (1, -1):
@@ -86,7 +86,7 @@ def _directions(neighbors, cosine):
                 yield tuple(sign * n for n in normal)
         opposite = tuple(-sum(axis) for axis in zip(*neighbors))
         if math.hypot(*opposite) > 1e-8:
-            yield _unit(opposite, "键方向")
+            yield _unit(opposite, "Bond direction")
 
     # The phase changes as the site fills so successive manual clicks remain
     # distinct even at very high coordination.
@@ -112,7 +112,7 @@ def attached_hydrogen(molecule, anchor, bonds):
         delta = tuple(v - p for v, p in zip((other.x, other.y, other.z), origin))
         distance = math.hypot(*delta)
         if i in bonded and distance > 1e-8:
-            neighbors.append(_unit(delta, "键方向"))
+            neighbors.append(_unit(delta, "Bond direction"))
         if distance < length + 3.:
             nearby.append(delta)
     order = max(bonded.values(), default=1)
@@ -137,5 +137,5 @@ def attached_hydrogen(molecule, anchor, bonds):
     direction = max(_directions(neighbors, cosine), key=score)
     xyz = tuple(p + length * d for p, d in zip(origin, direction))
     if not math.isclose(math.dist(origin, xyz), length, rel_tol=1e-3):
-        raise ValueError("浮点坐标无法满足目标距离；未生成编辑结果")
+        raise ValueError("The coordinate precision does not allow this distance. The edit was not applied.")
     return Atom("H", *xyz)

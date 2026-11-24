@@ -23,15 +23,15 @@ class NativeInputDialog(QDialog):
         super().__init__(parent)
         self.resize(820, 620)
         self.editor = QPlainTextEdit()
-        self.editor.setAccessibleName(tr("ORCA 输入文本"))
+        self.editor.setAccessibleName(tr("ORCA input text"))
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.editor.setFont(fixed_font())
         self.editor.document().modificationChanged.connect(self.setWindowModified)
 
         buttons = QHBoxLayout()
         for label, shortcut, action in (
-            (tr("打开 .inp…"), QKeySequence.StandardKey.Open, self.open_input),
-            (tr("另存为 .inp…"), QKeySequence.StandardKey.SaveAs, self.save_as),
+            (tr("Open .inp…"), QKeySequence.StandardKey.Open, self.open_input),
+            (tr("Save .inp as…"), QKeySequence.StandardKey.SaveAs, self.save_as),
         ):
             button = QPushButton(label)
             button.setAutoDefault(False)
@@ -39,7 +39,7 @@ class NativeInputDialog(QDialog):
             button.clicked.connect(action)
             buttons.addWidget(button)
         buttons.addStretch()
-        close = QPushButton(tr("关闭"))
+        close = QPushButton(tr("Close"))
         close.setAutoDefault(False)
         close.clicked.connect(self.reject)
         buttons.addWidget(close)
@@ -63,8 +63,8 @@ class NativeInputDialog(QDialog):
         self._breaks = _LINE_BREAK.findall(text)
 
     def _update_title(self):
-        source = str(self._path) if self._path else tr("项目输入预览")
-        self.setWindowTitle(tr("{source}[*] — 原生 ORCA 输入编辑器", source=source))
+        source = str(self._path) if self._path else tr("Project input preview")
+        self.setWindowTitle(tr("{source}[*] — Native ORCA input editor", source=source))
 
     def _content(self):
         # toPlainText converts nonbreaking spaces to ordinary spaces.
@@ -85,14 +85,14 @@ class NativeInputDialog(QDialog):
         return ("\ufeff" if self._bom else "") + content
 
     def open_input(self):
-        name, _ = QFileDialog.getOpenFileName(self, tr("打开 ORCA 输入"), "", tr("ORCA 输入") + " (*.inp)")
+        name, _ = QFileDialog.getOpenFileName(self, tr("Open ORCA input"), "", tr("ORCA input") + " (*.inp)")
         if not name:
             return False
         path = Path(name)
         try:
             content = path.read_bytes().decode("utf-8")
         except (OSError, UnicodeError) as exc:
-            QMessageBox.warning(self, tr("无法打开 UTF-8 输入文件"), str(exc))
+            QMessageBox.warning(self, tr("Could not open UTF-8 input file"), str(exc))
             return False
         if self.editor.document().isModified():
             decision = self._unsaved_decision()
@@ -109,14 +109,14 @@ class NativeInputDialog(QDialog):
 
     def save_as(self):
         suggested = str(self._path) if self._path else "calculation.inp"
-        name, _ = QFileDialog.getSaveFileName(self, tr("另存 ORCA 输入"), suggested, tr("ORCA 输入") + " (*.inp)")
+        name, _ = QFileDialog.getSaveFileName(self, tr("Save ORCA input as"), suggested, tr("ORCA input") + " (*.inp)")
         if not name:
             return False
         path = Path(name)
         if path.suffix.lower() != ".inp":
             path = Path(str(path) + ".inp")
             if path.exists():
-                choice = QMessageBox.question(self, tr("替换文件"), tr("替换已有文件 {path}？", path=path),
+                choice = QMessageBox.question(self, tr("Replace file"), tr("Replace the existing file {path}?", path=path),
                                               QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                               QMessageBox.StandardButton.No)
                 if choice != QMessageBox.StandardButton.Yes:
@@ -125,15 +125,15 @@ class NativeInputDialog(QDialog):
         target = QSaveFile(str(path))
         data = content.encode("utf-8")
         if not target.open(QIODevice.OpenModeFlag.WriteOnly):
-            QMessageBox.warning(self, tr("无法保存 ORCA 输入"), target.errorString())
+            QMessageBox.warning(self, tr("Could not save ORCA input"), target.errorString())
             return False
         if target.write(data) != len(data):
             error = target.errorString()
             target.cancelWriting()
-            QMessageBox.warning(self, tr("无法保存 ORCA 输入"), error)
+            QMessageBox.warning(self, tr("Could not save ORCA input"), error)
             return False
         if not target.commit():
-            QMessageBox.warning(self, tr("无法保存 ORCA 输入"), target.errorString())
+            QMessageBox.warning(self, tr("Could not save ORCA input"), target.errorString())
             return False
         self._path = path
         self._remember_format(content)
@@ -143,7 +143,7 @@ class NativeInputDialog(QDialog):
 
     def _unsaved_decision(self):
         options = QMessageBox.StandardButton
-        return QMessageBox.question(self, tr("未保存的 ORCA 输入"), tr("是否保存当前输入的修改？"),
+        return QMessageBox.question(self, tr("Unsaved ORCA input"), tr("Save changes to the current input?"),
                                     options.Save | options.Discard | options.Cancel, options.Cancel)
 
     def reject(self):

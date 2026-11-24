@@ -48,9 +48,9 @@ def _render_input(
     preset = METHODS[spec.method]
     preset.validate_system(molecule)
     if spec.wavefunction in ("RHF", "RKS") and molecule.multiplicity != 1:
-        raise ValueError("限制性闭壳层参考需要单重态")
+        raise ValueError("A restricted closed-shell reference requires a singlet")
     if spec.wavefunction in ("ROHF", "ROKS") and molecule.multiplicity == 1:
-        raise ValueError("当前限制性开壳层模板需要多重度大于 1 的高自旋态")
+        raise ValueError("This restricted open-shell template requires a high-spin state with multiplicity greater than one")
     method_keywords, method_block = advanced_input(spec.method, molecule.multiplicity)
     method_keywords = DISPERSION_RECIPES.get(spec.method, method_keywords)
     if spec.method in ACTIVE_SPACE_METHODS or spec.method in EXCITED_STATE_METHODS:
@@ -69,11 +69,11 @@ def _render_input(
                                       numerical_frequency=uses_numerical_frequencies(spec))
     if initial_gbw is not None:
         if not preset.allows_initial_gbw:
-            raise ValueError(f"{spec.method} 模板不支持外部 GBW 初猜")
+            raise ValueError(f"The {spec.method} template does not support an external GBW initial guess")
         keywords += " MORead"
     overrides = validated_block_values(spec)
     if overrides.get(("irc", "hessMode"), 0) >= 3 * len(molecule.atoms):
-        raise ValueError("IRC 初始 Hessian 模式索引超过分子的笛卡尔自由度")
+        raise ValueError("The initial IRC Hessian mode index exceeds the Cartesian degrees of freedom")
     template_blocks = (
         *basis_block,
         *(("%method", "  FrozenCore FC_ELECTRONS", "end") if spec.frozen_core == "FrozenCore" else ()),
@@ -105,20 +105,20 @@ def _validate_external_xyz(file: InputCompanionFile, molecule: Molecule) -> None
     try:
         text = file.content.decode("ascii")
     except UnicodeDecodeError as exc:
-        raise ValueError("外部 XYZ 必须使用 ASCII 文本") from exc
+        raise ValueError("External XYZ files must use ASCII text") from exc
     if not text.endswith("\n") or not _XYZ_TEXT.fullmatch(text):
-        raise ValueError("外部 XYZ 必须使用普通文本行和文件末尾换行")
+        raise ValueError("External XYZ files must use plain text lines and a final newline")
     lines = text.splitlines()
     if not _XYZ_COUNT.fullmatch(lines[0]):
-        raise ValueError("外部 XYZ 第一行必须为十进制原子数")
+        raise ValueError("The first line of an external XYZ file must be a decimal atom count")
     record = parse_xyz_record(text)
     if record.source_unit != "angstrom":
-        raise ValueError("外部 XYZ 坐标必须使用 Å")
+        raise ValueError("External XYZ coordinates must be in angstroms")
     for line in lines[2:2 + len(record.molecule.atoms)]:
         if any(not _XYZ_NUMBER.fullmatch(token) for token in line.split()[1:]):
-            raise ValueError("外部 XYZ 坐标必须使用十进制或 E 指数表示")
+            raise ValueError("External XYZ coordinates must use decimal numbers or E notation")
     if record.molecule.atoms != molecule.atoms:
-        raise ValueError("外部 XYZ 的元素、原子顺序或坐标与冻结几何不一致")
+        raise ValueError("External XYZ elements, atom order or coordinates differ from the frozen geometry")
 
 
 def _digest(domain: str, payload: dict) -> str:
@@ -144,9 +144,9 @@ class InputSnapshot(Versioned):
 
     def __post_init__(self) -> None:
         if self.target_orca_version not in (ORCA_INPUT_TARGET, "6.1"):
-            raise ValueError("输入快照支持 ORCA 6.1 系列或精确版本 6.1.1")
+            raise ValueError("Input snapshots support ORCA 6.1 or the exact version 6.1.1")
         if not isinstance(self.geometry, GeometrySnapshot) or not isinstance(self.spec, CalculationSpec):
-            raise ValueError("输入快照需要 GeometrySnapshot 和 CalculationSpec")
+            raise ValueError("An input snapshot requires a GeometrySnapshot and a CalculationSpec")
 
         companions = validate_companion_manifest(self.main_input_path, self.companions)
         by_role = {file.role: file for file in companions}

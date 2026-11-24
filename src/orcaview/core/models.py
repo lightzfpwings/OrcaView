@@ -1,4 +1,4 @@
-"""不可变的模块间契约；所有长度坐标统一为 Å。"""
+"""Immutable contracts shared by modules. All coordinates are in angstroms."""
 
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -26,16 +26,16 @@ DIRECTIONAL_STYLES = (*COORDINATE_STYLES, "wedge", "hashed_wedge", "hollow_wedge
 
 
 def validate_bond_style(order, style):
-    _integer(order, "键级", 1)
+    _integer(order, "Bond order", 1)
     if order not in BOND_STYLES:
-        raise ValueError("当前原型只接受 1、2、3 键级")
+        raise ValueError("This version accepts only bond orders 1, 2 and 3")
     if style not in BOND_STYLES[order]:
-        raise ValueError("键型与所选键级不匹配")
+        raise ValueError("The bond style does not match the selected bond order.")
 
 
 @dataclass(frozen=True)
 class Atom:
-    """元素符号大小写必须符合化学惯例，坐标单位为 Å。"""
+    """Element symbols are case-sensitive. Coordinates are in angstroms."""
 
     element: str
     x: float
@@ -44,9 +44,9 @@ class Atom:
 
     def validate(self) -> None:
         if not isinstance(self.element, str) or self.element not in ATOMIC_NUMBERS:
-            raise ValueError(f"不支持的元素符号：{self.element!r}")
+            raise ValueError(f"Unsupported element symbol: {self.element!r}")
         for coordinate in (self.x, self.y, self.z):
-            finite_number(coordinate, "原子坐标")
+            finite_number(coordinate, "Atomic coordinates")
 
 
 @dataclass(frozen=True)
@@ -88,46 +88,46 @@ class Molecule:
     def validate_structure(self, *, allow_empty: bool = False) -> None:
         """Validate the topology. Only an editable draft may have no atoms."""
         if not isinstance(self.name, str) or not self.name.strip():
-            raise ValueError("分子名称必须是非空字符串")
+            raise ValueError("The molecule name must be a nonempty string")
         if not self.atoms and not allow_empty:
-            raise ValueError("分子至少需要一个原子")
+            raise ValueError("A molecule requires at least one atom")
         if not isinstance(self.atoms, tuple) or not isinstance(self.bonds, tuple):
-            raise ValueError("atoms 和 bonds 必须使用不可变 tuple")
+            raise ValueError("atoms and bonds must be immutable tuples")
         if type(self.bonds_explicit) is not bool:
-            raise ValueError("显式连接标记必须是布尔值")
+            raise ValueError("The explicit connectivity flag must be a boolean.")
         for atom in self.atoms:
             if not isinstance(atom, Atom):
-                raise ValueError("atoms 中必须是 Atom 对象")
+                raise ValueError("atoms must contain Atom objects")
             atom.validate()
         seen = set()
         for bond in self.bonds:
             if not isinstance(bond, Bond):
-                raise ValueError("bonds 中必须是 Bond 对象")
-            _integer(bond.a, "键的起点", 0)
-            _integer(bond.b, "键的终点", 0)
+                raise ValueError("bonds must contain Bond objects")
+            _integer(bond.a, "Bond start", 0)
+            _integer(bond.b, "Bond end", 0)
             validate_bond_style(bond.order, bond.style)
             if bond.a >= len(self.atoms) or bond.b >= len(self.atoms) or bond.a == bond.b:
-                raise ValueError("化学键必须连接两个有效且不同的原子")
+                raise ValueError("A bond must connect two distinct valid atoms")
             key = tuple(sorted((bond.a, bond.b)))
             if key in seen:
-                raise ValueError("同一对原子不能重复定义化学键")
+                raise ValueError("A bond cannot be defined twice for the same atom pair")
             seen.add(key)
 
     def validate(self) -> None:
         self.validate_structure()
-        _integer(self.charge, "总电荷")
-        _integer(self.multiplicity, "自旋多重度", 1)
+        _integer(self.charge, "Total charge")
+        _integer(self.multiplicity, "Spin multiplicity", 1)
         electrons = self.electron_count
         unpaired = self.multiplicity - 1
         if electrons < 0:
-            raise ValueError("总电荷导致电子数为负")
+            raise ValueError("The total charge gives a negative electron count")
         if unpaired > electrons or (electrons - unpaired) % 2:
-            raise ValueError("电子数与自旋多重度不相容；请检查总电荷及多重度")
+            raise ValueError("Electron count and spin multiplicity are incompatible. Check total charge and multiplicity.")
 
 
 @dataclass(frozen=True)
 class CalculationSpec:
-    """ORCA 6.1 输入子集；高级方法适用性仍需要用户判断。"""
+    """ORCA 6.1 input options. The user must assess the suitability of advanced methods."""
 
     method: str = "B3LYP"
     basis: str = "def2-SVP"
@@ -162,26 +162,26 @@ class CalculationSpec:
 
     def validate(self) -> None:
         if not isinstance(self.method, str) or self.method not in METHODS:
-            raise ValueError(f"未收录计算方法 {self.method!r}")
+            raise ValueError(f"Unknown computational method {self.method!r}")
         if self.job_type not in ALL_JOBS:
-            raise ValueError("未知作业类型，可选 " + "、".join(ALL_JOBS))
+            raise ValueError("Unknown job type. Available: " + ", ".join(ALL_JOBS))
         if self.job_type not in METHODS[self.method].job_types:
-            allowed = "、".join(METHODS[self.method].job_types)
-            raise ValueError(f"{self.method} 当前模板支持的任务为 {allowed}")
-        _integer(self.cores, "CPU 核数", 1)
-        _integer(self.maxcore_mb, "每核内存 MB", 1)
+            allowed = ", ".join(METHODS[self.method].job_types)
+            raise ValueError(f"The current {self.method} template supports these job types: {allowed}")
+        _integer(self.cores, "CPU core count", 1)
+        _integer(self.maxcore_mb, "Memory per core in MB", 1)
         validate_parameters(self.method, self.active_electrons, self.active_orbitals,
                             self.nroots, self.reference_functional, self.electron_channel)
         orbital_and_aux_keywords(self)
         if self.pno_preset not in pno_options(self.method):
-            raise ValueError(f"{self.method} 不支持 PNO 阈值 {self.pno_preset!r}")
+            raise ValueError(f"{self.method} does not support PNO threshold {self.pno_preset!r}")
         if self.dispersion not in dispersion_options(self.method):
-            raise ValueError(f"{self.method} 不支持色散设置 {self.dispersion!r}")
+            raise ValueError(f"{self.method} does not support dispersion setting {self.dispersion!r}")
         if self.wavefunction not in reference_options(self.method):
-            raise ValueError(f"{self.method} 不支持所选参考波函数")
+            raise ValueError(f"{self.method} does not support the selected reference wavefunction")
         if self.wavefunction in ("ROHF", "ROKS") and self.job_type != "SP":
-            raise ValueError("限制性开壳层参考模板仅提供单点能")
+            raise ValueError("The restricted open-shell reference template supports single-point energies only")
         if self.frozen_core not in frozen_core_options(self.method):
-            raise ValueError(f"{self.method} 不支持所选冻结芯设置")
+            raise ValueError(f"{self.method} does not support the selected frozen-core setting")
         validate_solvation(self)
         validated_block_values(self)

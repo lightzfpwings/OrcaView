@@ -1,0 +1,48 @@
+OrcaView for macOS
+=================
+
+Open the disk image in Finder, drag OrcaView.app to Applications and copy Examples to a writable folder. You can then eject the image. Structure editing, input previews, project files and manual index searches work offline. Opening the online ORCA manual or PDF requires an internet connection.
+
+Updates and language extensions
+
+Help → Check for Updates checks the project's GitHub releases. On macOS 0.1.0a42 or later, download an update in the app, save your project, then quit and update to restart from the original location. For an older version, quit the app and use Finder to replace it with the app from the new disk image.
+
+The app starts in English. To install an optional interface language, extract its extension and select its folder under View → Interface language. Refresh the list, select the desired language, save and restart OrcaView.
+
+Workspaces and molecule design
+
+Drag either divider around the central workspace to adjust the columns. Double-click the dividers in Input to restore a 1:2:1 layout. In Results the side columns default to one eighth of the width each. Switching back to Input restores its previous widths.
+
+Design opens a 2D drawing and a 3D preview with synchronized atom selection. New Molecule starts with a single carbon atom. To start from empty space, select and delete all atoms. Undo restores them. Use the element or ring tools to start a new drawing. Moving to Input or Results with an empty structure prompts you to return to Design or continue with an empty page.
+
+Choose elements by symbol or atomic number, such as Fe or 26. Drag from an atom to add a bond and another atom. The ring menu offers benzene and three- through eight-membered carbon rings. The bond menus include coordination, stereochemical, aromatic and partial bond styles. To draw a coordination arrow, select the donor first and the acceptor second.
+
+Select a bond or Shift-select two atoms to measure their distance. For an acyclic bond, enter the target length and apply it to move the atoms on the chosen side. Swap the endpoints to move the other side. Drag a rectangle to select atoms, or Shift-drag to extend a selection. You can enter exact coordinates for a single atom and undo geometry edits.
+
+Click +H and then click atoms to add individual bonded hydrogens. Double-click +H to fill missing hydrogens for supported neutral singlets. The validation area reports unusual bonding. 2D cleanup arranges the drawing. 3D optimization updates the geometry using Open Babel MMFF94 or UFF. Return to Input to inspect or export the coordinates used by ORCA. Select a structure in Results to bring that geometry back into Design.
+
+Structure and input examples
+
+Open Examples/water.xyz to see the two O–H bonds. Its initial view looks down +z with x to the right and y up. The point group is C2v. Drag left to rotate, drag right to pan and use the wheel to zoom. The direction controls also accept a numerical rotation angle. Reset restores the centered initial view. On Results, Command-select two coordinate rows to display the interatomic distance in angstroms.
+
+Change the method or basis set and inspect the ORCA input preview, then export an .inp file. The Input workspace contains tabs for the current input, the summary imported through File, and the message log. Structure-import in the Examples folder contains a 2D ethanol MOL file, a crystal CIF file and a Gaussian input. Opening ethanol builds a 3D starting geometry. The CIF importer can present one finite unit cell.
+
+Try a composite method such as r2SCAN-3c to see its built-in basis. With RI-MP2/def2-TZVP and optimization plus numerical frequencies, inspect the auxiliary basis and Opt NumFreq keywords. With TD-DFT, change the requested number of excited states and inspect nroots in %tddft. Use the method search to locate EOM-CCSD and inspect its %mdci block.
+
+For an RIJCOSX calculation choose def2/J for AuxJ and def2-TZVP/C for AuxC. For F12-RI-MP2 with cc-pVDZ-F12, inspect cc-pVDZ-F12-MP2Fit and cc-pVDZ-F12-OptRI in the preview. A saved project restores these selections.
+
+The ORCA manual index under Help accepts method names, section numbers and parameters. With B3LYP, compare SMD/water and a gas-phase input. Transition-state optimization exposes P-RFO controls in %geom and the IRC job exposes %irc. In the advanced inputs, set SCF MaxIter to 250 and geometry maxIter to 80, collapse both blocks and inspect the exported text. Switch to a single point and verify that only the applicable options remain.
+
+The native input editor can open the SMD, C-PCM and formaldehyde ΔSCF inputs in Examples/ORCA-inputs. Save a copy as an independent .inp file. The installed ORCA executable validates and runs native input.
+
+Result and spectrum examples
+
+Open Examples/water-sp.out, a teaching fixture with a single-point energy of −76.123456789012 hartree. Choosing a Mulliken charge highlights its atom. The water Raman calculation contains IR and Raman intensities. Select either spectrum in Results to display its table and automatic stick/curve overlay. Open Plot settings to adjust the line profile, FWHM, display range and appearance or to export the figure and its data. Peroxide UV/CD output contains absorption and signed circular dichroism transitions. The NMR example contains shieldings and H–H coupling.
+
+Result cells can be copied individually or as a complete table with headers. The details identify the original file and line number. A project file preserves the structure, settings and imported results. The synthetic atomic charges available in the Data menu demonstrate the distinction between zero and missing values and between different geometry frames.
+
+On a machine with ORCA 6.1.1 installed, copy tools/check_orca611.sh from the repository and run it in a writable working directory. Replace the example paths with your actual installation paths.
+
+sh /path/to/check_orca611.sh /path/to/orca /Applications/OrcaView.app/Contents/MacOS/OrcaView
+
+Third-party notices are in OrcaView.app/Contents/Resources/ThirdParty. The corresponding source package is available on the GitHub release page.

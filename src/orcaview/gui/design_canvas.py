@@ -3,12 +3,15 @@
 import math
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, QSizeF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
 from orcaview.core.geometry import display_bonds
 from orcaview.gui.bond_drawing import aromatic_ring_paths, draw_bond, ring_center
 from orcaview.i18n import tr
+
+
+_PAPER = QColor("#FFFDF9")
 
 
 class DesignCanvas(QWidget):
@@ -24,7 +27,7 @@ class DesignCanvas(QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName("designCanvas")
-        self.setAccessibleName(tr("分子草图"))
+        self.setAccessibleName(tr("Molecular sketch"))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(210, 220)
         self.molecule = None
@@ -193,29 +196,51 @@ class DesignCanvas(QWidget):
             self.cancel_gesture()
         return super().event(event)
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        paper = QColor("#FFFDF9")
-        painter.fillRect(self.rect(), paper)
-        if self.molecule is None:
+    def has_exportable_structure(self):
+        return self.molecule is not None and bool(self.molecule.atoms)
+
+    def paint_structure(self, painter):
+        """Paint the committed sketch in widget coordinates on any background."""
+        if not self.has_exportable_structure():
             return
+        painter.save()
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBackgroundMode(Qt.BGMode.TransparentMode)
+            self._draw_molecule(painter, interactive=False)
+        finally:
+            painter.restore()
+
+    def _draw_molecule(self, painter, *, interactive):
         ink = QColor("#3E4141")
         positions = [self.atom_position(i) for i in range(len(self.molecule.atoms))]
-        if self._drag is not None:
+        if interactive and self._drag is not None:
             positions[self._pressed] = self._drag
-        font = painter.font()
+        font = self.font()
         font.setPixelSize(17)
         font.setBold(True)
         painter.setFont(font)
         widths = [max(23, painter.fontMetrics().horizontalAdvance(atom.element) + 7)
                   for atom in self.molecule.atoms]
         masks = [QSizeF(w / 2 + 1, 13) for w in widths]
+        boxes = [QRectF(p.x() - w / 2, p.y() - 12, w, 24) for p, w in zip(positions, widths)]
+        painter.save()
+        if not interactive and self._bonds:
+            # Cut the underlying bond layer away, including any unrelated bond
+            # crossing a label. The holes retain the caller's actual background.
+            labels = QPainterPath()
+            labels.setFillRule(Qt.FillRule.WindingFill)
+            for box in boxes:
+                labels.addRoundedRect(box, 6, 6)
+            visible = QPainterPath()
+            visible.addRect(QRectF(self.rect()))
+            painter.setClipPath(visible.subtracted(labels), Qt.ClipOperation.IntersectClip)
         for bond in self._bonds:
             draw_bond(painter, positions[bond.a], positions[bond.b], bond.order, bond.style, ink, 1.8, 4.2,
                       clearance=(masks[bond.a], masks[bond.b]),
                       interior=ring_center(self._aromatic_paths.get(bond), positions))
-        if self._bond_tip is not None:
+        painter.restore()
+        if interactive and self._bond_tip is not None:
             draw_bond(painter, positions[self._pressed], self._bond_tip, self.bond_order, self.bond_style,
                       QColor("#9F5970"), 1.6, 4.2, clearance=(masks[self._pressed], 0))
         colors = {"O": "#B84138", "N": "#3265A7", "S": "#856224", "Cl": "#237B54",
@@ -223,15 +248,22 @@ class DesignCanvas(QWidget):
         selected_indices = set(self.selected)
         for i in self._paint_order:
             el = self.molecule.atoms[i].element
-            p = positions[i]
-            width = widths[i]
-            box = QRectF(p.x() - width / 2, p.y() - 12, width, 24)
-            selected = i in selected_indices
-            painter.setPen(QPen(QColor("#9F5970"), 1.5) if selected else Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#F6E7EC") if selected else paper)
-            painter.drawRoundedRect(box, 6, 6)
+            box = boxes[i]
+            if interactive:
+                selected = i in selected_indices
+                painter.setPen(QPen(QColor("#9F5970"), 1.5) if selected else Qt.PenStyle.NoPen)
+                painter.setBrush(QColor("#F6E7EC") if selected else _PAPER)
+                painter.drawRoundedRect(box, 6, 6)
             painter.setPen(QColor(colors.get(el, "#394445")))
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter, el)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), _PAPER)
+        if self.molecule is None:
+            return
+        self._draw_molecule(painter, interactive=True)
         if self._box is not None:
             painter.setPen(QPen(QColor("#904359"), 1, Qt.PenStyle.DashLine))
             painter.setBrush(QColor(144, 67, 89, 30))

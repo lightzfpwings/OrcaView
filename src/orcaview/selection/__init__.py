@@ -25,11 +25,11 @@ class SelectionService:
     def __init__(self, snapshot: GeometrySnapshot,
                  selection: Optional[SelectionContext] = None):
         if not isinstance(snapshot, GeometrySnapshot):
-            raise ValueError("选择服务需要 GeometrySnapshot")
+            raise ValueError("The selection service requires a GeometrySnapshot")
         if selection is None:
             selection = SelectionContext(snapshot.ref, ())
         if not isinstance(selection, SelectionContext):
-            raise ValueError("初始选择必须是 SelectionContext")
+            raise ValueError("The initial selection must be a SelectionContext")
         selection.indices(snapshot)
         self._snapshot = snapshot
         self._selection = selection
@@ -44,9 +44,9 @@ class SelectionService:
 
     def select(self, atom_ids: Tuple[str, ...],
                operation: str = "replace") -> SelectionContext:
-        identifiers(atom_ids, "选择的原子 ID")
+        identifiers(atom_ids, "Selected atom IDs")
         if operation not in ("replace", "add", "remove", "toggle"):
-            raise ValueError("选择操作只支持 replace、add、remove、toggle")
+            raise ValueError("Supported selection operations are replace, add, remove and toggle")
         # Validate even IDs being removed; a stale index or foreign ID must not
         # silently pass because it happens to be absent from the current set.
         SelectionContext(self._snapshot.ref, atom_ids).indices(self._snapshot)
@@ -77,9 +77,9 @@ class SelectionService:
         can restore a saved context explicitly via a new service instance.
         """
         if not isinstance(snapshot, GeometrySnapshot):
-            raise ValueError("选择服务需要 GeometrySnapshot")
+            raise ValueError("The selection service requires a GeometrySnapshot")
         if snapshot.ref.document_id != self._snapshot.ref.document_id:
-            raise ValueError("选择不能跨文档自动重绑定")
+            raise ValueError("Selections cannot be rebound across documents automatically")
         active = frozenset(snapshot.atom_ids)
         selection = SelectionContext(
             snapshot.ref,

@@ -38,16 +38,16 @@ class BondLengthEditor(QWidget):
         self.target.setRange(0.000001, 1e12)
         self.target.setSingleStep(.01)
         self.target.setSuffix(" Å")
-        self.target.setAccessibleName(tr("目标键长"))
-        row.addWidget(QLabel(tr("目标键长")))
+        self.target.setAccessibleName(tr("Target bond length"))
+        row.addWidget(QLabel(tr("Target bond length")))
         row.addWidget(self.target, 1)
         self.swap = QPushButton("⇄")
         self.swap.setObjectName("designSwapBondEnds")
-        self.swap.setToolTip(tr("交换固定端和移动端"))
+        self.swap.setToolTip(tr("Swap fixed and moving ends"))
         self.swap.setAccessibleName(self.swap.toolTip())
         self.swap.clicked.connect(self.swap_requested)
         row.addWidget(self.swap)
-        self.apply = QPushButton(tr("应用"))
+        self.apply = QPushButton(tr("Apply"))
         self.apply.setObjectName("designApplyBondLength")
         self.apply.clicked.connect(self._apply)
         self.target.valueChanged.connect(self._target_changed)
@@ -60,14 +60,14 @@ class BondLengthEditor(QWidget):
         self.controls.hide()
         self.details.hide()
         if len(indices) != 2:
-            self.summary.setText(tr("键长：点选一条键，或按住 Shift 依次选择两个原子。"))
+            self.summary.setText(tr("To measure a distance, click a bond or hold Shift and select two atoms in order."))
             return
         labels = [f"{snapshot.molecule.atoms[i].element}{i + 1}" for i in indices]
         definition = CoordinateDefinition(snapshot.ref, "distance", tuple(snapshot.atom_ids[i] for i in indices))
         self.summary.setText("–".join(labels))
         try:
             distance = measure(snapshot, definition)
-            self.summary.setText(tr("{first}–{second} 距离  {distance:.6f} Å",
+            self.summary.setText(tr("{first}–{second} distance  {distance:.6f} Å",
                                     first=labels[0], second=labels[1], distance=distance))
             self.details.show()
             self.moving_atoms = bond_moving_atoms(snapshot, definition, display_bonds(snapshot.molecule))
@@ -76,10 +76,10 @@ class BondLengthEditor(QWidget):
             self.details.show()
             return
         if distance == 0:
-            self.details.setText(tr("端点重合，无法沿键轴移动。"))
+            self.details.setText(tr("The ends coincide, so the bond axis is undefined."))
             return
         self.coordinate = definition
-        self.details.setText(tr("固定 {fixed}，移动 {moving} 一侧的 {count} 个原子。",
+        self.details.setText(tr("Fixed atom: {fixed}. Atoms that move with {moving}: {count}.",
                                 fixed=labels[0], moving=labels[1], count=len(self.moving_atoms)))
         self.target.setValue(distance)
         self._initial_value = self.target.value()

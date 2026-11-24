@@ -10,13 +10,13 @@ DFT_METHOD_GROUPS = (
     ("Hartree–Fock", (
         ("HF", "standard"),
     )),
-    ("局域密度近似（LDA）", (
+    ("Local density approximation (LDA)", (
         ("LDA", "standard"),  # ORCA uses VWN5 by default.
         ("VWN3", "standard"),
         ("PWLDA", "standard"),
         ("HFS", "standard"),
     )),
-    ("广义梯度近似（GGA）", (
+    ("Generalized gradient approximation (GGA)", (
         ("PBE", "standard"),
         ("BP86", "standard"),
         ("BLYP", "standard"),
@@ -31,7 +31,7 @@ DFT_METHOD_GROUPS = (
         ("RPW86PBE", "standard"),
         ("PWP", "standard"),
     )),
-    ("动能密度泛函（meta-GGA）", (
+    ("Kinetic energy density functionals (meta-GGA)", (
         ("TPSS", "standard"),
         ("REVTPSS", "standard"),
         ("SCANFUNC", "standard"),  # SCAN alone is a surface-scan keyword.
@@ -42,7 +42,7 @@ DFT_METHOD_GROUPS = (
         ("B97M-D3BJ", "standard"),
         ("B97M-D4", "standard"),
     )),
-    ("全局杂化 GGA", (
+    ("Global hybrid GGA", (
         ("B3LYP", "standard"),
         ("B3LYP/G", "standard"),  # Gaussian VWN3 convention.
         ("PBE0", "standard"),
@@ -59,7 +59,7 @@ DFT_METHOD_GROUPS = (
         ("REVPBE38", "standard"),
         ("BHANDHLYP", "standard"),
     )),
-    ("全局杂化 meta-GGA", (
+    ("Global hybrid meta-GGA", (
         ("M06", "standard"),
         ("M062X", "standard"),
         ("PW6B95", "standard"),
@@ -69,7 +69,7 @@ DFT_METHOD_GROUPS = (
         ("R2SCAN0", "standard"),
         ("R2SCAN50", "standard"),
     )),
-    ("范围分离杂化泛函", (
+    ("Range-separated hybrids", (
         ("CAM-B3LYP", "standard"),
         ("LC-BLYP", "standard"),
         ("LC-PBE", "standard"),
@@ -86,7 +86,7 @@ DFT_METHOD_GROUPS = (
         ("WB97M-D4REV", "standard"),
         ("WR2SCAN", "standard"),
     )),
-    ("全局双杂化泛函", (
+    ("Global double hybrids", (
         ("B2PLYP", "double-hybrid"),
         ("mPW2PLYP", "double-hybrid"),
         ("B2GP-PLYP", "double-hybrid"),
@@ -108,7 +108,7 @@ DFT_METHOD_GROUPS = (
         ("R2SCAN0-2", "double-hybrid"),
         ("R2SCAN0-DH", "double-hybrid"),
     )),
-    ("范围分离双杂化泛函", (
+    ("Range-separated double hybrids", (
         ("RSX-QIDH", "double-hybrid"),
         ("RSX-0DH", "double-hybrid"),
         ("WB2PLYP", "double-hybrid"),
@@ -122,7 +122,7 @@ DFT_METHOD_GROUPS = (
 # The two historical DSD parameterizations require D3BJ on the simple line.
 DSD_D3BJ = {"DSD-BLYP-D3BJ": "DSD-BLYP", "DSD-PBEP86-D3BJ": "DSD-PBEP86"}
 EXTRA_DFT_GROUPS = (
-    ("原生双杂化泛函（单点）", tuple((name, "sp-aux") for name in (
+    ("Native double hybrids (single point)", tuple((name, "sp-aux") for name in (
         "PR2SCAN50", "PR2SCAN69", "KPR2SCAN", "WB97X-2", "WPR2SCAN50", *DSD_D3BJ,
     ))),
 )
@@ -132,9 +132,9 @@ EXTRA_DFT_GROUPS = (
 # for which the documented algorithms are conventional and RI-MP2.
 DLPNO_DOUBLE_HYBRIDS = {
     "DLPNO-" + parent: parent for family, entries in DFT_METHOD_GROUPS + EXTRA_DFT_GROUPS
-    if "双杂化" in family for parent, _ in entries if parent != "KPR2SCAN"
+    if "double hybrid" in family.casefold().replace("-", " ") for parent, _ in entries if parent != "KPR2SCAN"
 }
-DLPNO_DFT_GROUP = (("DLPNO 双杂化泛函（单点）", tuple(
+DLPNO_DFT_GROUP = (("DLPNO double hybrids (single point)", tuple(
     (name, "sp-aux") for name in DLPNO_DOUBLE_HYBRIDS
 )),)
 

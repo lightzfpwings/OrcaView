@@ -1,4 +1,4 @@
-"""单文档桌面原型：科学设置通过应用层校验后才能导出。"""
+"""Single-document prototype. Calculation settings must pass validation before export."""
 
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -45,6 +45,7 @@ from orcaview.gui.project_navigation import ProjectNavigationTree
 from orcaview.gui.result_demo import build_result_demo
 from orcaview.gui.result_display import display_file_name
 from orcaview.gui.result_import import SummaryView, read_native_session, read_summary_view
+from orcaview.gui.structure_image_dialog import StructureImageDialog
 from orcaview.gui.update_dialog import UpdateDialog
 from orcaview.gui.version_info import desktop_version_info
 from orcaview.gui.view_icons import rotation_icon
@@ -113,7 +114,7 @@ QStatusBar QLabel { color: #70635F; }
 
 
 def demo_benzene():
-    """展示几何不冒充计算结果；显式保留 XYZ 的键级未知性质。"""
+    """Geometry display only. Bond orders are unknown in XYZ files."""
     lines = ["12", "Benzene · demonstration geometry"]
     for element, radius in (("C", 1.397), ("H", 2.481)):
         for i in range(6):
@@ -151,7 +152,7 @@ class MainWindow(QMainWindow):
         self.heading.setObjectName("heading")
         self.heading.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.heading.setTextFormat(Qt.TextFormat.PlainText)
-        self.subtitle = QLabel(tr("结构预览 / 三维交互原型"))
+        self.subtitle = QLabel(tr("Structure preview / interactive 3D prototype"))
         self.subtitle.setObjectName("muted")
         self.subtitle.setWordWrap(True)
         layout.addWidget(self.heading)
@@ -161,14 +162,14 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.setObjectName("workspaceTabs")
         self.workspace_tabs.tabBar().setObjectName("workspaceTabBar")
         self.input_page = center
-        self.workspace_tabs.addTab(self.input_page, tr("输入"))
+        self.workspace_tabs.addTab(self.input_page, tr("Input"))
         self.design_panel = DesignPanel()
         self.design_panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.workspace_tabs.addTab(self.design_panel, tr("设计"))
+        self.workspace_tabs.addTab(self.design_panel, tr("Design"))
         self.foundation_panel = FoundationPanel()
         # Let the splitters inside the results page adapt to each animation frame.
         self.foundation_panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.workspace_tabs.addTab(self.foundation_panel, tr("结果"))
+        self.workspace_tabs.addTab(self.foundation_panel, tr("Result"))
         self.setCentralWidget(self.workspace_tabs)
         self._create_tree()
         self._create_inspector()
@@ -181,8 +182,12 @@ class MainWindow(QMainWindow):
         self.design_panel.new_requested.connect(self._new_design)
         self.foundation_panel.design_requested.connect(self._design_result)
         self.viewport.selection_changed.connect(self._selection_changed)
+        for viewport in (self.viewport, self.design_panel.viewport, self.foundation_panel.viewport):
+            viewport.selection_changed.connect(self._update_structure_image_action)
+        self.workspace_tabs.currentChanged.connect(self._update_structure_image_action)
         self._create_status_bar(versions)
         self._load_controls()
+        self._update_structure_image_action()
         self.columns = WorkspaceColumns(self, self.tree_dock, self.inspector_dock)
         self.workspace_transition = WorkspaceTransition(self, self.workspace_tabs, self.design_panel,
                                                        (self.tree_dock, self.inspector_dock, self.bottom_dock))
@@ -196,42 +201,45 @@ class MainWindow(QMainWindow):
         return action
 
     def _create_actions(self):
-        menu = self.menuBar().addMenu(tr("文件"))
-        self.open_file_action = self._action(tr("打开文件…"), self.open_file, "Ctrl+O")
+        menu = self.menuBar().addMenu(tr("File"))
+        self.open_file_action = self._action(tr("Open file…"), self.open_file, "Ctrl+O")
         menu.addAction(self.open_file_action)
-        menu.addAction(self._action(tr("打开项目…"), self.open_project))
-        menu.addAction(self._action(tr("保存项目…"), self.save_project_dialog, "Ctrl+S"))
-        self.export_action = self._action(tr("导出 ORCA 输入…"), self.export_input)
-        self.native_editor_action = self._action(tr("编辑原生 ORCA 输入…"), self.open_native_input_editor)
-        menu.addActions([self.export_action, self.native_editor_action])
-        self.import_action = self._action(tr("导入 ORCA 计算结果…"), self.import_native_output)
-        self.summary_action = self._action(tr("读取 ORCA 输出摘要…"), self.open_output)
+        menu.addAction(self._action(tr("Open project…"), self.open_project))
+        menu.addAction(self._action(tr("Save project…"), self.save_project_dialog, "Ctrl+S"))
+        self.export_action = self._action(tr("Export ORCA input…"), self.export_input)
+        self.native_editor_action = self._action(tr("Edit native ORCA input…"), self.open_native_input_editor)
+        self.structure_image_action = self._action(tr("Export structure image…"), self.export_structure_image)
+        self.structure_image_action.setObjectName("exportStructureImage")
+        menu.addActions([self.export_action, self.structure_image_action, self.native_editor_action])
+        menu.aboutToShow.connect(self._update_structure_image_action)
+        self.import_action = self._action(tr("Import ORCA results…"), self.import_native_output)
+        self.summary_action = self._action(tr("Read ORCA output summary…"), self.open_output)
         menu.addAction(self.import_action)
         menu.addAction(self.summary_action)
-        view = self.menuBar().addMenu(tr("视图"))
-        self.fit_action = self._action(tr("复位视图"), self._fit_active_view)
+        view = self.menuBar().addMenu(tr("View"))
+        self.fit_action = self._action(tr("Reset view"), self._fit_active_view)
         view.addAction(self.fit_action)
-        labels = QAction(tr("显示全部原子标签"), self)
+        labels = QAction(tr("Show all atom labels"), self)
         labels.setCheckable(True)
         labels.toggled.connect(self._toggle_labels)
         view.addAction(labels)
         self.labels_action = labels
-        view.addAction(self._action(tr("界面语言…"), lambda: LanguageDialog(self).exec()))
-        calculation = self.menuBar().addMenu(tr("计算"))
-        self.find_method_action = self._action(tr("查找计算方法…"), self.find_method, "Ctrl+K")
+        view.addAction(self._action(tr("Interface language…"), lambda: LanguageDialog(self).exec()))
+        calculation = self.menuBar().addMenu(tr("Calculation"))
+        self.find_method_action = self._action(tr("Find method…"), self.find_method, "Ctrl+K")
         calculation.addAction(self.find_method_action)
-        data_menu = self.menuBar().addMenu(tr("数据"))
-        data_menu.addAction(self._action(tr("结果"), lambda: self.workspace_tabs.setCurrentWidget(self.foundation_panel)))
-        data_menu.addAction(self._action(tr("载入 M6 合成电荷样例"), self.load_analysis_demo))
-        data_menu.addAction(self._action(tr("载入 M1 原子电荷样例"), self.load_foundation_demo))
-        help_menu = self.menuBar().addMenu(tr("帮助"))
-        help_menu.addAction(self._action(tr("ORCA 6.1.1 计算手册…"), lambda: ManualDialog(self).exec()))
-        self.update_action = self._action(tr("检查更新…"), self.show_update_dialog)
+        data_menu = self.menuBar().addMenu(tr("Data"))
+        data_menu.addAction(self._action(tr("Result"), lambda: self.workspace_tabs.setCurrentWidget(self.foundation_panel)))
+        data_menu.addAction(self._action(tr("Load M6 synthetic charge example"), self.load_analysis_demo))
+        data_menu.addAction(self._action(tr("Load M1 atomic charge example"), self.load_foundation_demo))
+        help_menu = self.menuBar().addMenu(tr("Help"))
+        help_menu.addAction(self._action(tr("ORCA 6.1.1 manual…"), lambda: ManualDialog(self).exec()))
+        self.update_action = self._action(tr("Check for Updates…"), self.show_update_dialog)
         self.update_action.setObjectName("checkForUpdateAction")
         self.update_action.setMenuRole(QAction.MenuRole.NoRole)
         help_menu.addAction(self.update_action)
-        help_menu.addAction(self._action(tr("关于框架"), lambda: QMessageBox.information(
-            self, "OrcaView", tr("OrcaView {}\nORCA 前后处理桌面原型\n\n支持 XYZ、输入模板、计算日志和光谱。", __version__))))
+        help_menu.addAction(self._action(tr("About OrcaView"), lambda: QMessageBox.information(
+            self, "OrcaView", tr("OrcaView {}\nORCA desktop pre- and postprocessor\n\nSupports XYZ, input templates, calculation logs and spectra.", __version__))))
 
     def show_update_dialog(self):
         if self._update_dialog is None:
@@ -252,14 +260,14 @@ class MainWindow(QMainWindow):
         brand = QLabel("OrcaView")
         brand.setObjectName("brand")
         toolbar.addWidget(brand)
-        for title, slot in [(tr("打开文件"), self.open_file), (tr("打开项目"), self.open_project),
-                            (tr("保存项目"), self.save_project_dialog)]:
+        for title, slot in [(tr("Open file"), self.open_file), (tr("Open project"), self.open_project),
+                            (tr("Save project"), self.save_project_dialog)]:
             button = QPushButton(title)
             button.clicked.connect(slot)
             if slot == self.open_file:
                 self.open_file_action.enabledChanged.connect(button.setEnabled)
             toolbar.addWidget(button)
-        import_button = QPushButton(tr("导入计算结果"))
+        import_button = QPushButton(tr("Import results"))
         import_button.setObjectName("primary")
         import_button.setToolTip(self.import_action.text())
         import_button.clicked.connect(self.import_action.trigger)
@@ -268,7 +276,7 @@ class MainWindow(QMainWindow):
         self.view_toolbar = toolbar = QToolBar()
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
-        fit_button = QPushButton(tr("复位视图"))
+        fit_button = QPushButton(tr("Reset view"))
         fit_button.setObjectName("resetView")
         fit_button.clicked.connect(self._fit_active_view)
         toolbar.addWidget(fit_button)
@@ -278,7 +286,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(spacer)
         badge = QLabel(platform_name)
         badge.setObjectName("platformBadge")
-        badge.setAccessibleName(tr("运行平台"))
+        badge.setAccessibleName(tr("Platform"))
         toolbar.addWidget(badge)
 
     def resizeEvent(self, event):
@@ -304,15 +312,15 @@ class MainWindow(QMainWindow):
         self.rotation_angle.setDecimals(2)
         self.rotation_angle.setValue(15)
         self.rotation_angle.setSuffix("°")
-        self.rotation_angle.setAccessibleName(tr("旋转角度"))
-        self.rotation_angle.setToolTip(tr("每次点击旋转按钮的角度"))
+        self.rotation_angle.setAccessibleName(tr("Rotation angle"))
+        self.rotation_angle.setToolTip(tr("Angle per click of a rotation button"))
         for name, label, hint, axis, sign in (
-            ("rotateLeft", tr("左转"), tr("绕视图 y 轴向左转"), "y", -1),
-            ("rotateRight", tr("右转"), tr("绕视图 y 轴向右转"), "y", 1),
-            ("rotateForward", tr("前倾"), tr("绕视图 x 轴将上缘向前倾"), "x", 1),
-            ("rotateBackward", tr("后仰"), tr("绕视图 x 轴将上缘向后仰"), "x", -1),
-            ("rotateUp", tr("上旋 ↺"), tr("绕视图 z 轴逆时针转动，右缘向上"), "z", 1),
-            ("rotateDown", tr("下旋 ↻"), tr("绕视图 z 轴顺时针转动，右缘向下"), "z", -1),
+            ("rotateLeft", tr("Left"), tr("Turn left about the view’s y-axis"), "y", -1),
+            ("rotateRight", tr("Right"), tr("Turn right about the view’s y-axis"), "y", 1),
+            ("rotateForward", tr("Forward"), tr("Tilt the top edge toward you about the view’s x-axis"), "x", 1),
+            ("rotateBackward", tr("Back"), tr("Tilt the top edge away from you about the view’s x-axis"), "x", -1),
+            ("rotateUp", tr("Up ↺"), tr("Rotate counterclockwise about the view’s z-axis to raise the right edge"), "z", 1),
+            ("rotateDown", tr("Down ↻"), tr("Rotate clockwise about the view’s z-axis to lower the right edge"), "z", -1),
         ):
             if name in ("rotateForward", "rotateUp"):
                 layout.addSpacing(4)
@@ -342,7 +350,7 @@ class MainWindow(QMainWindow):
         system = QLabel(versions.system_version)
         system.setObjectName("systemVersion")
         system.setTextFormat(Qt.TextFormat.PlainText)
-        system.setAccessibleName(tr("系统版本"))
+        system.setAccessibleName(tr("System version"))
         layout.addWidget(system)
         message = QLabel()
         message.setObjectName("statusMessage")
@@ -350,17 +358,17 @@ class MainWindow(QMainWindow):
         message.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         bar.messageChanged.connect(message.setText)
         layout.addWidget(message, 1)
-        self.pending_result_button = QPushButton(tr("打开已读取的文件"))
+        self.pending_result_button = QPushButton(tr("Open the loaded file"))
         self.pending_result_button.clicked.connect(self._open_pending_result)
         layout.addWidget(self.pending_result_button)
         self.pending_result_button.hide()
-        self.cancel_read_button = QPushButton(tr("取消读取"))
+        self.cancel_read_button = QPushButton(tr("Cancel reading"))
         self.cancel_read_button.clicked.connect(self._cancel_read)
         layout.addWidget(self.cancel_read_button)
         self.cancel_read_button.hide()
         software = QLabel(versions.software_version)
         software.setObjectName("softwareVersion")
-        software.setAccessibleName(tr("OrcaView 版本和适配的 ORCA 版本"))
+        software.setAccessibleName(tr("OrcaView version and supported ORCA version"))
         layout.addWidget(software)
         bar.addPermanentWidget(strip, 1)
 
@@ -375,7 +383,7 @@ class MainWindow(QMainWindow):
 
     def _create_tree(self):
         self.tree = ProjectNavigationTree()
-        self.tree_dock = self._dock(tr("项目导航"), self.tree, Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.tree_dock = self._dock(tr("Project navigation"), self.tree, Qt.DockWidgetArea.LeftDockWidgetArea)
 
     def _spin(self, minimum, maximum, value):
         control = QSpinBox()
@@ -389,7 +397,7 @@ class MainWindow(QMainWindow):
         panel.setObjectName("calculationInspector")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(16, 18, 16, 14)
-        label = QLabel(tr("计算设置"))
+        label = QLabel(tr("Calculation settings"))
         label.setObjectName("heading")
         layout.addWidget(label)
         self.method_form = form = InspectorForm(spacing=12)
@@ -400,8 +408,8 @@ class MainWindow(QMainWindow):
         self.job = QComboBox()
         self.basis = QComboBox()
         self.integral_approximation = QComboBox()
-        auxiliary_labels = {"aux_j": tr("库仑拟合 AuxJ"), "aux_jk": tr("库仑/交换 AuxJK"),
-                            "aux_c": tr("相关拟合 AuxC"), "cabs": tr("互补基组 CABS")}
+        auxiliary_labels = {"aux_j": tr("Coulomb fitting AuxJ"), "aux_jk": tr("Coulomb/exchange AuxJK"),
+                            "aux_c": tr("Correlation fitting AuxC"), "cabs": tr("Complementary basis CABS")}
         self.auxiliary_bases = {name: QComboBox() for name in auxiliary_labels}
         self.pno_preset = QComboBox()
         self.dispersion = QComboBox()
@@ -414,13 +422,13 @@ class MainWindow(QMainWindow):
         self.active_electrons = self._spin(0, 2147483647, 0)
         self.active_orbitals = self._spin(0, 2147483647, 0)
         for field in (self.active_electrons, self.active_orbitals):
-            field.setSpecialValueText(tr("未设置"))
+            field.setSpecialValueText(tr("Not set"))
         self.nroots = self._spin(1, 2147483647, 5)
         self.reference_functional = QComboBox()
         self.reference_functional.addItems(list(RESPONSE_FUNCTIONALS))
         self.reference_functional.setCurrentText("B3LYP")
         self.electron_channel = QComboBox()
-        self.electron_channel.addItem(tr("请选择自旋通道"), None)
+        self.electron_channel.addItem(tr("Select a spin channel"), None)
         self.electron_channel.addItem("α · alpha", "alpha")
         self.electron_channel.addItem("β · beta", "beta")
         self.method_group.currentIndexChanged.connect(self._method_group_changed)
@@ -438,25 +446,25 @@ class MainWindow(QMainWindow):
         self.multiplicity = self._spin(1, 101, 1)
         self.cores = self._spin(1, 256, 4)
         self.maxcore = self._spin(1, 1048576, 1000)
-        for label, control in [(tr("方法类别"), self.method_group), (tr("计算方法"), self.method), (tr("轨道基组"), self.basis),
-                               (tr("作业类型"), self.job)]:
+        for label, control in [(tr("Method family"), self.method_group), (tr("Computational method"), self.method), (tr("Orbital basis set"), self.basis),
+                               (tr("Job type"), self.job)]:
             form.addRow(label, control)
-        self.method_hint = QLabel(tr("数值频率需要对多个位移结构重复计算，耗时随原子数增加。"))
+        self.method_hint = QLabel(tr("Numerical frequencies require calculations at multiple displaced geometries. Cost increases with the number of atoms."))
         self.method_hint.setWordWrap(True)
         self.method_hint.setObjectName("muted")
         form.addRow(self.method_hint)
-        for label, control in [(tr("活性电子数"), self.active_electrons), (tr("活性轨道数"), self.active_orbitals),
-                               (tr("参考泛函"), self.reference_functional), (tr("目标根数"), self.nroots), (tr("电荷"), self.charge),
-                               (tr("自旋多重度"), self.multiplicity), (tr("电子自旋通道"), self.electron_channel),
-                               (tr("参考波函数"), self.wavefunction), (tr("标量相对论"), self.relativity),
-                               (tr("积分近似"), self.integral_approximation), (tr("溶剂模型"), self.solvation_model),
-                               (tr("溶剂"), self.solvent)]:
+        for label, control in [(tr("Active electrons"), self.active_electrons), (tr("Active orbitals"), self.active_orbitals),
+                               (tr("Reference functional"), self.reference_functional), (tr("Target roots"), self.nroots), (tr("Charge"), self.charge),
+                               (tr("Spin multiplicity"), self.multiplicity), (tr("Electron spin channel"), self.electron_channel),
+                               (tr("Reference wavefunction"), self.wavefunction), (tr("Scalar relativity"), self.relativity),
+                               (tr("Integral approximation"), self.integral_approximation), (tr("Solvent model"), self.solvation_model),
+                               (tr("Solvent"), self.solvent)]:
             form.addRow(label, control)
         for name, label in auxiliary_labels.items():
             form.addRow(label, self.auxiliary_bases[name])
-        for label, control in [(tr("色散修正"), self.dispersion), (tr("数值积分网格"), self.integration_grid),
-                               (tr("冻结内层轨道"), self.frozen_core), (tr("PNO 精度"), self.pno_preset),
-                               (tr("处理核心数"), self.cores), (tr("每核内存 / MB"), self.maxcore)]:
+        for label, control in [(tr("Dispersion correction"), self.dispersion), (tr("Numerical integration grid"), self.integration_grid),
+                               (tr("Freeze core orbitals"), self.frozen_core), (tr("PNO accuracy"), self.pno_preset),
+                               (tr("CPU cores"), self.cores), (tr("Memory per core / MB"), self.maxcore)]:
             form.addRow(label, control)
         layout.addWidget(form)
         self.block_options = BlockOptionsPanel()
@@ -469,14 +477,14 @@ class MainWindow(QMainWindow):
         self.validation = QLabel()
         self.validation.setWordWrap(True)
         layout.addWidget(self.validation)
-        self.export_button = QPushButton(tr("导出 .inp"))
+        self.export_button = QPushButton(tr("Export .inp"))
         self.export_button.setObjectName("primary")
         self.export_button.clicked.connect(self.export_input)
         layout.addWidget(self.export_button)
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(line)
-        self.selection = QLabel(tr("点击原子查看坐标"))
+        self.selection = QLabel(tr("Select an atom to view its coordinates"))
         self.selection.setWordWrap(True)
         layout.addWidget(self.selection)
         layout.addStretch()
@@ -485,7 +493,7 @@ class MainWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(panel)
-        self.inspector_dock = self._dock(tr("属性与设置"), scroll, Qt.DockWidgetArea.RightDockWidgetArea)
+        self.inspector_dock = self._dock(tr("Properties and settings"), scroll, Qt.DockWidgetArea.RightDockWidgetArea)
 
     def _set_family_methods(self, family, method=None):
         names = METHOD_GROUPS[family]
@@ -502,9 +510,9 @@ class MainWindow(QMainWindow):
         with QSignalBlocker(control):
             control.clear()
             if optional:
-                control.addItem(tr("自动"), None)
+                control.addItem(tr("Automatic"), None)
             for value in choices:
-                control.addItem(tr("自动") if value == "Auto" else value, value)
+                control.addItem(tr("Automatic") if value == "Auto" else value, value)
             index = control.findData(selected)
             if index >= 0:
                 control.setCurrentIndex(index)
@@ -536,7 +544,7 @@ class MainWindow(QMainWindow):
         self._fill_options(self.solvent, choices, selected.lower() if selected else "water")
         if self.solvation_model.currentData() == "DDCOSMO":
             with QSignalBlocker(self.solvent):
-                self.solvent.addItem(tr("自定义介电常数（%xtb EPSILON）"), None)
+                self.solvent.addItem(tr("Custom dielectric constant (%xtb EPSILON)"), None)
                 if custom:
                     self.solvent.setCurrentIndex(self.solvent.count() - 1)
         self.method_form.setRowVisible(self.solvent, bool(choices))
@@ -557,7 +565,7 @@ class MainWindow(QMainWindow):
         custom = ((spec.solvation_model == "DDCOSMO" and spec.solvent is None) if spec else
                   self.solvation_model.currentData() == "DDCOSMO" and self.solvent.currentData() is None)
         self._fill_options(self.solvation_model, models, selected)
-        self.solvation_model.setItemText(0, tr("气相"))
+        self.solvation_model.setItemText(0, tr("Gas phase"))
         self.method_form.setRowVisible(self.solvation_model, len(models) > 1)
         self._fill_solvents(spec.solvent if spec else self.solvent.currentData(), custom=custom)
         approximations = integral_options(self.method.currentText(), self.job.currentData())
@@ -570,7 +578,7 @@ class MainWindow(QMainWindow):
         previous = self.integral_approximation.currentText()
         self._set_integral_options()
         if previous != self.integral_approximation.currentText():
-            self.statusBar().showMessage(tr("{job} 的积分近似已切换为{approximation}。", job=self.job.currentText(), approximation=self.integral_approximation.currentText()), 7000)
+            self.statusBar().showMessage(tr("Integral approximation for {job} changed to {approximation}.", job=self.job.currentText(), approximation=self.integral_approximation.currentText()), 7000)
         self._settings_changed()
 
     def _set_method_options(self, job_type, basis, spec=None):
@@ -587,7 +595,7 @@ class MainWindow(QMainWindow):
         else:
             with QSignalBlocker(self.basis):
                 self.basis.clear()
-                self.basis.addItem(tr("方法内置 / 固定"), basis)
+                self.basis.addItem(tr("Built in / fixed by method"), basis)
         self.basis.setEnabled(preset.uses_orbital_basis)
         for name, control, choices in (("frozen_core", self.frozen_core, frozen_core_options(method)),
                                        ("pno_preset", self.pno_preset, pno_options(method)),
@@ -595,8 +603,8 @@ class MainWindow(QMainWindow):
             selected = getattr(spec, name) if spec is not None else control.currentData()
             self._fill_options(control, choices, selected or "Auto")
             self.method_form.setRowVisible(control, len(choices) > 1)
-        job_labels = {"SP": tr("单点能  ·  SP"), "OPT": tr("几何优化  ·  Opt"), "FREQ": tr("频率"), "OPT_FREQ": tr("优化 + 频率"),
-                      "OPT_TS": tr("过渡态优化 · OptTS"), "IRC": tr("内禀反应坐标 · IRC")}
+        job_labels = {"SP": tr("Single-point energy  ·  SP"), "OPT": tr("Geometry optimization  ·  Opt"), "FREQ": tr("Frequencies"), "OPT_FREQ": tr("Optimization + frequencies"),
+                      "OPT_TS": tr("Transition state optimization · OptTS"), "IRC": tr("Intrinsic reaction coordinate · IRC")}
         with QSignalBlocker(self.job):
             self.job.clear()
             for key in preset.job_types:
@@ -614,12 +622,12 @@ class MainWindow(QMainWindow):
         if not self.session.molecule.atoms:
             return
         dialog = QInputDialog(self)
-        dialog.setWindowTitle(tr("查找计算方法"))
-        dialog.setLabelText(tr("方法名称或别名"))
+        dialog.setWindowTitle(tr("Find method"))
+        dialog.setLabelText(tr("Method name or alias"))
         dialog.setComboBoxItems(list(METHODS))
         dialog.setComboBoxEditable(True)
-        dialog.setOkButtonText(tr("选择"))
-        dialog.setCancelButtonText(tr("取消"))
+        dialog.setOkButtonText(tr("Selection"))
+        dialog.setCancelButtonText(tr("Cancel"))
         combo = dialog.findChild(QComboBox)
         combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         combo.setCurrentIndex(-1)
@@ -636,7 +644,7 @@ class MainWindow(QMainWindow):
         try:
             method = canonical_method(query)
         except ValueError:
-            QMessageBox.warning(self, tr("未找到计算方法"), tr("方法目录中没有“{query}”。", query=query))
+            QMessageBox.warning(self, tr("Method not found"), tr("No match for “{query}” in the method catalog.", query=query))
             return
         self.workspace_tabs.setCurrentWidget(self.input_page)
         self.inspector_dock.show()
@@ -654,11 +662,11 @@ class MainWindow(QMainWindow):
         self._set_method_options(previous_job, self.basis.currentData())
         changes = []
         if previous_job != self.job.currentData():
-            changes.append(tr("作业类型已切换为{job}", job=self.job.currentText()))
+            changes.append(tr("Job type changed to {job}", job=self.job.currentText()))
         if previous_basis != self.basis.currentText():
-            changes.append(tr("轨道基组已切换为{basis}", basis=self.basis.currentText()))
+            changes.append(tr("Orbital basis set changed to {basis}", basis=self.basis.currentText()))
         if changes:
-            self.statusBar().showMessage(f"{self.method.currentText()} · " + "，".join(changes), 7000)
+            self.statusBar().showMessage(f"{self.method.currentText()} · " + ", ".join(changes), 7000)
         self._settings_changed()
 
     def _text_panel(self):
@@ -674,12 +682,12 @@ class MainWindow(QMainWindow):
         self.tabs.setDocumentMode(True)
         self.input_preview = self._text_panel()
         self.output_summary = self._text_panel()
-        self.output_summary.setPlainText(tr("通过“文件 → 读取 ORCA 输出摘要”查看单作业日志。\n单点能和逐原子电荷可通过“导入单点结果”打开。"))
+        self.output_summary.setPlainText(tr("To view a single-job log, choose File → Read ORCA output summary.\nImport results to open single-point energies and atomic charges."))
         self.log = self._text_panel()
-        self.log.setPlainText(tr("OrcaView 框架已启动。\n示例结构仅供交互演示；尚未执行任何计算。"))
-        for widget, name in [(self.input_preview, tr("ORCA 输入预览")), (self.output_summary, tr("结果摘要")), (self.log, tr("消息与日志"))]:
+        self.log.setPlainText(tr("OrcaView started.\nThe example structure is for demonstration. No calculation has been run."))
+        for widget, name in [(self.input_preview, tr("ORCA input preview")), (self.output_summary, tr("Results summary")), (self.log, tr("Messages and log"))]:
             self.tabs.addTab(widget, name)
-        self.bottom_dock = self._dock(tr("输入与结果"), self.tabs, Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.bottom_dock = self._dock(tr("Input and results"), self.tabs, Qt.DockWidgetArea.BottomDockWidgetArea)
         self.bottom_dock.setObjectName("inputOutputDock")
         # The tabs label this panel. Collapse only its native dock title row.
         title_bar = QWidget(self.bottom_dock)
@@ -702,7 +710,7 @@ class MainWindow(QMainWindow):
         self.electron_channel.setCurrentIndex(max(0, self.electron_channel.findData(spec.electron_channel)))
         for control, value in [(self.charge, molecule.charge), (self.multiplicity, molecule.multiplicity),
                                (self.cores, spec.cores), (self.maxcore, spec.maxcore_mb)]:
-            # 载入项目可超出默认控件范围，扩展范围以保留原值。
+            # Expand the controls to retain values from previously saved projects.
             control.setRange(min(control.minimum(), value), max(control.maximum(), value))
             control.setValue(value)
         self.block_options.load(spec)
@@ -741,17 +749,17 @@ class MainWindow(QMainWindow):
             self.tree.clear()
             self.selection.clear()
             self.subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.subtitle.setText(tr("当前设计没有原子。"))
+            self.subtitle.setText(tr("The current design has no atoms."))
             return
         self.subtitle.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         counts = Counter(a.element for a in molecule.atoms)
         formula = " ".join("{}{}".format(element, counts[element] if counts[element] > 1 else "") for element in sorted(counts))
-        self.subtitle.setText(tr("{}  /  {} 个原子  /  科学坐标 Å", formula, len(molecule.atoms)))
+        self.subtitle.setText(tr("{}  /  {} atoms  /  Coordinates in Å", formula, len(molecule.atoms)))
 
     def _new_design(self):
         if not self._guard_discard():
             return
-        seed = Molecule(tr("新分子"), (Atom("C", 0., 0., 0.),), bonds_explicit=True)
+        seed = Molecule(tr("New molecule"), (Atom("C", 0., 0., 0.),), bonds_explicit=True)
         self.session = Session(molecule=seed, calculation=CalculationSpec(job_type="OPT"))
         self._load_controls()
         self.workspace_tabs.setCurrentWidget(self.design_panel)
@@ -819,11 +827,11 @@ class MainWindow(QMainWindow):
         if not self.session.molecule.atoms:
             self.statusBar().clearMessage()
             choices = QMessageBox.StandardButton
-            dialog = QMessageBox(QMessageBox.Icon.Question, tr("分子为空"),
-                                 tr("当前设计没有原子。是否返回设计界面重新设计分子？"),
+            dialog = QMessageBox(QMessageBox.Icon.Question, tr("Empty molecule"),
+                                 tr("The current design has no atoms. Return to Design to draw a molecule?"),
                                  choices.Yes | choices.No, self)
-            dialog.button(choices.Yes).setText(tr("是"))
-            dialog.button(choices.No).setText(tr("否"))
+            dialog.button(choices.Yes).setText(tr("Yes"))
+            dialog.button(choices.No).setText(tr("No"))
             dialog.setDefaultButton(choices.Yes)
             if dialog.exec() == choices.Yes:
                 self.workspace_tabs.setCurrentWidget(self.design_panel)
@@ -858,6 +866,27 @@ class MainWindow(QMainWindow):
     def _fit_active_view(self):
         self._active_viewport().fit()
 
+    def _structure_image_views(self):
+        page = self.workspace_tabs.currentWidget()
+        if page is self.foundation_panel and self.foundation_panel.geometry_pane.isHidden():
+            return []
+        views = [(tr("3D view"), self._active_viewport())]
+        if page is self.design_panel:
+            views.insert(0, (tr("2D sketch"), self.design_panel.canvas))
+        return [(name, view) for name, view in views if view.has_exportable_structure() and not view.size().isEmpty()]
+
+    def _update_structure_image_action(self):
+        self.structure_image_action.setEnabled(bool(self._structure_image_views()))
+
+    def export_structure_image(self):
+        views = self._structure_image_views()
+        if views:
+            molecule = self._active_viewport().molecule or self.session.molecule
+            dialog = StructureImageDialog(views, molecule.name, self)
+            if dialog.exec():
+                self.statusBar().showMessage(tr("Structure image saved to {path}", path=dialog.output_path), 8000)
+            dialog.deleteLater()
+
     def open_result_session(self, session, dataset_id=None, *, mark_dirty=True, project_path=None,
                             message=None, timeout_ms=8000):
         """Display a validated session after its caller has handled unsaved edits."""
@@ -877,7 +906,7 @@ class MainWindow(QMainWindow):
             self.workspace_tabs.setCurrentWidget(self.foundation_panel)
             if selected is not None:
                 self.foundation_panel.view_dataset(selected.dataset_id)
-            self.statusBar().showMessage(message if message is not None else tr("原子按序号排列，点选一行可在结构中定位。"), timeout_ms)
+            self.statusBar().showMessage(message if message is not None else tr("Atoms are ordered by number. Select a row to locate its atom in the structure."), timeout_ms)
         else:
             self.workspace_tabs.setCurrentWidget(self.design_panel)
             self.statusBar().clearMessage()
@@ -887,23 +916,23 @@ class MainWindow(QMainWindow):
     def load_analysis_demo(self):
         if self._guard_discard():
             session, dataset_id = build_result_demo()
-            self.open_result_session(session, dataset_id, message=tr("已载入 M6 合成电荷样例"))
+            self.open_result_session(session, dataset_id, message=tr("Loaded M6 synthetic charge example"))
 
     def load_foundation_demo(self):
         if not self._guard_discard():
             return
         session = build_foundation_demo()
         charge = next(data for data in session.document.records()[1] if data.kind == "atomic_charge")
-        self.open_result_session(session, charge.dataset_id, message=tr("已载入 M1 合成原子电荷样例"))
-        self.log.appendPlainText(tr("已载入 M1 合成原子电荷样例，包含一个缺失值。"))
+        self.open_result_session(session, charge.dataset_id, message=tr("M1 synthetic atomic charge example loaded"))
+        self.log.appendPlainText(tr("Loaded M1 synthetic atomic charges with one missing value."))
 
     def _update_title(self):
         self.setWindowTitle("{}{} · OrcaView {}".format("* " if self.dirty else "", self.session.molecule.name, __version__))
 
     def _update_frequency_labels(self, spec):
         numerical = uses_numerical_frequencies(spec)
-        for job, label in (("FREQ", tr("数值频率  ·  NumFreq") if numerical else tr("解析频率  ·  Freq")),
-                           ("OPT_FREQ", tr("优化 + 数值频率") if numerical else tr("优化 + 频率"))):
+        for job, label in (("FREQ", tr("Numerical frequencies  ·  NumFreq") if numerical else tr("Analytical frequencies  ·  Freq")),
+                           ("OPT_FREQ", tr("Optimization + numerical frequencies") if numerical else tr("Optimization + frequencies"))):
             index = self.job.findData(job)
             if index >= 0:
                 self.job.setItemText(index, label)
@@ -917,7 +946,7 @@ class MainWindow(QMainWindow):
             self.export_button.setEnabled(False)
             return False
         cores, memory = self.cores.value(), self.maxcore.value()
-        self.memory_hint.setText(tr("内存估算：{} MB × {} = {:,} MB\n此值是按核分配的估算，并非进程硬上限。",
+        self.memory_hint.setText(tr("Estimated memory: {} MB × {} = {:,} MB\nEstimate based on memory per core. The process may use more.",
                                     memory, cores, memory * cores))
         method = self.method.currentText()
         job_type = self.job.currentData()
@@ -950,8 +979,8 @@ class MainWindow(QMainWindow):
             self._update_frequency_labels(spec)
             removed = self.block_options.set_context(spec)
             if removed:
-                names = "、".join(f"%{block} {key}" for block, key in removed)
-                message = tr("已移除不适用于当前计算的设置：{names}", names=names)
+                names = ", ".join(f"%{block} {key}" for block, key in removed)
+                message = tr("Removed settings incompatible with this calculation: {names}", names=names)
                 self.log.appendPlainText(message)
                 self.statusBar().showMessage(message, 10000)
             spec = replace(spec, block_options=self.block_options.overrides())
@@ -970,16 +999,16 @@ class MainWindow(QMainWindow):
                 text = render_input(molecule, spec)
             if spec.peak_maxcore_per_process != spec.maxcore_mb:
                 peak = spec.peak_maxcore_per_process
-                self.memory_hint.setText(tr("内存估算：{peak:,} MB × {spec.cores} = {total:,} MB\n取各模块较高的每核值，实际峰值取决于运行阶段。", peak=peak, spec=spec, total=peak * spec.cores))
+                self.memory_hint.setText(tr("Estimated memory: {peak:,} MB × {spec.cores} = {total:,} MB\nUses the highest per-core estimate among modules. Peak usage depends on the calculation stage.", peak=peak, spec=spec, total=peak * spec.cores))
             self.input_preview.setPlainText(text)
-            self.validation.setText(tr("● 基础结构与电子数校验通过"))
+            self.validation.setText(tr("● Geometry and electron count validated"))
             self.validation.setToolTip("")
             self.validation.setStyleSheet("color: #466446; padding: 8px 0;")
             self.export_button.setEnabled(True)
             return True
         except ValueError as exc:
             message = diagnostic_text(exc)
-            self.input_preview.setPlainText(tr("输入尚不可导出：\n{}", message))
+            self.input_preview.setPlainText(tr("Input cannot be exported yet:\n{}", message))
             self.validation.setText("● " + wrap_parameter_text(message))
             self.validation.setToolTip(message)
             self.validation.setStyleSheet("color: #944A25; padding: 8px 0;")
@@ -989,7 +1018,7 @@ class MainWindow(QMainWindow):
     def _selection_changed(self, selected):
         atoms = self.session.molecule.atoms
         if not selected:
-            self.selection.setText(tr("点击原子查看坐标"))
+            self.selection.setText(tr("Select an atom to view its coordinates"))
             return
         lines = []
         for index in selected:
@@ -1005,12 +1034,12 @@ class MainWindow(QMainWindow):
     def _error(self, exc):
         message = diagnostic_text(exc)
         self.log.appendPlainText(message)
-        QMessageBox.warning(self, tr("操作未完成"), message)
+        QMessageBox.warning(self, tr("Operation incomplete"), message)
 
     def _guard_discard(self):
         if not self.dirty:
             return True
-        choice = QMessageBox.question(self, tr("未保存的设置"), tr("是否先保存当前项目？"), QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        choice = QMessageBox.question(self, tr("Unsaved settings"), tr("Save the current project first?"), QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
         if choice == QMessageBox.StandardButton.Save:
             return self.save_project_dialog()
         return choice == QMessageBox.StandardButton.Discard
@@ -1018,7 +1047,7 @@ class MainWindow(QMainWindow):
     def open_file(self):
         if not self.open_file_action.isEnabled():
             return
-        filename, _ = QFileDialog.getOpenFileName(self, tr("打开文件"), "", open_file_filters(tr))
+        filename, _ = QFileDialog.getOpenFileName(self, tr("Open file"), "", open_file_filters(tr))
         if not filename:
             return
         path = Path(filename)
@@ -1040,7 +1069,7 @@ class MainWindow(QMainWindow):
     open_xyz = open_file
 
     def open_project(self):
-        path, _ = QFileDialog.getOpenFileName(self, tr("打开项目"), "", "OrcaView (*.oview.json);;JSON (*.json)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Open project"), "", "OrcaView (*.oview.json);;JSON (*.json)")
         self._open_project_path(path)
 
     def _open_project_path(self, path):
@@ -1054,15 +1083,15 @@ class MainWindow(QMainWindow):
                 self.session = session
                 self._load_controls(project_path=path)
                 self.workspace_tabs.setCurrentWidget(self.input_page if session.molecule.atoms else self.design_panel)
-            self.log.appendPlainText(tr("已载入项目：{}", path))
+            self.log.appendPlainText(tr("Project loaded: {}", path))
         except (ValueError, OSError) as exc:
             self._error(exc)
 
     def save_project_dialog(self):
         if self.session.molecule.atoms and not self._update_preview():
-            self._error(ValueError(tr("请先修正计算设置，再保存项目。")))
+            self._error(ValueError(tr("Correct the calculation settings before saving the project.")))
             return False
-        path, _ = QFileDialog.getSaveFileName(self, tr("保存项目"), self.session.molecule.name + ".oview.json", "OrcaView (*.oview.json)")
+        path, _ = QFileDialog.getSaveFileName(self, tr("Save project"), self.session.molecule.name + ".oview.json", "OrcaView (*.oview.json)")
         if not path:
             return False
         try:
@@ -1071,7 +1100,7 @@ class MainWindow(QMainWindow):
             self.foundation_panel.set_document(self.session.document, project_path=path)
             self.dirty = False
             self._update_title()
-            self.log.appendPlainText(tr("已保存项目：{}", path))
+            self.log.appendPlainText(tr("Project saved: {}", path))
             return True
         except (ValueError, OSError) as exc:
             self._error(exc)
@@ -1081,14 +1110,14 @@ class MainWindow(QMainWindow):
         if not self.session.molecule.atoms:
             return
         if not self._update_preview():
-            self._error(ValueError(tr("请先修正计算设置，再导出输入。")))
+            self._error(ValueError(tr("Correct the calculation settings before exporting input.")))
             return
-        path, _ = QFileDialog.getSaveFileName(self, tr("导出 ORCA 输入"), self.session.molecule.name + ".inp", tr("ORCA 输入") + " (*.inp)")
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export ORCA input"), self.session.molecule.name + ".inp", tr("ORCA input") + " (*.inp)")
         if path:
             try:
                 Path(path).write_text(self.session.input_text(), encoding="utf-8")
-                self.log.appendPlainText(tr("已导出 ORCA 输入：{}", path))
-                self.statusBar().showMessage(tr("输入已导出：{}", path), 8000)
+                self.log.appendPlainText(tr("ORCA input exported: {}", path))
+                self.statusBar().showMessage(tr("Input exported: {}", path), 8000)
             except (ValueError, OSError) as exc:
                 self._error(exc)
 
@@ -1101,22 +1130,22 @@ class MainWindow(QMainWindow):
     def import_native_output(self):
         if not self.import_action.isEnabled():
             return
-        path, _ = QFileDialog.getOpenFileName(self, tr("导入 ORCA 计算结果"), "",
-                                              tr("ORCA 输出") + " (*.out *.log);;" + tr("全部文件") + " (*)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Import ORCA results"), "",
+                                              tr("ORCA output") + " (*.out *.log);;" + tr("All files") + " (*)")
         if path:
             self._start_read(Path(path), read_native_session)
 
     def _show_native_result(self, path, session):
-        self.open_result_session(session, message=tr("已导入 {path.name} 的结构与计算结果，可保存项目。", path=path))
-        self.log.appendPlainText(tr("已将 {path} 的结果导入独立项目。", path=path))
+        self.open_result_session(session, message=tr("Imported structure and results from {path.name}. The project can now be saved.", path=path))
+        self.log.appendPlainText(tr("Imported results from {path} into a separate project.", path=path))
 
     def open_output(self):
         if not self.summary_action.isEnabled():
             return
-        path, _ = QFileDialog.getOpenFileName(self, tr("读取单作业输出"), "", tr("ORCA 输出") + " (*.out *.log);;" + tr("全部文件") + " (*)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Read single-job output"), "", tr("ORCA output") + " (*.out *.log);;" + tr("All files") + " (*)")
         if not path:
             return
-        job, accepted = QInputDialog.getItem(self, tr("输出作业类型"), tr("选择原始作业类型（用于收敛判定）"), list(ALL_JOBS), 0, False)
+        job, accepted = QInputDialog.getItem(self, tr("Output job type"), tr("Select the original job type to assess convergence"), list(ALL_JOBS), 0, False)
         if not accepted:
             return
         self._start_read(Path(path), read_summary_view, job)
@@ -1132,15 +1161,15 @@ class MainWindow(QMainWindow):
             self._show_log_only(path, result.report)
         else:
             self.workspace_tabs.setCurrentWidget(self.input_page)
-        self.log.appendPlainText(tr("已读取输出摘要：{path}", path=path))
-        self.statusBar().showMessage(tr("已读取 {path.name} 的摘要", path=path), 8000)
+        self.log.appendPlainText(tr("Output summary loaded: {path}", path=path))
+        self.statusBar().showMessage(tr("Read summary from {path.name}", path=path), 8000)
 
     def _show_log_only(self, path, report):
         self.workspace_tabs.setCurrentWidget(self.foundation_panel)
         if not self.session.molecule.atoms:
             return
         self.foundation_panel.set_log_report(report, standalone=True)
-        self.statusBar().showMessage(tr("正在浏览独立日志 {path.name}，当前编辑项目保留。", path=path), 8000)
+        self.statusBar().showMessage(tr("Viewing separate log {path.name}. The current project is retained.", path=path), 8000)
 
     def _read_context(self):
         return self._workspace_version, self.session.document.records()
@@ -1151,9 +1180,9 @@ class MainWindow(QMainWindow):
         self.open_file_action.setEnabled(False)
         self.import_action.setEnabled(False)
         self.summary_action.setEnabled(False)
-        self.cancel_read_button.setText(tr("取消打开"))
+        self.cancel_read_button.setText(tr("Cancel opening"))
         self.cancel_read_button.show()
-        self.statusBar().showMessage(tr("正在读取 {path.name}…", path=path))
+        self.statusBar().showMessage(tr("Reading {path.name}…", path=path))
         self._read_future = self._reader.submit(reader, path, *args)
         self._read_timer.start()
 
@@ -1170,8 +1199,8 @@ class MainWindow(QMainWindow):
                 self._pending_result = (path, result)
                 self.pending_result_button.setToolTip(str(path))
                 self.pending_result_button.show()
-                self.cancel_read_button.setText(tr("放弃打开"))
-                self.statusBar().showMessage(tr("{path.name} 已就绪，可在完成当前操作后打开。", path=path))
+                self.cancel_read_button.setText(tr("Discard open request"))
+                self.statusBar().showMessage(tr("{path.name} is ready to open once the current operation is complete.", path=path))
             else:
                 if isinstance(result, (Session, OpenedStructure)) and not self._guard_discard():
                     self._reset_reader()
@@ -1181,12 +1210,12 @@ class MainWindow(QMainWindow):
             self._reset_reader()
             if isinstance(exc, OrcaImportError):
                 details = "\n".join(
-                    f"{issue.code} · " + (tr("第 {issue.line} 行 · ", issue=issue) if issue.line else "") + diagnostic_text(issue.message)
+                    f"{issue.code} · " + (tr("Line {issue.line} · ", issue=issue) if issue.line else "") + diagnostic_text(issue.message)
                     for issue in exc.issues
                 )
             else:
                 details = diagnostic_text(exc)
-            self.statusBar().showMessage(tr("读取失败：{path.name}", path=path), 8000)
+            self.statusBar().showMessage(tr("Could not read {path.name}", path=path), 8000)
             self._error(ValueError(f"{path.name}\n{details}"))
 
     def _open_pending_result(self):
@@ -1200,28 +1229,28 @@ class MainWindow(QMainWindow):
     def _display_read_result(self, path, result):
         self._reset_reader()
         if isinstance(result, PeriodicFile):
-            dialog = QMessageBox(QMessageBox.Icon.Question, tr("周期性结构"),
-                                 tr("{path.name} 包含周期性结构。是否去掉周期性，显示一个有限结构？", path=path),
+            dialog = QMessageBox(QMessageBox.Icon.Question, tr("Periodic structure"),
+                                 tr("{path.name} contains a periodic structure. Remove periodicity and display a finite structure?", path=path),
                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
-            dialog.button(QMessageBox.StandardButton.Yes).setText(tr("是"))
-            dialog.button(QMessageBox.StandardButton.No).setText(tr("否"))
+            dialog.button(QMessageBox.StandardButton.Yes).setText(tr("Yes"))
+            dialog.button(QMessageBox.StandardButton.No).setText(tr("No"))
             dialog.setDefaultButton(QMessageBox.StandardButton.No)
             if dialog.exec() == QMessageBox.StandardButton.Yes:
                 reader = read_native_session if path.suffix.lower() in (".out", ".log") else read_structure_file
                 self._start_read(path, reader, result)
             else:
-                self.statusBar().showMessage(tr("不支持周期性结构。"), 8000)
-                QMessageBox.information(self, tr("周期性结构"), tr("不支持周期性结构。"))
+                self.statusBar().showMessage(tr("Periodic structures are unsupported."), 8000)
+                QMessageBox.information(self, tr("Periodic structure"), tr("Periodic structures are unsupported."))
         elif isinstance(result, OpenedStructure):
             self.session = result.session(self.session.calculation)
             self._load_controls()
             self.workspace_tabs.setCurrentWidget(self.input_page)
             if result.record.generated_3d:
-                message = tr("已用 Open Babel 生成 {path.name} 的三维构象。", path=path)
+                message = tr("Generated a 3D conformer for {path.name} with Open Babel.", path=path)
             elif result.record.removed_periodicity:
-                message = tr("已去掉 {path.name} 的周期性，显示有限结构。", path=path)
+                message = tr("Removed periodicity from {path.name}. Displaying a finite structure.", path=path)
             else:
-                message = tr("已从 {path.name} 载入分子结构。", path=path)
+                message = tr("Loaded molecular structure from {path.name}.", path=path)
             self.log.appendPlainText(message)
             self.statusBar().showMessage(message, 8000)
         elif isinstance(result, Session):
@@ -1247,7 +1276,7 @@ class MainWindow(QMainWindow):
             # A reader already parsing may finish independently. Its result is discarded.
             self._read_future.cancel()
         self._reset_reader()
-        self.statusBar().showMessage(tr("已取消打开文件。"), 8000)
+        self.statusBar().showMessage(tr("Opening canceled."), 8000)
 
     def closeEvent(self, event):
         if self._guard_discard():
@@ -1273,7 +1302,7 @@ def launch(screenshot=None):
     window = MainWindow()
     window.show()
     if screenshot is not None:
-        # 截图用途也走真实窗口绘制路径，便于无显示器环境验证。
+        # Use the real window paint path for screenshots, including offscreen runs.
         def capture():
             success = window.grab().save(str(screenshot))
             app.exit(0 if success else 2)

@@ -1,1 +1,1 @@
-"""不依赖 GUI 和外部计算软件的领域对象。"""
+"""Domain objects independent of the GUI and external calculation programs."""

@@ -1,2 +1,2 @@
-"""可选 Qt 桌面适配层；核心模块禁止反向依赖本包。"""
+"""Optional Qt desktop interface. Core modules are independent of this package."""
 

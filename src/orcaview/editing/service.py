@@ -37,9 +37,9 @@ class AtomMapping(Versioned):
     target_ids: Tuple[Optional[str], ...]
 
     def __post_init__(self):
-        identifiers(self.source_ids, "源原子 ID")
-        require_tuple(self.target_ids, "目标原子映射")
-        identifiers(tuple(i for i in self.target_ids if i is not None), "目标原子 ID")
+        identifiers(self.source_ids, "Source atom ID")
+        require_tuple(self.target_ids, "Target atom mapping")
+        identifiers(tuple(i for i in self.target_ids if i is not None), "Target atom ID")
 
     @property
     def source_to_target(self) -> Tuple[Optional[int], ...]:
@@ -143,18 +143,18 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
             old_edges = {tuple(sorted((b.a, b.b))) for b in bonds}
             new_edges = {tuple(sorted((b.a, b.b))) for b in op.perceived_bonds}
             if molecule.bonds_explicit or molecule.bonds or new_edges != old_edges:
-                raise ValueError("优化返回的连接表无效")
+                raise ValueError("The optimization returned an invalid bond graph.")
             bonds = op.perceived_bonds
         if isinstance(op, AddHydrogens):
             atoms = tuple(atom for _, atom in op.attachments)
             anchors = {atom_id: index for index, atom_id in enumerate(ids)}
             if any(parent not in anchors for parent, _ in op.attachments):
-                raise ValueError("当前快照不存在该原子 ID")
+                raise ValueError("This snapshot does not contain the atom ID")
             added = tuple(Bond(anchors[parent], i) for i, (parent, _) in enumerate(op.attachments, len(ids)))
             return replace(molecule, atoms=molecule.atoms + atoms, bonds=bonds + added,
                            bonds_explicit=True), ids + (None,) * len(atoms)
         if len(op.coordinates) != len(ids):
-            raise ValueError("优化坐标与原子数不一致")
+            raise ValueError("The optimized coordinates do not match the atom count.")
         atoms = tuple(replace(atom, x=x, y=y, z=z) for atom, (x, y, z) in zip(molecule.atoms, op.coordinates))
         return replace(molecule, atoms=atoms, bonds=bonds, bonds_explicit=True), ids
     if isinstance(op, AddAtoms):
@@ -182,7 +182,7 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
         return _subset(base, order), order
     if isinstance(op, ReorderAtoms):
         if set(op.atom_ids) != set(ids):
-            raise ValueError("重排必须恰好包含当前所有原子 ID")
+            raise ValueError("Reordering must contain every current atom ID exactly once")
         return _subset(base, op.atom_ids), op.atom_ids
     if isinstance(op, ReplaceElement):
         index = base.index_of(op.atom_id)
@@ -209,7 +209,7 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
                 break
         else:
             if not op.order:
-                raise ValueError("所选原子之间没有键")
+                raise ValueError("There is no bond between these atoms.")
             if op.style not in DIRECTIONAL_STYLES:
                 a, b = sorted(edge)
             bonds.append(Bond(a, b, op.order, op.style))
@@ -231,16 +231,16 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
         if isinstance(op, SetBondLength):
             bonds = display_bonds(molecule)
             if set(op.moving_atom_ids) != set(bond_moving_atoms(base, op.coordinate, bonds)):
-                raise ValueError("键长编辑必须移动该端的整个基团")
+                raise ValueError("Changing the bond length requires moving the entire group on that side.")
             edited = replace(edited, bonds=bonds, bonds_explicit=True)
         return edited, ids
-    raise ValueError("不支持的编辑操作")
+    raise ValueError("Unsupported edit operation")
 
 
 def _edit_sketch(document, base, op, molecule, ids):
     if isinstance(op, SetSketchLayout):
         if len(op.xy) != len(ids):
-            raise ValueError("二维草图坐标与原子数不一致")
+            raise ValueError("The number of sketch positions does not match the number of atoms.")
         return op.xy
     if isinstance(op, (OptimizeCoordinates, MoveSketchAtom)):
         # The first 3D optimization freezes the drawing that the user sees.
@@ -300,11 +300,11 @@ class EditorService:
 
     def __init__(self, document: MoleculeDocument, selection: Optional[SelectionContext] = None):
         if not isinstance(document, MoleculeDocument):
-            raise ValueError("编辑服务需要 MoleculeDocument")
+            raise ValueError("The editor requires a MoleculeDocument")
         base = document.head
         selection = SelectionContext(base.ref, ()) if selection is None else selection
         if not isinstance(selection, SelectionContext):
-            raise ValueError("编辑选择必须是 SelectionContext")
+            raise ValueError("The editor selection must be a SelectionContext")
         selection.indices(base)
         self._document = document
         self._expected = base.ref
@@ -356,16 +356,16 @@ class EditorService:
     def _check_head(self) -> GeometrySnapshot:
         base = self._document.head
         if base.ref != self._expected:
-            raise StaleRevisionError("文档已被其他编辑修改；请显式重置编辑历史后继续")
+            raise StaleRevisionError("Another editor changed the document. Reset the edit history to continue")
         return base
 
     def set_selection(self, selection: SelectionContext) -> SelectionContext:
         with self._lock:
             base = self._check_head()
             if self._pending is not None:
-                raise EditStateError("请先确认或取消当前预览再更改编辑选择")
+                raise EditStateError("Confirm or cancel the current preview before changing the selection")
             if not isinstance(selection, SelectionContext):
-                raise ValueError("编辑选择必须是 SelectionContext")
+                raise ValueError("The editor selection must be a SelectionContext")
             selection.indices(base)
             self._selection = selection
             return selection
@@ -374,16 +374,16 @@ class EditorService:
         with self._lock:
             base = self._check_head()
             if not isinstance(command, GeometryEditCommand):
-                raise ValueError("需要 GeometryEditCommand")
+                raise ValueError("A GeometryEditCommand is required")
             if command.expected != self._expected:
-                raise StaleRevisionError("命令基准与编辑服务的当前修订不一致")
+                raise StaleRevisionError("The command's base revision differs from the current editor revision")
             molecule, ids = _apply(self._document, base, command)
             molecule.validate_structure(allow_empty=True)
             sketch_xy = _edit_sketch(self._document, base, command.operation, molecule, ids)
             if sketch_xy is not None:
                 validate_sketch_xy(sketch_xy)
             if molecule == base.molecule and ids == base.atom_ids and sketch_xy == base.sketch_xy:
-                raise _UnchangedEdit("编辑没有改变分子或原子顺序")
+                raise _UnchangedEdit("The edit did not change the molecule or atom order")
             active = set(ids)
             preview = EditPreview(
                 new_id(), command, base, molecule, AtomMapping(base.atom_ids, ids), self._selection,
@@ -395,7 +395,7 @@ class EditorService:
 
     def _check_preview(self, preview: EditPreview):
         if self._pending is None or preview is not self._pending:
-            raise EditStateError("预览不属于当前服务、已被替代或已结束")
+            raise EditStateError("The preview belongs to another editor, has expired or has been replaced")
 
     def commit(self, preview: EditPreview) -> EditResult:
         with self._lock:
@@ -444,11 +444,11 @@ class EditorService:
     def _restore(self, undo: bool) -> EditResult:
         with self._lock:
             if self._pending is not None:
-                raise EditStateError("请先确认或取消当前预览")
+                raise EditStateError("Confirm or cancel the current preview first")
             before = self._check_head()
             source, destination = (self._undo, self._redo) if undo else (self._redo, self._undo)
             if not source:
-                raise EditStateError("没有可撤销的编辑" if undo else "没有可重做的编辑")
+                raise EditStateError("Nothing to undo" if undo else "Nothing to redo")
             entry = source[-1]
             target = entry.before if undo else entry.after
             saved = entry.selection_before if undo else entry.selection_after

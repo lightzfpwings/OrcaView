@@ -39,13 +39,13 @@ class MethodPreset:
     def validate_system(self, molecule) -> None:
         check_extrapolation_basis(self.name, molecule)
         if self.name in RI_CANONICAL_CC and molecule.multiplicity != 1:
-            raise ValueError(f"{self.name} 的 MDCI RI 积分算法要求闭壳层单重参考态")
+            raise ValueError(f"MDCI RI integrals in {self.name} require a closed-shell singlet reference")
         upper_bound = METHOD_MAX_Z.get(self.name)
         elements = METHOD_ELEMENTS.get(self.name)
         for symbol in dict.fromkeys(atom.element for atom in molecule.atoms):
             if ((upper_bound is not None and ATOMIC_NUMBERS[symbol] > upper_bound)
                     or (elements is not None and symbol not in elements)):
-                raise ValueError(f"{self.name} 的当前基组或参数不覆盖元素 {symbol}")
+                raise ValueError(f"The current basis or parameters for {self.name} do not cover {symbol}")
 
     def keywords(self, basis_keywords, job: str, method_keywords: str, *, numerical_frequency=False) -> str:
         words = [method_keywords] if method_keywords else []
@@ -87,7 +87,7 @@ DISPERSION_RECIPES = {
     "B3LYP-D4": "B3LYP D4", "PBE0-D4": "PBE0 D4", "PBE-D4": "PBE D4",
     "r2SCAN-D4": "R2SCAN D4", "B2PLYP-D4": "B2PLYP D4",
 }
-_DISPERSION_GROUP = (("DFT 色散校正组合", tuple(
+_DISPERSION_GROUP = (("DFT dispersion correction combinations", tuple(
     (name, "double-hybrid" if name == "B2PLYP-D4" else "numeric-freq")
     for name in DISPERSION_RECIPES
 )),)
@@ -135,17 +135,17 @@ def _reference_methods(name):
     family = METHODS[name].family
     if name in DISPERSION_RECIPES:
         family = METHODS[DISPERSION_RECIPES[name].split()[0]].family
-    if "双杂化" in family:
+    if "double hybrid" in family.casefold().replace("-", " "):
         return ("Auto", "RKS", "UKS")
-    if family.startswith(("局域密度", "广义梯度", "动能密度", "LibXC")) or "杂化" in family:
+    if family.startswith(("Local density", "Generalized gradient", "Kinetic energy density", "LibXC")) or "hybrid" in family.casefold():
         return ("Auto", "RKS", "UKS", "ROKS")
     return ("Auto",)
 
 
 def frozen_core_options(name):
     family = METHODS[name].family
-    if (family in ("微扰理论", "耦合簇", "组态相互作用与电子对方法", "显式相关 F12", "自动生成单参考关联 AUTOCI")
-            or "双杂化" in family or name == "B2PLYP-D4"):
+    if (family in ("Perturbation theory", "Coupled cluster", "Configuration interaction and electron-pair methods", "Explicit correlation F12", "Automatic single-reference correlation (AUTOCI)")
+            or "double hybrid" in family.casefold().replace("-", " ") or name == "B2PLYP-D4"):
         return ("Auto", "FrozenCore", "NoFrozenCore")
     return ("Auto",)
 
@@ -154,4 +154,4 @@ def canonical_method(name: str) -> str:
     try:
         return _CLI_NAMES[name.casefold()]
     except KeyError:
-        raise ValueError(f"未收录计算方法 {name!r}，使用 orcaview methods 查看可选项") from None
+        raise ValueError(f"Unknown method {name!r}. Run orcaview methods to list available methods") from None

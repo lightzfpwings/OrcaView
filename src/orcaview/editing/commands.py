@@ -19,7 +19,7 @@ class AddHydrogen(Versioned):
     kind: ClassVar[str] = "add-hydrogen"
 
     def __post_init__(self):
-        nonempty(self.anchor_id, "原子 ID")
+        nonempty(self.anchor_id, "Atom ID")
 
 
 @dataclass(frozen=True)
@@ -31,18 +31,18 @@ class AddHydrogens(Versioned):
     kind: ClassVar[str] = "add-hydrogens"
 
     def __post_init__(self):
-        require_tuple(self.attachments, "新增氢原子")
+        require_tuple(self.attachments, "Added hydrogen atoms")
         if not self.attachments:
-            raise ValueError("当前结构没有可自动补加的氢原子。")
+            raise ValueError("No hydrogens could be added automatically to this structure.")
         for parent, atom in self.attachments:
-            nonempty(parent, "原子 ID")
+            nonempty(parent, "Atom ID")
             if not isinstance(atom, Atom) or atom.element != "H":
-                raise ValueError("补氢操作只能添加氢原子")
+                raise ValueError("Automatic hydrogen addition can only append H atoms.")
             atom.validate()
         if self.perceived_bonds is not None:
-            require_tuple(self.perceived_bonds, "感知键级")
+            require_tuple(self.perceived_bonds, "Perceived bond orders")
             if any(not isinstance(bond, Bond) for bond in self.perceived_bonds):
-                raise ValueError("Open Babel 无法建立当前连接表")
+                raise ValueError("Open Babel could not construct this bond graph.")
 
 
 @dataclass(frozen=True)
@@ -64,9 +64,9 @@ class MoveSketchAtom(Versioned):
     kind: ClassVar[str] = "move-sketch-atom"
 
     def __post_init__(self):
-        nonempty(self.atom_id, "原子 ID")
-        finite_number(self.x, "二维草图坐标")
-        finite_number(self.y, "二维草图坐标")
+        nonempty(self.atom_id, "Atom ID")
+        finite_number(self.x, "2D sketch coordinates")
+        finite_number(self.y, "2D sketch coordinates")
 
 
 @dataclass(frozen=True)
@@ -80,18 +80,18 @@ class OptimizeCoordinates(Versioned):
 
     def __post_init__(self):
         if self.method not in ("MMFF94", "UFF"):
-            raise ValueError("未知的结构优化方法")
+            raise ValueError("Unknown structure optimization method.")
         if self.perceived_bonds is not None:
-            require_tuple(self.perceived_bonds, "感知键级")
+            require_tuple(self.perceived_bonds, "Perceived bond orders")
             if any(not isinstance(b, Bond) for b in self.perceived_bonds):
-                raise ValueError("优化返回的连接表无效")
-        require_tuple(self.coordinates, "优化坐标")
+                raise ValueError("The optimization returned an invalid bond graph.")
+        require_tuple(self.coordinates, "Optimized coordinates")
         for xyz in self.coordinates:
-            require_tuple(xyz, "原子坐标")
+            require_tuple(xyz, "Atomic coordinates")
             if len(xyz) != 3:
-                raise ValueError("每个原子需要三个坐标")
+                raise ValueError("Each atom requires three coordinates.")
             for value in xyz:
-                finite_number(value, "原子坐标")
+                finite_number(value, "Atomic coordinates")
 
 
 @dataclass(frozen=True)
@@ -102,12 +102,12 @@ class AddAtoms(Versioned):
     kind: ClassVar[str] = "add-atoms"
 
     def __post_init__(self):
-        require_tuple(self.atoms, "新增原子")
+        require_tuple(self.atoms, "Added atoms")
         if not self.atoms:
-            raise ValueError("至少需要一个新增原子")
+            raise ValueError("At least one new atom is required")
         for atom in self.atoms:
             if not isinstance(atom, Atom):
-                raise ValueError("新增原子必须是 Atom")
+                raise ValueError("New atoms must be Atom objects")
             atom.validate()
 
 
@@ -122,9 +122,9 @@ class AttachAtom(Versioned):
     kind: ClassVar[str] = "attach-atom"
 
     def __post_init__(self):
-        nonempty(self.anchor_id, "原子 ID")
+        nonempty(self.anchor_id, "Atom ID")
         if not isinstance(self.atom, Atom):
-            raise ValueError("新增原子必须是 Atom")
+            raise ValueError("New atoms must be Atom objects")
         self.atom.validate()
         validate_bond_style(self.order, self.style)
 
@@ -141,21 +141,21 @@ class InsertRing(Versioned):
     kind: ClassVar[str] = "insert-ring"
 
     def __post_init__(self):
-        integer(self.size, "环大小", 3)
+        integer(self.size, "Ring size", 3)
         if self.size > 8 or type(self.benzene) is not bool or (self.benzene and self.size != 6):
-            raise ValueError("请选择 3 至 8 元碳环或苯环")
+            raise ValueError("Choose a 3- to 8-membered carbon ring or a benzene ring.")
         if self.plane not in ("XY", "XZ", "YZ"):
-            raise ValueError("请选择 XY、XZ 或 YZ 投影平面")
+            raise ValueError("Choose the XY, XZ or YZ projection plane.")
         if (self.anchor_id is None) == (self.center is None):
-            raise ValueError("请选择环中心或连接原子")
+            raise ValueError("Choose a ring center or an attachment atom.")
         if self.anchor_id is not None:
-            nonempty(self.anchor_id, "原子 ID")
+            nonempty(self.anchor_id, "Atom ID")
         else:
-            require_tuple(self.center, "环中心")
+            require_tuple(self.center, "Ring center")
             if len(self.center) != 3:
-                raise ValueError("环中心需要三个坐标")
+                raise ValueError("The ring center requires three coordinates.")
             for value in self.center:
-                finite_number(value, "原子坐标")
+                finite_number(value, "Atomic coordinates")
 
 
 @dataclass(frozen=True)
@@ -164,9 +164,9 @@ class DeleteAtoms(Versioned):
     kind: ClassVar[str] = "delete-atoms"
 
     def __post_init__(self):
-        identifiers(self.atom_ids, "删除的原子 ID")
+        identifiers(self.atom_ids, "Deleted atom IDs")
         if not self.atom_ids:
-            raise ValueError("至少选择一个待删除原子")
+            raise ValueError("Select at least one atom to delete")
 
 
 @dataclass(frozen=True)
@@ -178,9 +178,9 @@ class ReplaceElement(Versioned):
     kind: ClassVar[str] = "replace-element"
 
     def __post_init__(self):
-        nonempty(self.atom_id, "原子 ID")
+        nonempty(self.atom_id, "Atom ID")
         if not isinstance(self.element, str) or self.element not in ATOMIC_NUMBERS:
-            raise ValueError("不支持的元素符号")
+            raise ValueError("Unsupported element symbol")
 
 
 @dataclass(frozen=True)
@@ -192,9 +192,9 @@ class MoveAtom(Versioned):
     kind: ClassVar[str] = "move-atom"
 
     def __post_init__(self):
-        nonempty(self.atom_id, "原子 ID")
+        nonempty(self.atom_id, "Atom ID")
         for coordinate in (self.x, self.y, self.z):
-            finite_number(coordinate, "原子坐标")
+            finite_number(coordinate, "Atomic coordinates")
 
 
 @dataclass(frozen=True)
@@ -208,14 +208,14 @@ class SetBond(Versioned):
     kind: ClassVar[str] = "set-bond"
 
     def __post_init__(self):
-        identifiers((self.atom_a, self.atom_b), "键端点")
-        integer(self.order, "键级", 0)
+        identifiers((self.atom_a, self.atom_b), "Bond endpoint")
+        integer(self.order, "Bond order", 0)
         if self.order > 3:
-            raise ValueError("键级必须为 0、1、2 或 3")
+            raise ValueError("Bond order must be 0, 1, 2 or 3.")
         if self.order:
             validate_bond_style(self.order, self.style)
         elif self.style != "plain":
-            raise ValueError("键型与所选键级不匹配")
+            raise ValueError("The bond style does not match the selected bond order.")
 
 
 @dataclass(frozen=True)
@@ -224,7 +224,7 @@ class ReorderAtoms(Versioned):
     kind: ClassVar[str] = "reorder-atoms"
 
     def __post_init__(self):
-        identifiers(self.atom_ids, "重排的原子 ID")
+        identifiers(self.atom_ids, "Reordered atom IDs")
 
 
 @dataclass(frozen=True)
@@ -236,8 +236,8 @@ class SetElectronicState(Versioned):
     kind: ClassVar[str] = "set-electronic-state"
 
     def __post_init__(self):
-        integer(self.charge, "总电荷")
-        integer(self.multiplicity, "自旋多重度", 1)
+        integer(self.charge, "Total charge")
+        integer(self.multiplicity, "Spin multiplicity", 1)
 
 
 @dataclass(frozen=True)
@@ -250,11 +250,11 @@ class SetDistance(Versioned):
 
     def __post_init__(self):
         if not isinstance(self.coordinate, CoordinateDefinition) or self.coordinate.kind != "distance":
-            raise ValueError("距离编辑需要 distance 坐标定义")
-        if finite_number(self.target, "目标距离") <= 0:
-            raise ValueError("目标距离必须大于零")
-        identifiers(self.moving_atom_ids, "移动原子 ID")
-        identifiers(self.fixed_atom_ids, "固定原子 ID")
+            raise ValueError("A distance edit requires a distance coordinate definition")
+        if finite_number(self.target, "Target distance") <= 0:
+            raise ValueError("The target distance must be greater than zero.")
+        identifiers(self.moving_atom_ids, "Moving atom IDs")
+        identifiers(self.fixed_atom_ids, "Fixed atom IDs")
 
 
 @dataclass(frozen=True)
@@ -271,7 +271,7 @@ class UseResultGeometry(Versioned):
 
     def __post_init__(self):
         if not isinstance(self.source, GeometryRef):
-            raise ValueError("恢复目标必须是完整的 GeometryRef")
+            raise ValueError("The restore target must be a complete GeometryRef")
 
 
 EditOperation = Union[AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertRing, MoveAtom,
@@ -286,10 +286,10 @@ class GeometryEditCommand(Versioned):
 
     def __post_init__(self):
         if not isinstance(self.expected, GeometryRef) or self.expected.frame_id is not None:
-            raise ValueError("编辑命令必须绑定可编辑修订的完整引用")
+            raise ValueError("The edit command must reference the complete editable revision")
         if type(self.operation) not in (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertRing, MoveAtom,
                                        MoveSketchAtom, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength,
                                        SetDistance, SetElectronicState, UseResultGeometry):
-            raise ValueError("不支持的编辑操作")
+            raise ValueError("Unsupported edit operation")
         if isinstance(self.operation, SetDistance) and self.operation.coordinate.geometry != self.expected:
-            raise ValueError("坐标定义必须绑定命令的基准修订")
+            raise ValueError("The coordinate definition must reference the command's base revision")

@@ -69,7 +69,7 @@ def insert_ring(molecule, operation, anchor):
         if all(math.dist(point, old) >= .85 for point in positions for old in existing):
             break
     else:
-        raise ValueError("环与已有原子重叠，请更换位置")
+        raise ValueError("The ring overlaps existing atoms. Choose another position.")
 
     first = len(existing)
     rows = ([anchor] if use_seed else []) + list(range(first, first + len(positions)))

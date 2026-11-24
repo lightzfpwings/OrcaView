@@ -209,7 +209,7 @@ class DesignModelingActions(unittest.TestCase):
         self.panel.set_document(self.document)
         initial = self.document.head
         self.assertIs(self.fill_h(), initial)
-        self.assertIn("没有可自动补加", self.panel.status.text())
+        self.assertIn("No hydrogens could be added automatically", self.panel.status.text())
 
     def test_unlimited_additions_display_diagnostics_and_can_be_undone(self):
         self.select_atom(0)
@@ -221,7 +221,7 @@ class DesignModelingActions(unittest.TestCase):
         self.assertTrue(problems.isVisibleTo(self.panel))
         self.assertIn("C1", problems.text())
         self.assertIn("5", problems.text())
-        self.assertIn("电子", problems.text())
+        self.assertIn("Electron", problems.text())
         self.panel.undo_button.click()
         self.assertEqual(self.document.head.molecule, methane.molecule)
         self.assertFalse(problems.isVisibleTo(self.panel))
@@ -231,7 +231,7 @@ class DesignModelingActions(unittest.TestCase):
         sixth = self.add_one_h()
         self.assertEqual(sixth.molecule.bonds, fifth.molecule.bonds + (Bond(0, 6),))
         self.assertIn("6", problems.text())
-        self.assertNotIn("电子", problems.text())
+        self.assertNotIn("Electron", problems.text())
 
     def assert_input_geometry(self, head):
         self.window.workspace_tabs.setCurrentWidget(self.window.input_page)
@@ -270,7 +270,7 @@ class DesignModelingActions(unittest.TestCase):
         changed = QSignalSpy(self.panel.geometry_changed)
         self.assertIs(self.run_optimization(self.panel.clean_2d), planar)
         self.assertEqual(changed.count(), 0)
-        self.assertEqual(self.panel.status.text(), "二维草图已规整。")
+        self.assertEqual(self.panel.status.text(), "The 2D sketch is already tidy.")
         self.check_undo_redo(methane, planar)
         self.assertEqual(self.assert_input_geometry(planar), original_input)
         before_relax = self.document.head
@@ -386,7 +386,7 @@ class DesignModelingActions(unittest.TestCase):
             self.wait_until(lambda: self.panel._structure_job is None)
         self.assertIs(self.document.head, undone)
         self.assertIsNone(undone.sketch_xy)
-        self.assertIn("结构已更改", self.panel.status.text())
+        self.assertIn("structure has changed", self.panel.status.text())
 
     def test_cleanup_finishing_on_the_input_page_preserves_the_displayed_input(self):
         original = self.draw_second_carbon()
@@ -459,7 +459,7 @@ class DesignModelingActions(unittest.TestCase):
             if replace_document:
                 self.assertIs(self.document.head, before)
             else:
-                self.assertIn("结构已更改", self.panel.status.text())
+                self.assertIn("structure has changed", self.panel.status.text())
 
     def test_finishing_after_coordinate_edit_discards_stale_coordinates(self):
         self.check_late_completion(replace_document=False)

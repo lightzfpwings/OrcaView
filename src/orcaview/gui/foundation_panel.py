@@ -113,7 +113,7 @@ class FoundationPanel(QWidget):
         column_gap = 10
         layout.setContentsMargins(column_gap // 2, 14, column_gap // 2, 14)
         layout.setSpacing(10)
-        self.title = _label(tr("结果"), "foundationTitle")
+        self.title = _label(tr("Result"), "foundationTitle")
         self.title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(self.title)
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -123,11 +123,11 @@ class FoundationPanel(QWidget):
         navigation = QVBoxLayout(left)
         navigation.setContentsMargins(0, 0, 0, 0)
         navigation.setSpacing(8)
-        navigation.addWidget(_label(tr("计算结果"), "sectionTitle"))
+        navigation.addWidget(_label(tr("Calculation results"), "sectionTitle"))
         self.datasets = CalculationResultTable()
         self.datasets.horizontalHeader().hide()
         navigation.addWidget(self.datasets, 3)
-        navigation.addWidget(_label(tr("光谱"), "sectionTitle"))
+        navigation.addWidget(_label(tr("Spectra"), "sectionTitle"))
         self.spectra = QTreeWidget()
         self.spectra.setObjectName("resultSpectra")
         self.spectra.setHeaderHidden(True)
@@ -146,9 +146,9 @@ class FoundationPanel(QWidget):
         self.viewport.setMinimumWidth(220)
         self.viewport.setObjectName("foundationViewport")
         scene.addWidget(self.viewport, 1)
-        self.design_button = QPushButton(tr("用此结构设计"))
+        self.design_button = QPushButton(tr("Use in design"))
         self.design_button.setObjectName("designResultGeometry")
-        self.design_button.setToolTip(tr("将显示的几何带入设计，可撤销此次替换。"))
+        self.design_button.setToolTip(tr("Use the displayed geometry in the design workspace. You can undo this replacement."))
         self.design_button.setEnabled(False)
         self.design_button.clicked.connect(self._request_design)
         scene.addWidget(self.design_button, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -157,7 +157,7 @@ class FoundationPanel(QWidget):
         table_layout = QVBoxLayout(right)
         table_layout.setContentsMargins(0, 0, 0, 0)
         table_layout.setSpacing(navigation.spacing())
-        self.table_title = _label(tr("原子坐标 / Å"), "sectionTitle")
+        self.table_title = _label(tr("Atomic coordinates / Å"), "sectionTitle")
         table_layout.addWidget(self.table_title)
         self.atoms = AtomCoordinateTable()
         self.log_table = QTableView()
@@ -198,8 +198,8 @@ class FoundationPanel(QWidget):
         self.inspector_tabs = QTabWidget()
         self.inspector_tabs.setObjectName("resultInspector")
         self.inspector_tabs.tabBar().setObjectName("resultInspectorTabs")
-        self.inspector_tabs.addTab(overview, tr("概览"))
-        self.inspector_tabs.addTab(self.evidence, tr("来源详情"))
+        self.inspector_tabs.addTab(overview, tr("Overview"))
+        self.inspector_tabs.addTab(self.evidence, tr("Source details"))
         inspector_frame = QFrame()
         inspector_frame.setObjectName("resultInspectorFrame")
         inspector_frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -269,7 +269,7 @@ class FoundationPanel(QWidget):
 
     def _clear_empty_design(self):
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title.setText(tr("当前设计没有原子。"))
+        self.title.setText(tr("The current design has no atoms."))
         self.title.setToolTip("")
         self._dataset_id = self.selected_snapshot = self._log_snapshot = self._log_selection = None
         self._dataset_items.clear()
@@ -320,7 +320,7 @@ class FoundationPanel(QWidget):
             datasets = ()
         self.geometry_pane.setVisible(not self._standalone)
         path = report.source.path_hint if report is not None else ""
-        fallback = tr("结果")
+        fallback = tr("Result")
         if not self._standalone:
             path = self._project_path or self._input_path or path
             if snapshots:
@@ -348,13 +348,13 @@ class FoundationPanel(QWidget):
             for index, series in enumerate(self._series):
                 prop = series[0]
                 tooltip = "\n".join(filter(None, (f"{tr(prop.group)} · {report_text(prop.label)}  {prop.value} {prop.unit}",
-                                                  report_text(prop.context), log_filename(report) + " · " + tr("第 {value} 行", value=prop.line))))
+                                                  report_text(prop.context), log_filename(report) + " · " + tr("Line {value}", value=prop.line))))
                 name = report_text(prop.label)
                 alternatives = contexts[(prop.label, prop.unit)] - {prop.context}
                 if alternatives and prop.context:
                     qualifiers = [part for part in prop.context.split(" · ")
                                   if any(part not in other.split(" · ") for other in alternatives)]
-                    name = tr("{label}（{suffix}）", label=name, suffix=report_text(" · ".join(qualifiers) or prop.context))
+                    name = tr("{label} ({suffix})", label=name, suffix=report_text(" · ".join(qualifiers) or prop.context))
                 item = self.datasets.add_result(name, f"{prop.value} {prop.unit}".rstrip(), tooltip=tooltip)
                 self._series_items.append(item)
                 energy = energies.get(prop.line)
@@ -374,20 +374,20 @@ class FoundationPanel(QWidget):
                 name = dataset_name(data)
                 context = dict(data.provenance.parameters).get("population_series", "")
                 if context:
-                    name = tr("{label}（{suffix}）", label=name, suffix=report_text(context))
+                    name = tr("{label} ({suffix})", label=name, suffix=report_text(context))
                 if data.array_ref is not None:
-                    value = tr("未加载")
+                    value = tr("Not loaded")
                 elif data.values is None or all(v is None for v in data.values):
-                    value = tr("全部缺失")
+                    value = tr("All values missing")
                 elif not data.shape:
                     value = f"{data.values[0]} {data.unit}".rstrip()
                 elif len(data.axes) == 1 and data.axes[0].kind == "atom":
-                    value = tr("{count} 个原子", count=data.shape[0])
+                    value = tr("{count} atoms", count=data.shape[0])
                 else:
-                    value = tr("{count} 项", count=" × ".join(map(str, data.shape)))
-                if data.missing_reason and value != tr("全部缺失"):
-                    value += tr("（部分缺失）")
-                tooltip = "\n".join(filter(None, (f"{name}  {value}", tr("单位  {unit}", unit=data.unit) if data.shape else "",
+                    value = tr("{count} items", count=" × ".join(map(str, data.shape)))
+                if data.missing_reason and value != tr("All values missing"):
+                    value += tr(" (some values missing)")
+                tooltip = "\n".join(filter(None, (f"{name}  {value}", tr("Unit  {unit}", unit=data.unit) if data.shape else "",
                                                   data.missing_reason, geometry_name(data.geometry))))
                 item = self.datasets.add_result(name, value, tooltip=tooltip)
                 item.setData(Qt.ItemDataRole.UserRole, data.dataset_id)
@@ -395,16 +395,16 @@ class FoundationPanel(QWidget):
             for index, spectrum in enumerate(spectra):
                 item = QTreeWidgetItem(self.spectra, [report_text(spectrum.title)])
                 item.setData(0, Qt.ItemDataRole.UserRole, index)
-                item.setToolTip(0, f"{report_text(spectrum.title)}\n{log_filename(report)} · " + tr("第 {value} 行", value=spectrum.source_line))
+                item.setToolTip(0, f"{report_text(spectrum.title)}\n{log_filename(report)} · " + tr("Line {value}", value=spectrum.source_line))
             self.datasets.horizontalHeader().setVisible(self.datasets.rowCount() > 0)
 
     def _show_empty_report(self):
         self._dataset_id = None
         self._select_ids(())
         self.tables.setCurrentWidget(self.log_table)
-        self.table_title.setText(tr("计算结果"))
+        self.table_title.setText(tr("Calculation results"))
         self.log_model.set_table((), ())
-        self.details.setText(log_overview_status(self._report) + "\n" + tr("日志中没有识别到可显示的计算结果。"))
+        self.details.setText(log_overview_status(self._report) + "\n" + tr("No displayable calculation results were found in this log."))
         self.evidence.setPlainText(source_file_details((self._report.source,)))
 
     def _show_log_selection(self, kind, index):
@@ -425,7 +425,7 @@ class FoundationPanel(QWidget):
             self.spectrum_preview.set_spectrum(data)
             title, line = report_text(data.title), data.source_line
             self.log_model.set_table(data.columns, data.rows)
-            description = title + " · " + tr("{count} 行", count=len(data.rows))
+            description = title + " · " + tr("{count} rows", count=len(data.rows))
             selected, other = self.spectra, self.datasets
             item = self.spectra.topLevelItem(index)
         else:
@@ -443,12 +443,12 @@ class FoundationPanel(QWidget):
             other.setCurrentItem(None)
         self.tables.setCurrentWidget(self.log_table)
         self.table_title.setText(title)
-        self.details.setText("\n".join((description, tr("来源文件  ") + log_filename(self._report),
-                                        tr("来源行  ") + str(line), log_overview_status(self._report))))
+        self.details.setText("\n".join((description, tr("Source file  ") + log_filename(self._report),
+                                        tr("Source line  ") + str(line), log_overview_status(self._report))))
         self.evidence.setPlainText(source_file_details((self._report.source,)))
 
     def _load_property_table(self, series):
-        self.log_model.set_table(("数值", "单位", "计算上下文", "日志行"),
+        self.log_model.set_table(("Value", "Unit", "Calculation context", "Log line"),
                                  tuple((p.value, p.unit, report_text(p.context), p.line) for p in series))
 
     def view_geometry(self, ref):
@@ -483,7 +483,7 @@ class FoundationPanel(QWidget):
         if series_index is not None:
             series = self._series[series_index]
             line = series[0].line
-            self.details.setText(self.details.text() + "\n" + tr("来源行  ") + f"{line} · {log_filename(self._report)}")
+            self.details.setText(self.details.text() + "\n" + tr("Source line  ") + f"{line} · {log_filename(self._report)}")
             self.evidence.setPlainText(source_file_details((self._report.source,)))
             if len(series) > 1:
                 self._load_property_table(series)
@@ -520,23 +520,23 @@ class FoundationPanel(QWidget):
         atom_axis = data is not None and len(data.shape) == 1 and data.axes[0].kind == "atom"
         ids = set(data.axes[0].ids) if atom_axis else set()
         values = dict(zip(data.axes[0].ids, data.values)) if atom_axis and data.values is not None else {}
-        self.table_title.setText(tr("逐原子值 / {unit}    ·    坐标 Å", unit=data.unit) if atom_axis else tr("原子坐标 / Å"))
+        self.table_title.setText(tr("Per-atom values / {unit}    ·    Coordinates Å", unit=data.unit) if atom_axis else tr("Atomic coordinates / Å"))
         self.atoms.setUpdatesEnabled(False)
         self.atoms.blockSignals(True)
         self.atoms.setRowCount(len(snapshot.atom_ids))
         self.atoms.setColumnHidden(2, not atom_axis)
-        self.atoms.setHorizontalHeaderItem(2, QTableWidgetItem(tr("结果 / {unit}", unit=data.unit) if atom_axis else tr("结果")))
+        self.atoms.setHorizontalHeaderItem(2, QTableWidgetItem(tr("Result / {unit}", unit=data.unit) if atom_axis else tr("Result")))
         longest_coordinate = 0
         for row, (atom_id, atom) in enumerate(zip(snapshot.atom_ids, snapshot.molecule.atoms)):
             value = values.get(atom_id)
             if not atom_axis:
                 shown = "—"
             elif atom_id not in ids:
-                shown = tr("轴外")
+                shown = tr("Off-axis")
             elif data.array_ref is not None:
-                shown = tr("未加载")
+                shown = tr("Not loaded")
             else:
-                shown = tr("缺失") if value is None else str(value)
+                shown = tr("Missing") if value is None else str(value)
             coordinates = (atom.x, atom.y, atom.z)
             formatted = tuple(f"{v:.6f}" for v in coordinates)
             longest_coordinate = max(longest_coordinate, *map(len, formatted))
@@ -610,7 +610,7 @@ class FoundationPanel(QWidget):
             definition = CoordinateDefinition(snapshot.ref, "distance", context.atom_ids)
             length = measure(snapshot, definition)
             pair = "–".join(f"{snapshot.molecule.atoms[i].element}{i + 1}" for i in rows)
-            self.bond_length.setText(tr("键长  {pair}  {length:.6f} Å", pair=pair, length=length))
+            self.bond_length.setText(tr("Bond length  {pair}  {length:.6f} Å", pair=pair, length=length))
             if reveal_measurement:
                 self.inspector_tabs.setCurrentIndex(0)
         else:

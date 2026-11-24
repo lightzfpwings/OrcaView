@@ -48,12 +48,12 @@ class OrcaImportError(ValueError):
 
     def __init__(self, issues: Tuple[OutputIssue, ...]):
         self.issues = issues
-        super().__init__("；".join(issue.message for issue in issues))
+        super().__init__("; ".join(issue.message for issue in issues))
 
 
 def _read_source(path):
     if not path.is_file():
-        raise OSError("来源需要是可读取的普通文件")
+        raise OSError("Select a readable regular file")
     return path.read_bytes()
 
 
@@ -64,24 +64,24 @@ def _molecule(path, evidence):
 
 def _match_revision(document, target, evidence):
     if target.frame_id is not None:
-        return None, OutputIssue("target_is_frame", "请指定实际帧所属的不可变修订")
+        return None, OutputIssue("target_is_frame", "Specify the immutable revision that owns the actual frame")
     try:
         reference = document.resolve(target)
     except GeometryLookupError:
-        return None, OutputIssue("target_unavailable", "指定修订不在所给文档中")
+        return None, OutputIssue("target_unavailable", "The requested revision is not present in the document")
 
     molecule = reference.molecule
     if (molecule.charge, molecule.multiplicity) != (evidence.charge, evidence.multiplicity):
-        return None, OutputIssue("electronic_state_mismatch", "输出的电荷或多重度与指定修订不一致",
+        return None, OutputIssue("electronic_state_mismatch", "The output charge or multiplicity differs from the requested revision",
                                  evidence.charge_line)
     if tuple(a.element for a in molecule.atoms) != tuple(a.element for a in evidence.atoms):
-        return None, OutputIssue("atom_order_mismatch", "输出的原子数或元素顺序与指定修订不一致",
+        return None, OutputIssue("atom_order_mismatch", "The output atom count or element order differs from the requested revision",
                                  evidence.geometry_line)
     if molecule.atoms != evidence.atoms:
-        return None, OutputIssue("coordinates_mismatch", "输出的有序 Å 坐标与指定修订不完全一致",
+        return None, OutputIssue("coordinates_mismatch", "The ordered output coordinates in angstroms differ from the requested revision",
                                  evidence.geometry_line)
     if len(set(evidence.atoms)) != len(evidence.atoms):
-        return None, OutputIssue("ambiguous_atom_mapping", "同元素原子具有完全相同的坐标，无法确认对应身份",
+        return None, OutputIssue("ambiguous_atom_mapping", "Coincident atoms of the same element cannot be matched unambiguously",
                                  evidence.geometry_line)
     return reference.atom_ids, None
 
@@ -90,7 +90,7 @@ def _inspect_bytes(path, raw, artifact, document, target):
     try:
         decoded = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
-        issue = OutputIssue("unsupported_encoding", "只支持 ASCII 或 UTF-8 的 ORCA 输出")
+        issue = OutputIssue("unsupported_encoding", "Only ASCII or UTF-8 ORCA output is supported")
         return OrcaOutputInspection(path, artifact, None, target, None, (issue,))
 
     evidence = parse_native_output(decoded)
@@ -106,7 +106,7 @@ def _inspect_bytes(path, raw, artifact, document, target):
 def inspect_orca_bytes(path, raw, *, document=None, target=None):
     """Inspect the same byte snapshot used for file-level spectroscopy and properties."""
     if (document is None) != (target is None):
-        raise ValueError("关联已有文档需要同时指定文档和完整修订引用")
+        raise ValueError("Linking an existing document requires both the document and a complete revision reference")
     artifact = ArtifactRef.from_bytes(raw, "orca-out", str(path))
     return _inspect_bytes(path, raw, artifact, document, target)
 
@@ -115,13 +115,13 @@ def inspect_orca_output(path: Path, *, document: Optional[MoleculeDocument] = No
                         target: Optional[GeometryRef] = None) -> OrcaOutputInspection:
     """Inspect one chosen file and optionally verify one explicitly chosen revision."""
     if (document is None) != (target is None):
-        raise ValueError("关联已有文档需要同时指定文档和完整修订引用")
+        raise ValueError("Linking an existing document requires both the document and a complete revision reference")
     source = Path(path).absolute()
     try:
         source = source.resolve(strict=True)
         raw = _read_source(source)
     except (OSError, RuntimeError) as exc:
-        issue = OutputIssue("source_unavailable", f"无法读取 ORCA 输出：{exc}")
+        issue = OutputIssue("source_unavailable", f"Could not read the ORCA output: {exc}")
         return OrcaOutputInspection(source, None, None, target, None, (issue,))
     return inspect_orca_bytes(source, raw, document=document, target=target)
 
@@ -188,38 +188,38 @@ def commit_orca_output(inspection: OrcaOutputInspection, *,
     if not inspection.importable:
         raise OrcaImportError(inspection.issues)
     if (inspection.target is None) != (document is None):
-        raise OrcaImportError((OutputIssue("target_unavailable", "提交时需要使用与检查一致的关联模式"),))
+        raise OrcaImportError((OutputIssue("target_unavailable", "Commit using the same linking mode used during inspection"),))
 
     source = inspection.source_path
     try:
         raw = _read_source(source)
     except OSError as exc:
-        raise OrcaImportError((OutputIssue("source_unavailable", f"无法重新读取 ORCA 输出：{exc}"),)) from exc
+        raise OrcaImportError((OutputIssue("source_unavailable", f"Could not reread the ORCA output: {exc}"),)) from exc
     artifact = inspection.artifact
     actual = ArtifactRef.from_bytes(raw, "orca-out", str(source))
     if artifact.sha256 != actual.sha256:
-        raise OrcaImportError((OutputIssue("source_changed", "ORCA 输出内容自检查后已改变，请重新检查"),))
+        raise OrcaImportError((OutputIssue("source_changed", "The ORCA output has changed since inspection. Inspect it again"),))
     if (artifact.path_hint, artifact.format) != (actual.path_hint, actual.format):
-        raise OrcaImportError((OutputIssue("source_changed", "ORCA 输出路径或格式与检查记录不一致"),))
+        raise OrcaImportError((OutputIssue("source_changed", "The ORCA output path or format differs from the inspection record"),))
 
     base_records = document.records() if document is not None else None
     try:
         candidate = MoleculeDocument.restore(*base_records) if base_records is not None else None
     except ValueError as exc:
-        raise OrcaImportError((OutputIssue("publication_failed", f"无法复制关联文档：{exc}"),)) from exc
+        raise OrcaImportError((OutputIssue("publication_failed", f"Could not copy the linked document: {exc}"),)) from exc
     report = _inspect_bytes(source, raw, artifact, candidate, inspection.target)
     if not report.importable:
         raise OrcaImportError(report.issues)
     if report.atom_ids != inspection.atom_ids:
-        raise OrcaImportError((OutputIssue("atom_mapping_changed", "指定修订的原子身份与检查记录不一致"),))
+        raise OrcaImportError((OutputIssue("atom_mapping_changed", "The revision's atom identities differ from the inspection record"),))
 
     if base_records is not None and any(
         snapshot.ref.revision == report.target.revision and snapshot.ref.frame_id == _frame_id(report)
         for snapshot in base_records[0]
     ):
-        raise OrcaImportError((OutputIssue("already_imported", "此修订已导入相同 ORCA 输出的实际帧"),))
+        raise OrcaImportError((OutputIssue("already_imported", "This revision already contains the actual frame from this ORCA output"),))
     try:
         candidate, frame, datasets = _publish(report, candidate)
     except ValueError as exc:
-        raise OrcaImportError((OutputIssue("publication_failed", f"无法发布 ORCA 输出结果：{exc}"),)) from exc
+        raise OrcaImportError((OutputIssue("publication_failed", f"Could not publish the ORCA output results: {exc}"),)) from exc
     return OrcaImportResult(report, candidate, frame, datasets, base_records)

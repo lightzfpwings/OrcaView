@@ -23,7 +23,7 @@ def _disclosure(text):
 
 
 def _caption(title, count):
-    return tr("{title} · 已调整 {count} 项", title=title, count=count) if count else title
+    return f"{title} ({count})" if count else title
 
 
 def _block_label(name):
@@ -33,10 +33,10 @@ def _block_label(name):
 def _input_field(option, text, on_edit):
     if option.kind in ("choice", "bool"):
         control = QComboBox()
-        control.addItem(tr("ORCA 默认"), "")
+        control.addItem(tr("ORCA default"), "")
         if option.kind == "bool":
-            control.addItem(tr("启用 (true)"), "true")
-            control.addItem(tr("关闭 (false)"), "false")
+            control.addItem(tr("On (true)"), "true")
+            control.addItem(tr("Off (false)"), "false")
         else:
             for value in option.choices:
                 control.addItem(value, value)
@@ -45,7 +45,7 @@ def _input_field(option, text, on_edit):
     else:
         control = QLineEdit(text)
         control.setClearButtonEnabled(True)
-        control.setPlaceholderText(tr("ORCA 默认"))
+        control.setPlaceholderText(tr("ORCA default"))
         control.textChanged.connect(on_edit)
     control.setMinimumWidth(86)
     control.setAccessibleName(f"%{option.block} {option.key} · {tr(option.label)}")
@@ -89,8 +89,8 @@ class _BlockGroup(QWidget):
             label.setAccessibleName(f"{option.key} · {tr(option.label)}")
             label.setToolTip(f"{option.key} · {tr(option.hint or option.label)}")
             self.body.addRow(label, field)
-        self.reset = QPushButton(tr("恢复本块默认"))
-        self.reset.setAccessibleName(tr("恢复 {block} 默认", block=_block_label(self.name)))
+        self.reset = QPushButton(tr("Reset this block"))
+        self.reset.setAccessibleName(tr("Restore {block} defaults", block=_block_label(self.name)))
         self.reset.setToolTip(self.reset.accessibleName())
         self.reset.clicked.connect(lambda: self.panel.reset_block(self.name))
         self.body.addRow(None, self.reset)
@@ -109,7 +109,7 @@ class BlockOptionsPanel(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.toggle = _disclosure(tr("高级输入块"))
+        self.toggle = _disclosure(tr("Advanced input blocks"))
         self.body = QWidget()
         self.body.hide()
         self.groups_layout = QVBoxLayout(self.body)
@@ -192,7 +192,7 @@ class BlockOptionsPanel(QWidget):
             group.toggle.setChecked(name in self.expanded_blocks)
 
     def _update_caption(self):
-        self.toggle.setText(_caption(tr("高级输入块"), len(self.drafts)))
+        self.toggle.setText(_caption(tr("Advanced input blocks"), len(self.drafts)))
 
     def edit(self, key, text):
         if text:

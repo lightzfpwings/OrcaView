@@ -3,6 +3,8 @@
 from pathlib import Path
 import shutil
 
+from release_language import check_release_text
+
 
 def install_examples(root: Path, destination: Path):
     examples = root / "examples"
@@ -16,13 +18,15 @@ def install_examples(root: Path, destination: Path):
         "peroxide-uv-cd.out": logs / "tdcd/peroxide.out",
     }
     for name in ("water.gjf", "ethanol-2d.mol", "crystal.cif"):
-        files[f"文件导入/{name}"] = examples / "structure_import" / name
+        files[f"Structure-import/{name}"] = examples / "structure_import" / name
     native = examples / "native_methods"
     for source in sorted(native.rglob("*")):
         if source.suffix in (".inp", ".xyz") and source.is_file():
-            files[f"原生计算输入/{source.relative_to(native).as_posix()}"] = source
+            files[f"ORCA-inputs/{source.relative_to(native).as_posix()}"] = source
 
     for name, source in files.items():
+        check_release_text(name, name)
+        check_release_text(source.read_text(encoding="utf-8"), name)
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)

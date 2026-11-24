@@ -33,14 +33,13 @@ analysis = Analysis(
     [str(packaging_dir / "launcher.py")],
     pathex=[str(source)],
     datas=[(str(source / "orcaview" / "gui" / "assets" / "orcaview.png"), "orcaview/gui/assets"),
-           (str(source / "orcaview" / "languages" / "*.json"), "orcaview/languages"),
            (str(babel_data), "openbabel/share/openbabel"), *copy_metadata("openbabel"), *notices],
     binaries=[(str(babel_plugins / "*.so"), "openbabel/lib/openbabel/3.2.0")],
     hiddenimports=[*collect_submodules("orcaview"), "openbabel.openbabel", "openbabel._openbabel"],
 )
 # pip records the local install URL even when the wheel is byte-identical to PyPI.
 analysis.datas = [entry for entry in analysis.datas
-                  if entry[0] != "openbabel-3.2.0.dist-info/direct_url.json"]
+                  if entry[0] != "openbabel-3.2.0.dist-info/direct_url.json" and not entry[0].endswith(".qm")]
 archive = PYZ(analysis.pure)
 executable = EXE(
     archive, analysis.scripts, [],
@@ -59,6 +58,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleShortVersionString": Version(__version__).base_version,
         "CFBundleVersion": __version__,
+        "CFBundleDevelopmentRegion": "en",
+        "CFBundleLocalizations": ["en"],
         "NSHighResolutionCapable": True,
     },
 )

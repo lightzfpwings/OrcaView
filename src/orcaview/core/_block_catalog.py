@@ -45,89 +45,89 @@ def _damping(key, label):
     return BlockOption("scf", key, label, "float", minimum=0, maximum=1, maximum_exclusive=True)
 
 
-_SCF_ITER = _iterations("scf", "MaxIter", "SCF 最大迭代次数")
+_SCF_ITER = _iterations("scf", "MaxIter", "Maximum SCF iterations")
 _SCF = (
     _SCF_ITER,
-    _choice("scf", "Convergence", "SCF 收敛级别", ("Sloppy", "Loose", "Medium", "Strong", "Tight", "VeryTight", "Extreme")),
-    _positive("scf", "TolE", "能量变化阈值（Eh）"),
-    _positive("scf", "TolRMSP", "密度矩阵均方根变化阈值"),
-    _positive("scf", "TolMaxP", "密度矩阵最大变化阈值"),
-    _positive("scf", "TolErr", "DIIS 误差阈值"),
-    _positive("scf", "TolG", "轨道梯度阈值"),
-    _positive("scf", "TolX", "轨道旋转角阈值"),
-    BlockOption("scf", "ConvCheckMode", "收敛判据组合", "int", 0, 2,
-                hint="0 检查全部判据，1 任一判据通过即可，2 检查总能量和单电子能量变化。"),
-    BlockOption("scf", "ConvForced", "后续步骤强制要求 SCF 收敛", "int", 0, 1),
-    _positive("scf", "Thresh", "积分预筛选阈值"),
-    _positive("scf", "TCut", "原始高斯积分预筛选阈值"),
-    BlockOption("scf", "CNVDIIS", "启用 DIIS", "bool"),
-    BlockOption("scf", "DIISStart", "启动 DIIS 的误差阈值", "float", minimum=0),
-    _iterations("scf", "DIISMaxIt", "启动 DIIS 前的最大迭代数"),
-    BlockOption("scf", "DIISMaxEq", "保留的 DIIS Fock 矩阵数", "int", minimum=1),
-    _positive("scf", "DIISBFac", "DIIS 低能量偏置因子"),
-    BlockOption("scf", "CNVDamp", "启用密度阻尼", "bool"),
-    BlockOption("scf", "CNVZerner", "启用 Zerner 动态阻尼", "bool"),
-    _damping("DampFac", "密度阻尼因子"),
-    BlockOption("scf", "DampErr", "停用阻尼的误差阈值", "float", minimum=0),
-    _damping("DampMin", "动态阻尼下限"),
-    _damping("DampMax", "动态阻尼上限"),
-    BlockOption("scf", "CNVShift", "启用虚轨道能级平移", "bool"),
-    BlockOption("scf", "LShift", "虚轨道能级平移（Eh）", "float", minimum=0),
-    BlockOption("scf", "ShiftErr", "停用能级平移的误差阈值", "float", minimum=0),
+    _choice("scf", "Convergence", "SCF convergence level", ("Sloppy", "Loose", "Medium", "Strong", "Tight", "VeryTight", "Extreme")),
+    _positive("scf", "TolE", "Energy change threshold (Eh)"),
+    _positive("scf", "TolRMSP", "RMS density matrix change threshold"),
+    _positive("scf", "TolMaxP", "Maximum density matrix change threshold"),
+    _positive("scf", "TolErr", "DIIS error threshold"),
+    _positive("scf", "TolG", "Orbital gradient threshold"),
+    _positive("scf", "TolX", "Orbital rotation angle threshold"),
+    BlockOption("scf", "ConvCheckMode", "Convergence criteria combination", "int", 0, 2,
+                hint="0 checks every criterion, 1 accepts any one criterion, 2 checks changes in total and one-electron energies."),
+    BlockOption("scf", "ConvForced", "Require SCF convergence in subsequent steps", "int", 0, 1),
+    _positive("scf", "Thresh", "Integral prescreening threshold"),
+    _positive("scf", "TCut", "Primitive Gaussian integral prescreening threshold"),
+    BlockOption("scf", "CNVDIIS", "Enable DIIS", "bool"),
+    BlockOption("scf", "DIISStart", "Error threshold to start DIIS", "float", minimum=0),
+    _iterations("scf", "DIISMaxIt", "Maximum iterations before starting DIIS"),
+    BlockOption("scf", "DIISMaxEq", "Retained DIIS Fock matrices", "int", minimum=1),
+    _positive("scf", "DIISBFac", "DIIS low-energy bias factor"),
+    BlockOption("scf", "CNVDamp", "Enable density damping", "bool"),
+    BlockOption("scf", "CNVZerner", "Enable dynamic Zerner damping", "bool"),
+    _damping("DampFac", "Density damping factor"),
+    BlockOption("scf", "DampErr", "Error threshold to disable damping", "float", minimum=0),
+    _damping("DampMin", "Minimum dynamic damping"),
+    _damping("DampMax", "Maximum dynamic damping"),
+    BlockOption("scf", "CNVShift", "Enable virtual orbital level shift", "bool"),
+    BlockOption("scf", "LShift", "Virtual orbital level shift (Eh)", "float", minimum=0),
+    BlockOption("scf", "ShiftErr", "Error threshold to disable level shifting", "float", minimum=0),
 )
 _SOSCF = (
-    BlockOption("scf", "CNVSOSCF", "启用近似二阶 SCF", "bool"),
-    _positive("scf", "SOSCFStart", "启动 SOSCF 的轨道梯度阈值"),
-    _iterations("scf", "SOSCFMaxIt", "启动 SOSCF 前的最大迭代数"),
+    BlockOption("scf", "CNVSOSCF", "Enable approximate second-order SCF", "bool"),
+    _positive("scf", "SOSCFStart", "Orbital gradient threshold to start SOSCF"),
+    _iterations("scf", "SOSCFMaxIt", "Maximum iterations before starting SOSCF"),
 )
 _TRAH = (
-    BlockOption("scf", "AutoTRAH", "收敛缓慢时切换到 TRAH", "bool"),
-    _positive("scf", "AutoTRAHTol", "自动切换所用收敛速率阈值"),
-    _iterations("scf", "AutoTRAHIter", "最早切换到 TRAH 的迭代步"),
-    BlockOption("scf", "AutoTRAHNInter", "估计收敛速率的迭代步数", "int", minimum=2),
-    _iterations("scf.trah", "MaxRed", "Davidson 最大微迭代数"),
-    BlockOption("scf.trah", "NStart", "Davidson 初始向量数", "int", minimum=2),
-    _positive("scf.trah", "TolFacMicro", "微迭代阈值缩放因子"),
-    _positive("scf.trah", "MinTolMicro", "微迭代精度下限"),
-    _positive("scf.trah", "QuadRegionStart", "转入牛顿步的梯度阈值"),
-    _positive("scf.trah", "tradius", "初始信赖半径"),
-    _positive("scf.trah", "AlphaMin", "梯度缩放因子下限"),
-    _positive("scf.trah", "AlphaMax", "梯度缩放因子上限"),
-    BlockOption("scf.trah", "Randomize", "给 Davidson 起始向量添加随机扰动", "bool"),
-    BlockOption("scf.trah", "PseudoRand", "使用可复现的伪随机扰动", "bool"),
-    BlockOption("scf.trah", "MaxNoise", "随机扰动幅度上限", "float", minimum=0),
-    _choice("scf.trah", "OrbUpdate", "轨道更新算法", ("Taylor", "Cayley")),
-    _choice("scf.trah", "InactiveMOs", "非活性轨道处理", ("Canonical", "NotSet")),
-    _choice("scf.trah", "Precond", "Hessian 预条件器", ("Diag", "Full", "None")),
-    _iterations("scf.trah", "PreconMaxRed", "完整 Hessian 预条件空间上限"),
+    BlockOption("scf", "AutoTRAH", "Switch to TRAH on slow convergence", "bool"),
+    _positive("scf", "AutoTRAHTol", "Convergence rate threshold for automatic switching"),
+    _iterations("scf", "AutoTRAHIter", "Earliest iteration to switch to TRAH"),
+    BlockOption("scf", "AutoTRAHNInter", "Iterations used to estimate the convergence rate", "int", minimum=2),
+    _iterations("scf.trah", "MaxRed", "Maximum Davidson microiterations"),
+    BlockOption("scf.trah", "NStart", "Initial Davidson vectors", "int", minimum=2),
+    _positive("scf.trah", "TolFacMicro", "Microiteration threshold scaling factor"),
+    _positive("scf.trah", "MinTolMicro", "Minimum microiteration accuracy"),
+    _positive("scf.trah", "QuadRegionStart", "Gradient threshold for switching to Newton steps"),
+    _positive("scf.trah", "tradius", "Initial trust radius"),
+    _positive("scf.trah", "AlphaMin", "Minimum gradient scaling factor"),
+    _positive("scf.trah", "AlphaMax", "Maximum gradient scaling factor"),
+    BlockOption("scf.trah", "Randomize", "Perturb starting Davidson vectors randomly", "bool"),
+    BlockOption("scf.trah", "PseudoRand", "Use reproducible pseudorandom perturbations", "bool"),
+    BlockOption("scf.trah", "MaxNoise", "Maximum random perturbation amplitude", "float", minimum=0),
+    _choice("scf.trah", "OrbUpdate", "Orbital update algorithm", ("Taylor", "Cayley")),
+    _choice("scf.trah", "InactiveMOs", "Inactive orbital treatment", ("Canonical", "NotSet")),
+    _choice("scf.trah", "Precond", "Hessian preconditioner", ("Diag", "Full", "None")),
+    _iterations("scf.trah", "PreconMaxRed", "Maximum full-Hessian preconditioning space"),
 )
 _NATIVE_XTB_SCF = (
-    BlockOption("scf", "UseXTBMixer", "使用 xTB 专用 SCF 混合器", "bool"),
-    BlockOption("scf", "SmearTemp", "电子温度（K）", "float", minimum=0),
+    BlockOption("scf", "UseXTBMixer", "Use the xTB SCF mixer", "bool"),
+    BlockOption("scf", "SmearTemp", "Electronic temperature (K)", "float", minimum=0),
     _SCF_ITER,
 )
 _DFT_METHODS = frozenset(name for _, entries in DFT_METHOD_GROUPS + EXTRA_DFT_GROUPS
                          for name, _ in entries if name != "HF") | DLPNO_DOUBLE_HYBRIDS.keys()
 _DFT_GRID = (
-    BlockOption("method", "AngularGrid", "交换关联角向积分网格", "int", 0, 7,
-                hint="0 为 SimpleGrid，1–7 为不同阶数的 Lebedev 网格。"),
-    _positive("method", "IntAcc", "交换关联径向积分精度"),
-    _positive("method", "NThetaMax", "SimpleGrid 角向点数乘数"),
-    _choice("method", "GridPruning", "积分网格裁剪", ("Adaptive", "OldPruning", "Unpruned")),
-    BlockOption("method", "HGridReduced", "降低 H、He 的网格密度", "bool"),
-    _positive("method", "BFCut", "数值积分基函数截断阈值"),
-    _positive("method", "WeightCut", "积分权重截断阈值"),
+    BlockOption("method", "AngularGrid", "Exchange–correlation angular grid", "int", 0, 7,
+                hint="0 selects SimpleGrid; 1–7 select Lebedev grids of increasing order."),
+    _positive("method", "IntAcc", "Exchange–correlation radial integration accuracy"),
+    _positive("method", "NThetaMax", "SimpleGrid angular point multiplier"),
+    _choice("method", "GridPruning", "Integration grid pruning", ("Adaptive", "OldPruning", "Unpruned")),
+    BlockOption("method", "HGridReduced", "Reduce grid density for H and He", "bool"),
+    _positive("method", "BFCut", "Integration basis function cutoff"),
+    _positive("method", "WeightCut", "Integration weight cutoff"),
 )
 _LIBXC = (
-    _positive("method", "LibXCDensityThreshold", "LibXC 密度阈值"),
-    _positive("method", "LibXCZetaThreshold", "LibXC 自旋极化阈值"),
-    _positive("method", "LibXCTauThreshold", "LibXC 动能密度阈值"),
+    _positive("method", "LibXCDensityThreshold", "LibXC density threshold"),
+    _positive("method", "LibXCZetaThreshold", "LibXC spin polarization threshold"),
+    _positive("method", "LibXCTauThreshold", "LibXC kinetic energy density threshold"),
 )
 _ADFT = (
-    _positive("method", "ADFTNRTol", "ADFT 牛顿迭代收敛阈值"),
-    _iterations("method", "ADFTNRMaxIter", "ADFT 牛顿迭代最大次数"),
-    BlockOption("method", "ADFTLmaxAuxJ", "库仑拟合的最大角动量", "int", minimum=0),
-    BlockOption("method", "ADFTLmaxAuxX", "交换拟合的最大角动量", "int", minimum=0),
+    _positive("method", "ADFTNRTol", "ADFT Newton convergence threshold"),
+    _iterations("method", "ADFTNRMaxIter", "Maximum ADFT Newton iterations"),
+    BlockOption("method", "ADFTLmaxAuxJ", "Maximum angular momentum for Coulomb fitting", "int", minimum=0),
+    BlockOption("method", "ADFTLmaxAuxX", "Maximum angular momentum for exchange fitting", "int", minimum=0),
 )
 _DISPERSION_COEFFICIENTS = {
     "D3BJ": ("D3S6", "D3S8", "D3A1", "D3A2"),
@@ -135,66 +135,66 @@ _DISPERSION_COEFFICIENTS = {
     "D4": ("D4S6", "D4S8", "D4A1", "D4A2", "D4S9"),
 }
 _DISPERSION_TUNING = {
-    name: tuple(BlockOption("method", key, f"{name} 色散参数 {key}", "float",
-                            hint="覆盖所选泛函的色散参数化。") for key in keys)
+    name: tuple(BlockOption("method", key, f"{name} dispersion parameter {key}", "float",
+                            hint="Override the dispersion parameterization of the selected functional.") for key in keys)
     for name, keys in _DISPERSION_COEFFICIENTS.items()
 }
 _FROZEN_CORE = (
-    BlockOption("method", "CheckFrozenCore", "检查芯轨道排序", "bool"),
-    BlockOption("method", "CorrectFrozenCore", "纠正错排的芯轨道", "bool"),
+    BlockOption("method", "CheckFrozenCore", "Check core orbital ordering", "bool"),
+    BlockOption("method", "CorrectFrozenCore", "Correct misordered core orbitals", "bool"),
 )
 _CP_SCF = (
-    _choice("method", "Z_Solver", "CP-SCF 线性方程求解器", ("Pople", "DIIS", "CG")),
-    _positive("method", "Z_Tol", "CP-SCF 残差收敛阈值"),
-    _iterations("method", "Z_MaxIter", "CP-SCF 最大迭代次数"),
-    _iterations("method", "Z_MaxDIIS", "CP-SCF 保留的 DIIS 向量数"),
-    BlockOption("method", "Z_Shift", "CP-SCF DIIS 能级平移", "float", minimum=0),
+    _choice("method", "Z_Solver", "CP-SCF linear solver", ("Pople", "DIIS", "CG")),
+    _positive("method", "Z_Tol", "CP-SCF residual convergence threshold"),
+    _iterations("method", "Z_MaxIter", "Maximum CP-SCF iterations"),
+    _iterations("method", "Z_MaxDIIS", "Retained CP-SCF DIIS vectors"),
+    BlockOption("method", "Z_Shift", "CP-SCF DIIS level shift", "float", minimum=0),
 )
 _COSX = (
-    BlockOption("method", "UseSFitting", "COSX 重叠矩阵拟合", "bool"),
-    _choice("method", "SFitInvertType", "重叠拟合矩阵求逆", ("Cholesky", "Cholesky_Q", "Diag", "Diag_Q")),
-    _positive("method", "SInvThresh", "对角化求逆的本征值阈值"),
-    BlockOption("method", "COSX_PartialContraction", "为广义收缩壳层使用中间基组", "bool"),
-    _choice("method", "COSX_IntSymmetry", "COSX 积分置换对称性", ("Standard", "Full")),
+    BlockOption("method", "UseSFitting", "COSX overlap matrix fitting", "bool"),
+    _choice("method", "SFitInvertType", "Overlap fitting matrix inversion", ("Cholesky", "Cholesky_Q", "Diag", "Diag_Q")),
+    _positive("method", "SInvThresh", "Eigenvalue threshold for inversion by diagonalization"),
+    BlockOption("method", "COSX_PartialContraction", "Use an intermediate basis for generally contracted shells", "bool"),
+    _choice("method", "COSX_IntSymmetry", "COSX integral permutation symmetry", ("Standard", "Full")),
 )
 _GEOM = (
-    _iterations("geom", "MaxIter", "最大几何优化步数"),
-    _choice("geom", "coordsys", "优化坐标系", ("redundant", "cartesian")),
-    _choice("geom", "Convergence", "几何优化收敛级别", ("loose", "normal", "tight")),
-    _positive("geom", "TolE", "能量变化阈值（Eh）"),
-    _positive("geom", "TolRMSG", "均方根梯度阈值（原子单位）"),
-    _positive("geom", "TolMaxG", "最大梯度阈值（原子单位）"),
-    _positive("geom", "TolRMSD", "均方根位移阈值（原子单位）"),
-    _positive("geom", "TolMaxD", "最大位移阈值（原子单位）"),
-    _choice("geom", "Step", "优化步算法", ("qn", "rfo")),
-    _positive("geom", "MaxStep", "内坐标最大步长（原子单位）"),
-    BlockOption("geom", "Trust", "信赖半径（原子单位）", "float", hint="负值表示固定半径，正值表示可调整半径。"),
-    _choice("geom", "InHess", "初始 Hessian 模型", ("unit", "Almloef", "Lindh", "Swart", "Schlegel")),
-    _choice("geom", "Update", "Hessian 更新方法", ("BFGS", "Powell", "Bofill")),
-    BlockOption("geom", "Calc_Hess", "开始优化时计算 Hessian", "bool"),
-    _iterations("geom", "Recalc_Hess", "重新计算 Hessian 的步数间隔"),
-    BlockOption("geom", "NumHess", "用数值微分计算优化中的 Hessian", "bool"),
-    _iterations("geom", "NResetHess", "BFGS 模型 Hessian 重建间隔"),
-    _iterations("geom", "NStepsInResetHess", "重建模型 Hessian 采用的历史步数"),
-    BlockOption("geom", "ProjectTR", "投影笛卡尔优化的平移与转动", "bool"),
-    BlockOption("geom", "AddExtraBonds", "为相邻原子添加额外的冗余内坐标键", "bool"),
-    _iterations("geom", "AddExtraBonds_MaxLength", "额外成键原子间的拓扑距离上限（键数）"),
-    _positive("geom", "AddExtraBonds_MaxDist", "额外成键原子间的空间距离上限（Å）"),
-    BlockOption("geom", "optimizeHydrogens", "仅优化含氢坐标", "bool"),
-    BlockOption("geom", "freezeHydrogens", "固定氢相对重原子的位置", "bool"),
+    _iterations("geom", "MaxIter", "Maximum geometry optimization steps"),
+    _choice("geom", "coordsys", "Optimization coordinates", ("redundant", "cartesian")),
+    _choice("geom", "Convergence", "Geometry convergence level", ("loose", "normal", "tight")),
+    _positive("geom", "TolE", "Energy change threshold (Eh)"),
+    _positive("geom", "TolRMSG", "RMS gradient threshold (a.u.)"),
+    _positive("geom", "TolMaxG", "Maximum gradient threshold (a.u.)"),
+    _positive("geom", "TolRMSD", "RMS displacement threshold (a.u.)"),
+    _positive("geom", "TolMaxD", "Maximum displacement threshold (a.u.)"),
+    _choice("geom", "Step", "Optimization step algorithm", ("qn", "rfo")),
+    _positive("geom", "MaxStep", "Maximum internal coordinate step (a.u.)"),
+    BlockOption("geom", "Trust", "Trust radius (a.u.)", "float", hint="Negative values fix the radius; positive values allow adjustment."),
+    _choice("geom", "InHess", "Initial Hessian model", ("unit", "Almloef", "Lindh", "Swart", "Schlegel")),
+    _choice("geom", "Update", "Hessian update method", ("BFGS", "Powell", "Bofill")),
+    BlockOption("geom", "Calc_Hess", "Compute Hessian at the start of optimization", "bool"),
+    _iterations("geom", "Recalc_Hess", "Hessian recalculation interval"),
+    BlockOption("geom", "NumHess", "Use numerical differentiation for the optimization Hessian", "bool"),
+    _iterations("geom", "NResetHess", "BFGS model Hessian rebuild interval"),
+    _iterations("geom", "NStepsInResetHess", "History length for rebuilding the model Hessian"),
+    BlockOption("geom", "ProjectTR", "Project translations and rotations out of Cartesian optimization", "bool"),
+    BlockOption("geom", "AddExtraBonds", "Add redundant internal bonds between neighboring atoms", "bool"),
+    _iterations("geom", "AddExtraBonds_MaxLength", "Maximum topological distance for extra bonds (bonds)"),
+    _positive("geom", "AddExtraBonds_MaxDist", "Maximum spatial distance for extra bonds (Å)"),
+    BlockOption("geom", "optimizeHydrogens", "Optimize only hydrogen coordinates", "bool"),
+    BlockOption("geom", "freezeHydrogens", "Fix hydrogens relative to heavy atoms", "bool"),
 )
 _GEOM_TS = tuple(o for o in _GEOM if o.key != "Step") + (
-    _choice("geom", "HESS_Modification", "P-RFO Hessian 修正方式", ("Shift_Diag", "EV_Reverse")),
-    _positive("geom", "HESS_MinEV", "P-RFO Hessian 本征值绝对值下限"),
+    _choice("geom", "HESS_Modification", "P-RFO Hessian modification", ("Shift_Diag", "EV_Reverse")),
+    _positive("geom", "HESS_MinEV", "Minimum absolute P-RFO Hessian eigenvalue"),
 )
 _FREQ = (
-    BlockOption("freq", "TransInvar", "计算后施加 Hessian 平移不变性", "bool"),
-    BlockOption("freq", "ProjectTR", "投影平移与转动自由度", "bool"),
+    BlockOption("freq", "TransInvar", "Enforce Hessian translation invariance after calculation", "bool"),
+    BlockOption("freq", "ProjectTR", "Project out translations and rotations", "bool"),
 )
 _NUMFREQ = (
-    BlockOption("freq", "CentralDiff", "使用中心差分", "bool", hint="关闭时使用单边差分。"),
-    _positive("freq", "Increment", "数值位移步长（bohr）"),
-    BlockOption("freq", "NumHessTransInvar", "计算位移梯度时利用平移不变性", "bool"),
+    BlockOption("freq", "CentralDiff", "Use central differences", "bool", hint="When off, use one-sided differences."),
+    _positive("freq", "Increment", "Numerical displacement (bohr)"),
+    BlockOption("freq", "NumHessTransInvar", "Use translation invariance for displaced gradients", "bool"),
 )
 
 
@@ -233,11 +233,11 @@ def catalog_options(spec):
     if spec.method.startswith("ADFT("):
         options.extend(_ADFT)
     if spec.method == "RPAC(PBE)":
-        options.append(_iterations("method", "RPACNPoints", "RPA 频率积分的求积点数"))
+        options.append(_iterations("method", "RPACNPoints", "RPA frequency quadrature points"))
     if spec.integral_approximation == "RIJCOSX":
         options.extend(_COSX)
         if has_derivatives:
-            options.append(BlockOption("method", "UseQGradFit", "梯度使用 SCF 重叠拟合矩阵", "bool"))
+            options.append(BlockOption("method", "UseQGradFit", "Use the SCF overlap fitting matrix for gradients", "bool"))
     options.extend(_DISPERSION_TUNING.get(spec.dispersion, ()))
     if spec.frozen_core != "NoFrozenCore" and "FrozenCore" in frozen_core_options(spec.method):
         options.extend(_FROZEN_CORE)
@@ -245,15 +245,15 @@ def catalog_options(spec):
     if (has_frequency and not numerical) or mp2_response:
         options.extend(_CP_SCF)
         if is_grid_dft and spec.integration_grid == "Auto":
-            options.extend((BlockOption("method", "Z_GridXC", "CP-SCF 交换关联角向网格", "int", 0, 7),
-                            _positive("method", "Z_IntAccXC", "CP-SCF 交换关联径向精度")))
+            options.extend((BlockOption("method", "Z_GridXC", "CP-SCF exchange–correlation angular grid", "int", 0, 7),
+                            _positive("method", "Z_IntAccXC", "CP-SCF exchange–correlation radial accuracy")))
         if spec.integral_approximation == "RIJCOSX":
-            options.append(BlockOption("method", "Z_COSX_Alg", "CP-SCF COSX 算法", "int", 0, 2))
+            options.append(BlockOption("method", "Z_COSX_Alg", "CP-SCF COSX algorithm", "int", 0, 2))
             if spec.integration_grid == "Auto":
-                options.extend((BlockOption("method", "Z_GridX", "CP-SCF COSX 角向网格", "int", 0, 7),
-                                _positive("method", "Z_IntAccX", "CP-SCF COSX 径向精度")))
+                options.extend((BlockOption("method", "Z_GridX", "CP-SCF COSX angular grid", "int", 0, 7),
+                                _positive("method", "Z_IntAccX", "CP-SCF COSX radial accuracy")))
                 if mp2_response:
-                    options.append(BlockOption("method", "Z_GridX_RHS", "MP2 Z 向量右端使用的 SCF 网格", "int", 1, 3))
+                    options.append(BlockOption("method", "Z_GridX_RHS", "SCF grid for the MP2 Z-vector right-hand side", "int", 1, 3))
 
     if spec.job_type in ("OPT", "OPT_FREQ"):
         options.extend(_GEOM)
@@ -282,57 +282,57 @@ def validate_common_combinations(spec, values):
         ("AutoTRAH", ("AutoTRAHTol", "AutoTRAHIter", "AutoTRAHNInter")),
     ):
         if scf.get(switch) is False and any(key in scf for key in keys):
-            raise ValueError(f"%scf {switch} 已关闭，不能同时设置其子参数")
+            raise ValueError(f"Subparameters cannot be set when %scf {switch} is off")
     if spec.method.startswith("Native-") and "MaxIter" in scf and scf.get("UseXTBMixer") is not False:
-        raise ValueError("原生 xTB 手动设置 SCF MaxIter 需要 UseXTBMixer false")
+        raise ValueError("Setting SCF MaxIter for native xTB requires UseXTBMixer false")
     if scf.get("CNVDamp") and scf.get("CNVZerner"):
-        raise ValueError("CNVDamp 静态阻尼和 CNVZerner 动态阻尼互斥")
+        raise ValueError("Static CNVDamp and dynamic CNVZerner damping are mutually exclusive")
     if scf.get("CNVDamp") is False and not scf.get("CNVZerner") and any(
             k in scf for k in ("DampFac", "DampErr", "DampMin", "DampMax")):
-        raise ValueError("已关闭静态与动态阻尼，不能设置阻尼参数")
+        raise ValueError("Damping parameters require static or dynamic damping")
     if trah and scf.get("AutoTRAH") is False:
-        raise ValueError("%scf AutoTRAH 已关闭，不能设置 trah 子块")
+        raise ValueError("The trah subblock requires %scf AutoTRAH")
     if scf.get("DampMin", 0.0) > scf.get("DampMax", 0.98):
-        raise ValueError("动态阻尼下限 DampMin 不能大于 DampMax")
+        raise ValueError("DampMin cannot exceed DampMax")
     if trah.get("AlphaMin", 0.1) > trah.get("AlphaMax", 1000.0):
-        raise ValueError("TRAH 梯度缩放的 AlphaMin 不能大于 AlphaMax")
+        raise ValueError("TRAH AlphaMin cannot exceed AlphaMax")
     if trah.get("Randomize") is False and any(k in trah for k in ("PseudoRand", "MaxNoise")):
-        raise ValueError("TRAH 随机扰动参数需要启用 Randomize")
+        raise ValueError("TRAH perturbation parameters require Randomize")
     if "PreconMaxRed" in trah and trah.get("Precond") != "Full":
-        raise ValueError("PreconMaxRed 需要选择完整 Hessian 预条件器 Precond Full")
+        raise ValueError("PreconMaxRed requires the full Hessian preconditioner (Precond Full)")
     if any(key in method for key in ("Z_MaxDIIS", "Z_Shift")) and method.get("Z_Solver") != "DIIS":
-        raise ValueError("CP-SCF 的 DIIS 向量数和能级平移需要选择 Z_Solver DIIS")
+        raise ValueError("CP-SCF DIIS vector count and level shift require Z_Solver DIIS")
     if "NThetaMax" in method and method.get("AngularGrid") != 0:
-        raise ValueError("NThetaMax 只适用于 AngularGrid 0（SimpleGrid）")
+        raise ValueError("NThetaMax is only available with AngularGrid 0 (SimpleGrid)")
     if method.get("UseSFitting") is False and (any(k in method for k in ("SFitInvertType", "SInvThresh"))
                                                 or method.get("UseQGradFit") is True):
-        raise ValueError("关闭 COSX 重叠拟合后不能设置其求逆算法或复用其矩阵计算梯度")
+        raise ValueError("COSX inversion settings and matrix reuse for gradients require overlap fitting")
     if "SInvThresh" in method and method.get("SFitInvertType") not in ("Diag", "Diag_Q"):
-        raise ValueError("SInvThresh 需要选择 Diag 或 Diag_Q 重叠拟合矩阵求逆")
+        raise ValueError("SInvThresh requires Diag or Diag_Q overlap fitting matrix inversion")
     if method.get("CheckFrozenCore") is False and method.get("CorrectFrozenCore") is True:
-        raise ValueError("关闭芯轨道排序检查后不能请求纠正排序")
+        raise ValueError("Core orbital ordering must be checked before it can be corrected")
     if geom.get("Trust") == 0.0:
-        raise ValueError("%geom Trust 需要非零信赖半径")
+        raise ValueError("%geom Trust requires a nonzero trust radius")
     if geom.get("ProjectTR") and geom.get("coordsys") != "cartesian":
-        raise ValueError("几何优化 ProjectTR true 需要选择笛卡尔坐标")
+        raise ValueError("ProjectTR true requires Cartesian geometry optimization")
     bond_limits = ("AddExtraBonds_MaxLength", "AddExtraBonds_MaxDist")
     if geom.get("coordsys") == "cartesian" and any(k in geom for k in ("AddExtraBonds", *bond_limits)):
-        raise ValueError("额外冗余内坐标键需要选择冗余内坐标")
+        raise ValueError("Extra redundant internal bonds require redundant internal coordinates")
     if geom.get("AddExtraBonds") is False and any(k in geom for k in bond_limits):
-        raise ValueError("关闭 AddExtraBonds 后不能指定额外键的距离阈值")
+        raise ValueError("The extra bond distance threshold requires AddExtraBonds")
     default_update = "Bofill" if spec.job_type == "OPT_TS" else "BFGS"
     if geom.get("Update", default_update) != "BFGS" and any(k in geom for k in ("NResetHess", "NStepsInResetHess")):
-        raise ValueError("模型 Hessian 重建间隔和历史步数仅用于 BFGS 更新")
+        raise ValueError("Model Hessian rebuild interval and history length apply only to BFGS updates")
     if geom.get("optimizeHydrogens") and geom.get("freezeHydrogens"):
-        raise ValueError("仅优化含氢坐标与固定氢相对位置不能同时启用")
+        raise ValueError("Optimizing only hydrogen coordinates conflicts with fixing hydrogens relative to heavy atoms")
     if geom.get("coordsys") == "cartesian" and geom.get("InHess") == "Lindh":
-        raise ValueError("Lindh 初始 Hessian 需要冗余内坐标")
+        raise ValueError("The Lindh initial Hessian requires redundant internal coordinates")
     if "InHess" in geom and (geom.get("Calc_Hess") or "Recalc_Hess" in geom):
-        raise ValueError("起始步计算 Hessian 时不能同时指定初始模型 InHess")
+        raise ValueError("An initial Hessian calculation conflicts with an InHess starting model")
     if geom.get("Calc_Hess") is False and "Recalc_Hess" in geom:
-        raise ValueError("Recalc_Hess 会在起始步计算 Hessian，与 Calc_Hess false 冲突")
+        raise ValueError("Recalc_Hess computes the initial Hessian and conflicts with Calc_Hess false")
     if "NumHess" in geom and not (geom.get("Calc_Hess") or "Recalc_Hess" in geom):
-        raise ValueError("NumHess 需要同时请求 Calc_Hess 或 Recalc_Hess")
+        raise ValueError("NumHess requires Calc_Hess or Recalc_Hess")
     if (geom.get("Calc_Hess") or "Recalc_Hess" in geom) and geom.get("NumHess") is not True:
         if uses_numerical_frequencies(spec):
-            raise ValueError("当前方法的优化 Hessian 需要设置 %geom NumHess true")
+            raise ValueError("For this method, the optimization Hessian requires %geom NumHess true")

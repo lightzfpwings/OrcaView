@@ -102,7 +102,7 @@ class GuiTests(unittest.TestCase):
         self.window.multiplicity.setValue(2)  # 中性苯的偶数电子不能是二重态。
         self.app.processEvents()
         self.assertFalse(self.window.export_button.isEnabled())
-        self.assertIn("不可导出", self.window.input_preview.toPlainText())
+        self.assertIn("cannot be exported", self.window.input_preview.toPlainText())
         self.window.multiplicity.setValue(1)
         self.assertTrue(self.window.export_button.isEnabled())
 
@@ -269,7 +269,7 @@ class GuiTests(unittest.TestCase):
 
     def test_global_method_search_selects_across_families_and_accepts_cli_aliases(self):
         window = self.window
-        action = next(item for item in window.findChildren(QAction) if item.text() == "查找计算方法…")
+        action = next(item for item in window.findChildren(QAction) if item.text() == "Find method…")
         window.basis.setCurrentText("def2-TZVP")
         matches = []
 
@@ -326,7 +326,7 @@ class GuiTests(unittest.TestCase):
                     self.assertEqual(window.session.calculation.method, name)
                     self.assertTrue(window.export_button.isEnabled(), window.validation.text())
                     if not preset.uses_orbital_basis:
-                        self.assertIn("固定", window.basis.currentText())
+                        self.assertIn("fixed", window.basis.currentText())
                         self.assertNotIn("def2-TZVP", window.input_preview.toPlainText())
                     if "FREQ" in preset.job_types:
                         window.job.setCurrentIndex(window.job.findData("FREQ"))
@@ -382,9 +382,9 @@ class GuiTests(unittest.TestCase):
                     self.assertEqual(window.reference_functional.isVisible(), has_reference)
                     if active:
                         window.active_electrons.setValue(0)
-                        self.assertEqual(window.active_electrons.text(), "未设置")
+                        self.assertEqual(window.active_electrons.text(), "Not set")
                         self.assertFalse(window.export_button.isEnabled())
-                        self.assertIn("不可导出", window.input_preview.toPlainText())
+                        self.assertIn("cannot be exported", window.input_preview.toPlainText())
                         window.active_electrons.setValue(4)
                         window.active_orbitals.setValue(3)
                     if excited:
@@ -437,7 +437,7 @@ class GuiTests(unittest.TestCase):
                     for role, control in window.auxiliary_bases.items():
                         self.assertEqual(control.isVisible(), role in options)
                         if role in options:
-                            self.assertEqual(control.itemText(0), "自动")
+                            self.assertEqual(control.itemText(0), "Automatic")
                             actual = tuple(control.itemData(i) for i in range(1, control.count()))
                             self.assertEqual(actual, options[role])
                             control.setCurrentIndex(control.count() - 1)
@@ -542,8 +542,8 @@ class GuiTests(unittest.TestCase):
     def test_native_editor_starts_with_the_valid_preview_or_empty_input(self):
         window = self.window
         with patch("orcaview.gui.main_window.edit_native_input") as editor:
-            action = next(item for item in window.findChildren(QAction) if item.text() == "编辑原生 ORCA 输入…")
-            self.assertTrue(any(isinstance(menu, QMenu) and menu.title() == "文件" for menu in action.associatedObjects()))
+            action = next(item for item in window.findChildren(QAction) if item.text() == "Edit native ORCA input…")
+            self.assertTrue(any(isinstance(menu, QMenu) and menu.title() == "File" for menu in action.associatedObjects()))
             action.trigger()
             editor.assert_called_once_with(window, window.input_preview.toPlainText())
             window.multiplicity.setValue(2)
@@ -606,7 +606,7 @@ class GuiTests(unittest.TestCase):
         self.assertIn("NumFreq", window.input_preview.toPlainText())
         self.assertTrue(window.method_hint.isVisible())
         window.basis.setCurrentText("def2-SVP")
-        self.assertIn("解析频率", window.job.currentText())
+        self.assertIn("Analytical frequencies", window.job.currentText())
         self.assertFalse(window.method_hint.isVisible())
 
     def test_reference_spin_validation_and_frozen_core_project(self):

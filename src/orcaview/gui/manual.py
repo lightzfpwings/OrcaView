@@ -13,14 +13,14 @@ from orcaview.core.manual import lookup, WEB_ROOT, PDF_URL
 class ManualDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("ORCA 6.1.1 计算手册"))
+        self.setWindowTitle(tr("ORCA 6.1.1 manual"))
         self.resize(740, 480)
         layout = QVBoxLayout(self)
         self.query = QLineEdit()
-        self.query.setPlaceholderText(tr("查找章节、方法或关键词，例如 3.18、EOM 或 MaxIter"))
+        self.query.setPlaceholderText(tr("Search sections, methods or keywords, e.g. 3.18, EOM or MaxIter"))
         layout.addWidget(self.query)
         self.results = QTreeWidget()
-        self.results.setHeaderLabels((tr("章节"), tr("手册标题"), tr("PDF 页")))
+        self.results.setHeaderLabels((tr("Section"), tr("Manual heading"), tr("PDF page")))
         self.results.setRootIsDecorated(False)
         self.results.setUniformRowHeights(True)
         self.results.header().setStretchLastSection(False)
@@ -30,8 +30,8 @@ class ManualDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.addWidget(self.count)
         buttons.addStretch()
-        self.web = QPushButton(tr("打开网页版"))
-        self.pdf = QPushButton(tr("打开 PDF 原页"))
+        self.web = QPushButton(tr("Open web version"))
+        self.pdf = QPushButton(tr("Open PDF page"))
         for button, pdf in ((self.web, False), (self.pdf, True)):
             button.setAutoDefault(False)
             button.clicked.connect(lambda checked=False, pdf=pdf: self.open_section(pdf))
@@ -49,7 +49,7 @@ class ManualDialog(QDialog):
             item.setData(0, Qt.ItemDataRole.UserRole, path)
         if rows:
             self.results.setCurrentItem(self.results.topLevelItem(0))
-        self.count.setText(tr("{count} 个章节", count=len(rows)))
+        self.count.setText(tr("{count} sections", count=len(rows)))
         self.web.setEnabled(bool(rows))
         self.pdf.setEnabled(bool(rows))
 

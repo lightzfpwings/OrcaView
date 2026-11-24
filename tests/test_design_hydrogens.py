@@ -67,7 +67,7 @@ class AutomaticHydrogenTests(unittest.TestCase):
         atoms = (Atom("C", 0., 0., 0.),)
         for charge, multiplicity in ((1, 2), (0, 3)):
             molecule = Molecule("carbon", atoms, charge=charge, multiplicity=multiplicity)
-            with self.assertRaisesRegex(ValueError, "中性单重态"):
+            with self.assertRaisesRegex(ValueError, "neutral singlets"):
                 missing_hydrogens(molecule)
 
 

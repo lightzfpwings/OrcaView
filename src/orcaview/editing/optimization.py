@@ -21,21 +21,21 @@ def _calculate_points(molecule, mode):
     payload = geometry_payload(molecule)
     payload["infer_orders"] = not molecule.bonds and not molecule.bonds_explicit
     if not payload["bonds"]:
-        raise ValueError("结构优化需要至少一条化学键")
+        raise ValueError("Structure optimization requires at least one bond.")
     if mode == "3D" and (molecule.charge != 0 or molecule.multiplicity != 1):
-        raise ValueError("三维力场优化当前支持中性单重态结构")
+        raise ValueError("3D force-field optimization currently supports neutral singlets.")
     response = run_babel_worker(json.dumps(payload, allow_nan=False).encode(), "optimize-" + mode.lower())
     rows = response.get("atoms", [])
     methods = ("gen2D",) if mode == "2D" else ("MMFF94", "UFF")
     if response.get("method") not in methods or not isinstance(rows, list) or len(rows) != len(molecule.atoms):
-        raise ValueError("Open Babel 返回的原子映射或优化方法无效")
+        raise ValueError("Open Babel returned an invalid atom mapping or optimization method.")
     points = []
     for source, row in zip(molecule.atoms, rows):
         if not isinstance(row, (list, tuple)) or len(row) != 4 or row[0] != source.element:
-            raise ValueError("Open Babel 返回的原子映射或优化方法无效")
+            raise ValueError("Open Babel returned an invalid atom mapping or optimization method.")
         xyz = row[1:]
         if not all(type(v) in (int, float) and math.isfinite(v) for v in xyz):
-            raise ValueError("Open Babel 返回无效坐标")
+            raise ValueError("Open Babel returned invalid coordinates.")
         points.append(xyz)
     return points, response
 
@@ -76,7 +76,7 @@ def clean_sketch(molecule: Molecule, sketch_xy=None):
         points = [(x, y) for x, y, _ in xyz]
     reference = sketch_xy if sketch_xy is not None else tuple((a.x, a.y) for a in molecule.atoms)
     if len(reference) != len(points):
-        raise ValueError("二维草图坐标与原子数不一致")
+        raise ValueError("The number of sketch positions does not match the number of atoms.")
     ox, oy = _center(reference)
     cx, cy = _center(points)
     centered = [(x - cx, y - cy) for x, y in points]
@@ -96,7 +96,7 @@ def clean_sketch(molecule: Molecule, sketch_xy=None):
 def optimize_structure(molecule: Molecule, mode: str, plane: str = "XY") -> OptimizationResult:
     """Return a detached geometry; the editor uses clean_sketch for drawing-only edits."""
     if mode not in ("2D", "3D") or plane not in ("XY", "XZ", "YZ"):
-        raise ValueError("请选择有效的结构优化方式和投影平面")
+        raise ValueError("Choose a valid optimization mode and projection plane.")
     points, response = _calculate_points(molecule, mode)
     if mode == "2D":
         axes = tuple("XYZ".index(axis) for axis in plane)
@@ -117,7 +117,7 @@ def optimize_structure(molecule: Molecule, mode: str, plane: str = "XY") -> Opti
         orders = response.get("orders")
         if (not isinstance(orders, list) or len(orders) != len(bonds)
                 or any(type(order) is not int or order not in (1, 2, 3) for order in orders)):
-            raise ValueError("Open Babel 无法建立当前连接表")
+            raise ValueError("Open Babel could not construct this bond graph.")
         bonds = tuple(replace(bond, order=order) for bond, order in zip(bonds, orders))
     result = replace(molecule, atoms=atoms, bonds=bonds, bonds_explicit=True)
     result.validate_structure()
@@ -181,7 +181,7 @@ def _minimize(mol, ob):
     # Supply implicit hydrogens in the calculation copy for all-atom force
     # fields. Only the input atom IDs are returned to the editor.
     if not mol.AddHydrogens():
-        raise ValueError("Open Babel 无法补全力场所需的氢")
+        raise ValueError("Open Babel could not place the hydrogens needed by the force field.")
     for name in ("MMFF94", "UFF"):
         field = ob.OBForceField.FindForceField(name)
         if field is None or not field.Setup(mol):
@@ -191,9 +191,9 @@ def _minimize(mol, ob):
         final = field.Energy()
         if (not math.isfinite(initial) or not math.isfinite(final)
                 or final > initial + 1e-6 or not field.GetCoordinates(mol)):
-            raise ValueError("Open Babel 力场未能得到有效的低能结构")
+            raise ValueError("The Open Babel force field could not produce a valid low-energy structure.")
         return name
-    raise ValueError("Open Babel 力场缺少当前结构的参数")
+    raise ValueError("The Open Babel force fields lack parameters for this structure.")
 
 
 def _prepare_graph(payload, operation, ob):
@@ -205,7 +205,7 @@ def _prepare_graph(payload, operation, ob):
         work.PerceiveBondOrders()
     bonds = [work.GetBond(a + 1, b + 1) for a, b, order in payload["bonds"]]
     if len(bonds) != work.NumBonds() or any(bond is None for bond in bonds):
-        raise ValueError("Open Babel 无法建立当前连接表")
+        raise ValueError("Open Babel could not construct this bond graph.")
     orders = [bond.GetBondOrder() for bond in bonds]
     neutral_valence_limit = {5: 3, 6: 4, 7: 3, 8: 2, 9: 1}
     for atom in ob.OBMolAtomIter(work):
@@ -214,7 +214,7 @@ def _prepare_graph(payload, operation, ob):
             # valences, including neutral zwitterions with a quaternary N.
             max_valence = neutral_valence_limit.get(atom.GetAtomicNum())
             if atom.GetFormalCharge() or (max_valence is not None and atom.GetExplicitValence() > max_valence):
-                raise ValueError("当前结构需要原子形式电荷，无法可靠地进行力场优化")
+                raise ValueError("This structure requires atomic formal charges for reliable force-field optimization.")
         ob.OBAtomAssignTypicalImplicitHydrogens(atom)
     return work, orders
 
@@ -222,10 +222,10 @@ def _prepare_graph(payload, operation, ob):
 def _draw_2d(work, ob):
     draw = ob.OBOp.FindType("gen2D")
     if draw is None or not draw.Do(work):
-        raise ValueError("Open Babel 无法生成二维草图")
+        raise ValueError("Open Babel could not generate a 2D layout.")
     lengths = [bond.GetLength() for bond in ob.OBMolBondIter(work)]
     if not lengths or min(lengths) < 1e-6:
-        raise ValueError("Open Babel 无法生成二维草图")
+        raise ValueError("Open Babel could not generate a 2D layout.")
     scale = 1.5 / median(lengths)
     for atom in ob.OBMolAtomIter(work):
         atom.SetVector(atom.GetX() * scale, atom.GetY() * scale, 0.)
@@ -254,7 +254,7 @@ def _seed_3d(work, points, ob, planar, stereo):
                 continue
             reference = ob.OBMol(fragment)
         if not ob.OBBuilder().Build(fragment):
-            raise ValueError("Open Babel 无法生成三维初始构象")
+            raise ValueError("Open Babel could not build an initial 3D conformer.")
         if reference is not None:
             alignment = ob.OBAlign(reference, fragment, True, False)
             if alignment.Align():
@@ -281,21 +281,21 @@ def optimize_worker(payload, operation):
                      if bond.IsWedge() or bond.IsHash()}
     if operation == "optimize-2d":
         if any(kind == "tetra" and idx not in wedge_centers for kind, idx in expected):
-            raise ValueError("二维草图无法保留当前四面体手性，请使用三维优化")
+            raise ValueError("The 2D sketch cannot represent this tetrahedral stereochemistry. Use 3D optimization.")
         _draw_2d(work, ob)
         method = "gen2D"
     else:
         # UFF tables cover H through Lr. Beyond that, the native implementation
         # can silently reuse an unrelated parameter type while reporting success.
         if any(atom.GetAtomicNum() > 103 for atom in ob.OBMolAtomIter(work)):
-            raise ValueError("Open Babel 力场缺少当前结构的参数")
+            raise ValueError("The Open Babel force fields lack parameters for this structure.")
         _seed_3d(work, points, ob, axes is not None, expected)
         method = _minimize(work, ob)
     output = ob.OBMol(original)
     for atom in ob.OBMolAtomIter(output):
         updated = work.GetAtomById(atom.GetId())
         if updated is None or updated.GetAtomicNum() != atom.GetAtomicNum():
-            raise ValueError("Open Babel 返回的原子映射或优化方法无效")
+            raise ValueError("Open Babel returned an invalid atom mapping or optimization method.")
         atom.SetVector(*_point(updated))
     if operation == "optimize-3d" and axes is not None:
         # A newly built conformer has an arbitrary spatial orientation. Keep
@@ -307,9 +307,9 @@ def optimize_worker(payload, operation):
     for atom in ob.OBMolAtomIter(output):
         xyz = _point(atom)
         if not all(math.isfinite(value) for value in xyz):
-            raise ValueError("Open Babel 返回无效坐标")
+            raise ValueError("Open Babel returned invalid coordinates.")
         rows.append((ob.GetSymbol(atom.GetAtomicNum()), *xyz))
     observed = _perceive_stereo(output, ob, (0, 1) if operation == "optimize-2d" else None)
     if any(key not in observed or observed[key] != cfg for key, cfg in expected.items()):
-        raise ValueError("优化会改变原有立体化学，已保留原结构")
+        raise ValueError("Optimization would change the stereochemistry. The original structure was retained.")
     return {"atoms": rows, "method": method, "orders": orders}

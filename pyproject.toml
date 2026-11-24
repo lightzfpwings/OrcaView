@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orcaview"
-version = "0.1.0a43"
+version = "0.1.0a46"
 description = "A modular desktop pre/post-processing workbench for ORCA"
 requires-python = ">=3.9"
 readme = "README.md"
@@ -12,7 +12,7 @@ license = {file = "LICENSE"}
 dependencies = []
 
 [project.optional-dependencies]
-# 固定原型 GUI 依赖以便复现；不是对最新版 Qt 的声明。
+# Pin the GUI dependency for reproducible desktop builds.
 gui = [
     "PySide6-Essentials==6.8.3",
     "openbabel==3.2.0; python_version >= '3.10'",
@@ -26,6 +26,5 @@ orcaview = "orcaview.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"orcaview" = ["languages/*.json"]
 "orcaview.gui" = ["assets/orcaview.png"]
 

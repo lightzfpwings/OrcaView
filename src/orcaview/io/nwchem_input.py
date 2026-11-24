@@ -31,28 +31,28 @@ def _input_rows(text):
 
 def _units(name):
     if name not in _LENGTHS:
-        raise ValueError(f"无法识别 NWChem 长度单位：{name}")
+        raise ValueError(f"Unknown NWChem length unit: {name}")
     return _LENGTHS[name]
 
 
 def _cell_converter(kind, values):
     if "vectors" in values:
         if kind != "crystal" or len(values) != 1:
-            raise ValueError("NWChem lattice_vectors 需要唯一的三维晶胞定义")
+            raise ValueError("NWChem lattice_vectors requires exactly one 3D cell definition.")
         a, b, c = values["vectors"]
         volume = _dot(a, _cross(b, c))
         if not math.isfinite(volume) or volume == 0:
-            raise ValueError("NWChem lattice_vectors 的晶胞体积无效")
+            raise ValueError("Invalid cell volume in NWChem lattice_vectors")
         return lambda x, y, z: tuple(x * a[i] + y * b[i] + z * c[i] for i in range(3))
     required = {"polymer": ("lat_c",), "surface": ("lat_a", "lat_b", "gamma"),
                 "crystal": ("lat_a", "lat_b", "lat_c", "alpha", "beta", "gamma")}[kind]
     missing = [key for key in required if key not in values]
     if missing:
-        raise ValueError("NWChem 晶胞缺少显式参数：" + ", ".join(missing))
+        raise ValueError("Missing explicit NWChem cell parameters: " + ", ".join(missing))
     for key in required:
         v = values[key]
         if not math.isfinite(v) or v <= 0 or (not key.startswith("lat_") and v >= 180):
-            raise ValueError(f"NWChem 晶胞参数无效：{key}={v}")
+            raise ValueError(f"Invalid NWChem cell parameter: {key}={v}")
     if kind == "polymer":
         return lambda x, y, z: (x, y, z * values["lat_c"])
     a, b = values["lat_a"], values["lat_b"]
@@ -65,7 +65,7 @@ def _cell_converter(kind, values):
     cy = (c * math.cos(math.radians(values["alpha"])) - cx * math.cos(gamma)) / math.sin(gamma)
     cz2 = c * c - cx * cx - cy * cy
     if cz2 <= 0 or not math.isfinite(cz2):
-        raise ValueError("NWChem 晶胞角不能构成非退化的三维晶胞")
+        raise ValueError("NWChem cell angles do not define a nondegenerate 3D cell.")
     cz = math.sqrt(cz2)
     return lambda x, y, z: (a * x + bx * y + cx * z, by * y + cy * z, cz * z)
 
@@ -85,36 +85,36 @@ def _explicit_geometry(rows, unit, scale):
             return atom_rows, kind, cell
         if key == "system":
             if kind or len(row) not in (2, 4) or row[1] not in ("molecule", "crystal", "polymer", "surface"):
-                raise ValueError("无法识别 NWChem 的 SYSTEM 定义")
+                raise ValueError("Unrecognized NWChem SYSTEM definition")
             kind, in_system = row[1], True
             if len(row) == 4:
                 if row[2] != "units":
-                    raise ValueError("NWChem SYSTEM 中无法识别的长度单位声明")
+                    raise ValueError("Unrecognized length unit declaration in NWChem SYSTEM")
                 cell_unit, cell_scale = _units(row[3])
                 cell_factor = convert_length(cell_scale, cell_unit, unit) / scale
         elif in_system and row == ["lattice_vectors"]:
             vectors = [next(statements, []) for _ in range(3)]
             if "vectors" in cell or any(len(v) != 3 for v in vectors):
-                raise ValueError("NWChem lattice_vectors 需要三个独立的三维矢量")
+                raise ValueError("NWChem lattice_vectors requires three linearly independent 3D vectors.")
             cell["vectors"] = [tuple(number(x) * cell_factor for x in v) for v in vectors]
         elif in_system:
             if len(row) % 2:
-                raise ValueError("NWChem 晶胞参数缺少数值")
+                raise ValueError("Missing NWChem cell parameter value")
             for field, value in zip(row[::2], row[1::2]):
                 if field not in ("lat_a", "lat_b", "lat_c", "alpha", "beta", "gamma") or field in cell:
-                    raise ValueError(f"无法解释 NWChem 晶胞参数：{field}")
+                    raise ValueError(f"Unrecognized NWChem cell parameter: {field}")
                 cell[field] = number(value) * (cell_factor if field.startswith("lat_") else 1.)
         elif key == "symmetry":
             if len(row) < 2 or row[1] not in ("c1", "p1"):
-                raise ValueError("请先将 NWChem 的对称性唯一原子展开为完整坐标（C1/P1）")
+                raise ValueError("Expand the symmetry-unique NWChem atoms into full coordinates (C1/P1) first.")
         elif key in ("zmatrix", "zcoord", "load"):
-            raise ValueError("NWChem 结构需要显式实原子笛卡尔或晶胞分数坐标")
+            raise ValueError("NWChem requires explicit Cartesian or fractional cell coordinates for real atoms.")
         else:
             match = re.fullmatch(r"([a-z]{1,2})(?:[0-9_-].*)?", key)
             if not match or len(row) < 4:
-                raise ValueError("无法识别 NWChem 原子或坐标行：" + " ".join(row))
+                raise ValueError("Unrecognized NWChem atom or coordinate row: " + " ".join(row))
             atom_rows.append((match[1], [number(value) for value in row[1:4]]))
-    raise ValueError("NWChem 的 GEOMETRY 或 SYSTEM 段缺少 end")
+    raise ValueError("Missing end in an NWChem GEOMETRY or SYSTEM section")
 
 
 def _electronic_state(rows):
@@ -127,21 +127,21 @@ def _electronic_state(rows):
         elif key == "end":
             block = None
         elif key == "charge" and len(row) == 2:
-            charges.add(whole(row[1], "NWChem 总电荷"))
+            charges.add(whole(row[1], "NWChem total charge"))
         elif block in ("dft", "nwpw") and key == "mult" and len(row) == 2:
-            spins.add(whole(row[1], "NWChem 自旋多重度"))
+            spins.add(whole(row[1], "NWChem spin multiplicity"))
         elif block == "scf" and key in _SPINS:
             spins.add(_SPINS[key])
         elif block == "scf" and key == "nopen" and len(row) == 2:
-            spins.add(whole(row[1], "NWChem 单占轨道数") + 1)
+            spins.add(whole(row[1], "NWChem singly occupied orbital count") + 1)
     if len(charges) > 1 or len(spins) > 1:
-        raise ValueError("NWChem 输入声明多个电荷或自旋态，请拆分作业")
+        raise ValueError("The NWChem input declares multiple charges or spin states. Split the jobs first.")
     return next(iter(charges), 0), next(iter(spins), 1)
 
 
 def read_nwchem_input(path, raw, *, remove_periodicity=False):
     if b"\0" in raw:
-        raise ValueError("需要 NWChem 文本输入，检测到二进制数据")
+        raise ValueError("Expected a text NWChem input; binary data detected.")
     rows = _input_rows(raw.decode("utf-8-sig"))
     crystal = any(r[0] == "system" and len(r) > 1 and r[1] in ("crystal", "surface", "polymer") for r in rows)
     simulation = any(r[0] == "simulation_cell" for r in rows)
@@ -149,13 +149,13 @@ def read_nwchem_input(path, raw, *, remove_periodicity=False):
     periodic = crystal or (simulation and boundaries != {"aperiodic"})
     check_periodic(periodic, remove_periodicity)
     if len(boundaries) > 1 or boundaries - {"periodic", "aperiodic"}:
-        raise ValueError("无法确定 NWChem 的模拟晶胞边界，请拆分晶胞")
+        raise ValueError("Could not determine the NWChem simulation cell boundaries. Separate the cells first.")
     headers = [i for i, row in enumerate(rows) if row[0] == "geometry"]
     if len(headers) != 1:
-        raise ValueError("NWChem 输入需要一个显式 GEOMETRY 段")
+        raise ValueError("The NWChem input requires one explicit GEOMETRY section.")
     header = rows[headers[0]]
     if "ang2au" in header or "angstrom_to_au" in header:
-        raise ValueError("暂不支持 NWChem 自定义 angstrom_to_au 换算因子")
+        raise ValueError("Custom NWChem angstrom_to_au conversion factors are unsupported.")
     if "units" in header:
         index = header.index("units") + 1
         unit, scale = _units(header[index] if index < len(header) else "")

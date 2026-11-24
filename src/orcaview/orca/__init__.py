@@ -1,1 +1,1 @@
-"""ORCA 适配层；本原型不启动计算进程。"""
+"""ORCA input and output adapters."""

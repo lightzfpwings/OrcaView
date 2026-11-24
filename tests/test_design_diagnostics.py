@@ -21,17 +21,17 @@ class DesignDiagnosticsTests(unittest.TestCase):
             extra_h.validate()
         issues = design_diagnostics(extra_h)
         self.assertIn(str(mismatch.exception), issues)
-        valence = "请检查 C1 的成键：键级总和为 5，超出常见范围。"
+        valence = "Check the bonds of C1: the total bond order (5) is outside the usual range."
         self.assertIn(valence, issues)
         self.assertEqual(design_diagnostics(replace(extra_h, multiplicity=2)), (valence,))
 
     def test_hydrogen_bridge_and_multiple_bonds_use_total_bond_order(self):
         bridge = Molecule("H3+", (Atom("H", -1, 0, 0), Atom("H", 0, 0, 0), Atom("H", 1, 0, 0)),
                           (Bond(0, 1), Bond(1, 2)), charge=1)
-        self.assertEqual(design_diagnostics(bridge), ("请检查 H2 的成键：键级总和为 2，超出常见范围。",))
+        self.assertEqual(design_diagnostics(bridge), ("Check the bonds of H2: the total bond order (2) is outside the usual range.",))
         alkynyl = Molecule("draft", (Atom("C", 0, 0, 0), Atom("N", 1, 0, 0), Atom("O", -1, 0, 0)),
                            (Bond(0, 1, 3), Bond(0, 2, 2)), multiplicity=2)
-        self.assertEqual(design_diagnostics(alkynyl), ("请检查 C1 的成键：键级总和为 5，超出常见范围。",))
+        self.assertEqual(design_diagnostics(alkynyl), ("Check the bonds of C1: the total bond order (5) is outside the usual range.",))
 
     def test_assigned_charge_and_metal_coordination_do_not_trigger_false_warnings(self):
         for molecule in (bonded_hydrogens("N", 4, charge=1),

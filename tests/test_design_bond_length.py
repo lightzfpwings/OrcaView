@@ -78,7 +78,7 @@ class BondLengthTests(unittest.TestCase):
         self.click_bond(0, 1)
         self.assertFalse(self.length.controls.isVisible())
         self.assertIn("1.400000", self.length.summary.text())
-        self.assertIn("环", self.length.details.text())
+        self.assertIn("ring", self.length.details.text())
         QTest.mouseClick(self.canvas, Qt.MouseButton.LeftButton, pos=self.canvas.atom_position(0).toPoint())
         QTest.mouseClick(self.canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ShiftModifier,
                          pos=self.canvas.atom_position(3).toPoint())

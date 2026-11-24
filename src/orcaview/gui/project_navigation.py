@@ -77,9 +77,9 @@ class ProjectNavigationTree(QTreeWidget):
 
     def set_structure(self, name):
         self.clear()
-        root = QTreeWidgetItem(self, [tr("当前项目")])
+        root = QTreeWidgetItem(self, [tr("Current project")])
         root.setToolTip(0, root.text(0))
-        for text in (tr("结构  ·  {name}", name=name), tr("计算设置  ·  ORCA"), tr("输入预览")):
+        for text in (tr("Structure  ·  {name}", name=name), tr("Calculation settings  ·  ORCA"), tr("Input preview")):
             child = QTreeWidgetItem(root, [text])
             child.setToolTip(0, text)
         root.setExpanded(True)

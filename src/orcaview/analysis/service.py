@@ -17,18 +17,18 @@ def adapt_hirshfeld_fixture(request: AnalysisRequest, snapshot: GeometrySnapshot
     checked = check_capability(request, snapshot)
     problems = tuple(issue for issue in checked.issues if issue.code != "internal_engine_unavailable")
     if problems:
-        raise ValueError("。".join(f"{issue.reason} ({issue.code})" for issue in problems))
+        raise ValueError(".".join(f"{issue.reason} ({issue.code})" for issue in problems))
     if checked.capability != HIRSHFELD_CHARGE:
-        raise ValueError("该适配器只接受 Hirshfeld 电荷能力")
+        raise ValueError("This adapter supports only Hirshfeld charges")
     if not isinstance(fixture, ArtifactRef) or fixture.format != "orcaview.synthetic-json" or fixture.sha256 is None:
-        raise ValueError("合成分析样例必须显式提供带 SHA-256 的 orcaview.synthetic-json 产物")
+        raise ValueError("Synthetic analysis requires an explicit orcaview.synthetic-json artifact with a SHA-256 digest")
 
     source = request.wavefunction
     parents = {}
     for ref in (source.artifact, fixture, *source.provenance.parents):
         existing = parents.setdefault(ref.artifact_id, ref)
         if existing != ref:
-            raise ValueError("同一来源文件 ID 对应了不同产物")
+            raise ValueError("One source file ID refers to different artifacts")
 
     task = AnalysisTaskRecord(request, "synthetic-fixture")
     parameters = (

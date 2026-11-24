@@ -8,8 +8,7 @@ import re
 from string import Formatter
 
 
-BASE_LOCALE = "zh-Hans"
-BUNDLED_DIRECTORY = Path(__file__).with_name("languages")
+BASE_LOCALE = "en"
 _LOCALE = re.compile(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*")
 _active_messages = {}
 _diagnostic_templates = []
@@ -58,9 +57,9 @@ def _read_pack(path):
     return LanguagePack(locale, name.strip(), messages)
 
 
-def discover_languages(directory=None, *, bundled=BUNDLED_DIRECTORY):
-    """Read bundled packs and optional user overrides. Record unusable files."""
-    packs = {BASE_LOCALE: LanguagePack(BASE_LOCALE, "简体中文", {})}
+def discover_languages(directory=None, *, bundled=None):
+    """Offer native English plus translations installed in a pack directory."""
+    packs = {BASE_LOCALE: LanguagePack(BASE_LOCALE, "English", {})}
     failures = []
     for folder in (bundled, directory):
         if folder is None:
@@ -94,10 +93,11 @@ def activate_language(pack):
     for source, translated in pack.messages.items():
         # Core readers intentionally return the original diagnostic even when
         # running in a background worker or persisting a scientific record.
-        if "{" not in source or not re.search(r"[\u3400-\u9fff]", source):
+        if "{" not in source:
             continue
         parts = list(Formatter().parse(source))
-        if not any(field is not None for _, field, _, _ in parts):
+        if not any(field is not None for _, field, _, _ in parts) or not any(
+                any(ch.isalpha() for ch in literal) for literal, *_ in parts):
             continue
         templates.append((parts, list(Formatter().parse(translated))))
     _diagnostic_templates = sorted(templates, key=lambda pair: sum(len(literal) for literal, *_ in pair[0]),

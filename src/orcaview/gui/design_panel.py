@@ -65,12 +65,12 @@ class DesignPanel(QWidget):
             toolbar.addWidget(button)
             return button
 
-        self.select_tool = tool("designSelect", tr("选择"), tr("选择或移动原子"), "select")
+        self.select_tool = tool("designSelect", tr("Selection"), tr("Select or move atoms"), "select")
         self.select_tool.setChecked(True)
-        self.atom_tool = tool("designAtom", tr("原子"), tr("添加或替换原子"), "atom")
+        self.atom_tool = tool("designAtom", tr("Atom"), tr("Add or replace an atom"), "atom")
         self.element = ElementPicker()
         self.element.setObjectName("designElement")
-        self.element.setAccessibleName(tr("绘制元素"))
+        self.element.setAccessibleName(tr("Element to draw"))
         self.element.activated.connect(self._element_picked)
         toolbar.addWidget(self.element)
         toolbar.addSpacing(6)
@@ -79,10 +79,10 @@ class DesignPanel(QWidget):
             self._tools.addButton(button)
             button.activated.connect(self._activate_bond)
             toolbar.addWidget(button)
-        tool("designBond0", "⊘", tr("断开化学键"), "bond", 0)
+        tool("designBond0", "⊘", tr("Remove bond"), "bond", 0)
         self.ring_tool = RingTemplateButton(self.element)
         self.ring_tool.setObjectName("designRing")
-        self.ring_tool.setAccessibleName(tr("环模板"))
+        self.ring_tool.setAccessibleName(tr("Ring templates"))
         self._tools.addButton(self.ring_tool)
         toolbar.addWidget(self.ring_tool)
         self.ring_menu = QMenu(self.ring_tool)
@@ -90,16 +90,16 @@ class DesignPanel(QWidget):
         self._ring_size, self._benzene = 6, False
         templates = QActionGroup(self.ring_menu)
         for size, benzene in [(i, False) for i in range(3, 9)] + [(6, True)]:
-            label = tr("苯环") if benzene else tr("{size} 元碳环", size=size)
+            label = tr("Benzene ring") if benzene else tr("{size}-membered carbon ring", size=size)
             action = self.ring_menu.addAction(label)
             action.setData((size, benzene))
             templates.addAction(action)
             action.setCheckable(True)
             if (size, benzene) == (self._ring_size, self._benzene):
                 action.setChecked(True)
-                self.ring_tool.setToolTip(f"{tr('环模板')} · {label}")
+                self.ring_tool.setToolTip(f"{tr('Ring templates')} · {label}")
         self.ring_menu.triggered.connect(self._choose_ring)
-        self.hydrogens = tool("designAddHydrogens", "+H", tr("单击后点原子逐个加氢，双击补全整个结构。"), "hydrogen")
+        self.hydrogens = tool("designAddHydrogens", "+H", tr("Click to add H to atoms one at a time. Double-click to fill missing H throughout the structure."), "hydrogen")
         self.hydrogens.installEventFilter(self)
         self._hydrogen_cursor = hydrogen_cursor()
         self._leave_hydrogens = QAction(self)
@@ -108,10 +108,10 @@ class DesignPanel(QWidget):
         self._leave_hydrogens.triggered.connect(self.select_tool.click)
         self.addAction(self._leave_hydrogens)
         toolbar.addStretch()
-        self.undo_button = self._button(toolbar, "designUndo", tr("撤销"), lambda: self._history(True))
-        self.redo_button = self._button(toolbar, "designRedo", tr("重做"), lambda: self._history(False))
-        self.delete_button = self._button(toolbar, "designDelete", tr("删除原子"), self._delete)
-        self._button(toolbar, "designNew", tr("新建分子"), self.new_requested.emit)
+        self.undo_button = self._button(toolbar, "designUndo", tr("Undo"), lambda: self._history(True))
+        self.redo_button = self._button(toolbar, "designRedo", tr("Redo"), lambda: self._history(False))
+        self.delete_button = self._button(toolbar, "designDelete", tr("Delete atoms"), self._delete)
+        self._button(toolbar, "designNew", tr("Create a molecule"), self.new_requested.emit)
         # Let the tallest translated label determine the row height, including the element picker.
         for i in range(toolbar.count()):
             widget = toolbar.itemAt(i).widget()
@@ -136,12 +136,12 @@ class DesignPanel(QWidget):
         sketch_layout.setContentsMargins(0, 0, 4, 0)
         sketch_header = QHBoxLayout()
         sketch_layout.addLayout(sketch_header)
-        sketch_header.addWidget(self._section(tr("分子草图")))
+        sketch_header.addWidget(self._section(tr("Molecular sketch")))
         sketch_header.addStretch()
-        self.clean_2d = self._button(sketch_header, "designClean2D", tr("整理 2D"),
+        self.clean_2d = self._button(sketch_header, "designClean2D", tr("Clean up 2D"),
                                      lambda: self._start_structure_job("2D"))
-        self.clean_2d.setToolTip(tr("按二维结构式规整键长、键角和环，仅更新草图。可撤销。"))
-        self._button(sketch_header, "designFit", tr("居中"), self.canvas.fit)
+        self.clean_2d.setToolTip(tr("Regularize bond lengths, angles and rings in the 2D drawing. Only the sketch is updated. You can undo this edit."))
+        self._button(sketch_header, "designFit", tr("Fit sketch"), self.canvas.fit)
         sketch_layout.addWidget(self.canvas, 1)
         splitter.addWidget(sketch)
 
@@ -150,22 +150,22 @@ class DesignPanel(QWidget):
         right.setContentsMargins(4, 0, 0, 0)
         preview_header = QHBoxLayout()
         right.addLayout(preview_header)
-        preview_header.addWidget(self._section(tr("三维预览")))
+        preview_header.addWidget(self._section(tr("3D preview")))
         preview_header.addStretch()
-        self.optimize_3d = self._button(preview_header, "designOptimize3D", tr("优化 3D"),
+        self.optimize_3d = self._button(preview_header, "designOptimize3D", tr("Optimize 3D"),
                                          lambda: self._start_structure_job("3D"))
-        self.optimize_3d.setToolTip(tr("用 Open Babel 力场预优化三维坐标，同时保留二维草图。可撤销。"))
+        self.optimize_3d.setToolTip(tr("Pre-optimize the 3D coordinates with an Open Babel force field and preserve the 2D sketch. You can undo this edit."))
         self.viewport = MoleculeViewport(design_selection=True)
         self.viewport.setObjectName("designViewport")
         self.viewport.setMinimumSize(200, 180)
         right.addWidget(self.viewport, 1)
         atom_row = QHBoxLayout()
         right.addLayout(atom_row)
-        atom_row.addWidget(self._section(tr("原子坐标 / Å")))
+        atom_row.addWidget(self._section(tr("Atomic coordinates / Å")))
         self.atom_choice = QComboBox()
         self.atom_choice.setObjectName("designAtomChoice")
-        self.atom_choice.setAccessibleName(tr("选择原子"))
-        self.atom_choice.setPlaceholderText(tr("选择原子"))
+        self.atom_choice.setAccessibleName(tr("Select an atom"))
+        self.atom_choice.setPlaceholderText(tr("Select an atom"))
         self.atom_choice.activated.connect(lambda i: self._select([i]))
         atom_row.addWidget(self.atom_choice, 1)
         coords = QHBoxLayout()
@@ -183,7 +183,7 @@ class DesignPanel(QWidget):
             coords.addWidget(QLabel(axis))
             coords.addWidget(field, 1)
             self.coordinates.append(field)
-        self.apply_button = self._button(coords, "designApplyPosition", tr("应用"), self._apply_coordinates)
+        self.apply_button = self._button(coords, "designApplyPosition", tr("Apply"), self._apply_coordinates)
         self.bond_length = BondLengthEditor()
         right.addWidget(self.bond_length)
         self.bond_length.apply_requested.connect(self._execute)
@@ -194,7 +194,7 @@ class DesignPanel(QWidget):
         # Equal weights above both pane minima also work before this tab is shown.
         splitter.setSizes([1000, 1000])
         self._divider = splitter.handle(1)
-        self._divider.setToolTip(tr("双击恢复两栏等宽"))
+        self._divider.setToolTip(tr("Double-click to give both panes equal width"))
         self._divider.installEventFilter(self)
 
         self.problems = QLabel()
@@ -281,7 +281,7 @@ class DesignPanel(QWidget):
         self._structure_job = job
         job.completion.finished.connect(self._finish_structure_job)
         self._sync_selection()
-        self.status.setText(tr("正在补氢…") if mode == "H" else tr("正在优化结构…"))
+        self.status.setText(tr("Filling missing hydrogens…") if mode == "H" else tr("Optimizing structure…"))
         QThreadPool.globalInstance().start(job)
 
     @Slot(object, object, str)
@@ -292,13 +292,13 @@ class DesignPanel(QWidget):
         self.set_document(self.editor.document)
         self._sync_selection()
         if job.snapshot.ref != self.editor.document.head.ref:
-            self.status.setText(tr("结构已更改，请重新执行此操作。"))
+            self.status.setText(tr("The structure has changed. Run the operation again."))
             return
         if command is None:
             self.status.setText(diagnostic_text(error))
             return
         if job.mode == "2D" and job.snapshot.sketch_xy == command.operation.xy:
-            self.status.setText(tr("二维草图已规整。"))
+            self.status.setText(tr("The 2D sketch is already tidy."))
             return
         result = self._commit(command)
         if result is None:
@@ -306,11 +306,11 @@ class DesignPanel(QWidget):
         if job.mode != "3D":
             self.canvas.fit()
         if job.mode == "H":
-            self.status.setText(tr("已补加 {count} 个氢原子。", count=len(command.operation.attachments)))
+            self.status.setText(tr("Hydrogen atoms added: {count}.", count=len(command.operation.attachments)))
         elif job.mode == "2D":
-            self.status.setText(tr("已整理二维结构。"))
+            self.status.setText(tr("2D layout complete."))
         else:
-            self.status.setText(tr("已用 {method} 预优化三维结构。", method=command.operation.method))
+            self.status.setText(tr("3D structure pre-optimized with {method}.", method=command.operation.method))
 
     def _element_picked(self):
         if self.canvas.tool != "bond" or self._order == 0:
@@ -339,27 +339,27 @@ class DesignPanel(QWidget):
 
     def _choose_ring(self, action):
         self._ring_size, self._benzene = action.data()
-        self.ring_tool.setToolTip(f"{tr('环模板')} · {action.text()}")
+        self.ring_tool.setToolTip(f"{tr('Ring templates')} · {action.text()}")
         self.ring_tool.setChecked(True)
         self._set_tool("ring")
 
     def _show_hint(self):
         if self.canvas.molecule is not None and not self.canvas.molecule.atoms:
-            text = tr("选择原子工具或环模板，在空白处开始绘制。")
+            text = tr("Choose the atom tool or a ring template, then click the canvas to start drawing.")
         elif self.canvas.tool == "select":
-            text = tr("在二维空白处拖动可框选，拖动原子可移动。按住 Shift 拖动可在任一视图追加框选。")
+            text = tr("In 2D, drag on empty space to select atoms, or drag an atom to move it. Shift-drag in either view to add to the selection.")
         elif self.canvas.tool == "atom":
-            text = tr("点击空白处添加原子，点击已有原子替换元素。")
+            text = tr("Click empty space to add an atom, or click an atom to change its element.")
         elif self.canvas.tool == "hydrogen":
-            text = tr("点击二维或三维视图中的原子添加一个氢。可连续点击；按 Esc 退出。")
+            text = tr("Click an atom in either view to attach one H. Keep clicking to add more, or press Esc to exit.")
         elif self.canvas.tool == "ring":
-            text = tr("点击起始碳原子建环，点击其他原子接出环，或点击空白处放置独立环。")
+            text = tr("Click the starting carbon to build a ring through it, another atom to attach a ring, or empty space to place a separate ring.")
         elif self._bond_start is not None:
-            text = tr("点击第二个原子。")
+            text = tr("Click the second atom.")
         elif self._order:
-            text = tr("点击两个原子连键。从原子拖到空白处可延伸分子。")
+            text = tr("Click two atoms to bond them. Drag from an atom into empty space to extend the molecule.")
         else:
-            text = tr("依次点击两个原子，或直接点击已有的键。")
+            text = tr("Click two atoms in order, or click an existing bond.")
         self.status.setText(text)
 
     def _refresh(self, *, fit=False):

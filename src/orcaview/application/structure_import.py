@@ -44,9 +44,9 @@ def structure_format(path, raw=None):
                     if re.search(header, content, re.I | re.M):
                         return candidate
                 if fmt == "quantum-input":
-                    raise ValueError("无法识别此输入文件的量子化学程序或显式几何段。")
+                    raise ValueError("Could not identify the quantum chemistry program or an explicit geometry section.")
             return fmt
-    raise ValueError(f"不支持的文件类型：{path.name}")
+    raise ValueError(f"Unsupported file type: {path.name}")
 
 
 def open_file_filters(translate=str):
@@ -57,10 +57,10 @@ def open_file_filters(translate=str):
     inputs = patterns(key for key, value in _FORMATS.items()
                       if key not in BABEL_FORMATS and value not in _WAVEFUNCTION)
     waves = patterns(key for key, value in _FORMATS.items() if value in _WAVEFUNCTION)
-    groups = (("支持的文件", f"{structure} {inputs} {waves} *.out *.log *.oview.json"),
-              ("分子与晶体结构", structure), ("量子化学输入", inputs),
-              ("ORCA 输出与日志", "*.out *.log"), ("波函数", waves),
-              ("OrcaView 项目", "*.oview.json"), ("全部文件", "*"))
+    groups = (("Supported files", f"{structure} {inputs} {waves} *.out *.log *.oview.json"),
+              ("Molecular and crystal structures", structure), ("Quantum chemistry input", inputs),
+              ("ORCA output and logs", "*.out *.log"), ("Wavefunctions", waves),
+              ("OrcaView projects", "*.oview.json"), ("All files", "*"))
     return ";;".join(f"{translate(label)} ({pattern})" for label, pattern in groups)
 
 
@@ -97,7 +97,7 @@ def _gbw_geometry(path, raw, *, remove_periodicity):
             if sibling.is_file():
                 converter = str(sibling)
     if not converter:
-        raise ValueError("GBW 文件需要本机 ORCA 的 orca_2mkl。也可以直接打开导出的 .molden.input 文件。")
+        raise ValueError("GBW files require orca_2mkl from a local ORCA installation. You can also open the exported .molden.input file.")
     with TemporaryDirectory(prefix="orcaview-gbw-") as directory:
         work = Path(directory)
         (work / "geometry.gbw").write_bytes(raw)
@@ -106,10 +106,10 @@ def _gbw_geometry(path, raw, *, remove_periodicity):
                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                        stderr=subprocess.DEVNULL, timeout=120)
         except subprocess.TimeoutExpired as exc:
-            raise ValueError("orca_2mkl 转换 GBW 超时。") from exc
+            raise ValueError("orca_2mkl timed out while converting the GBW file.") from exc
         output = work / "geometry.molden.input"
         if converted.returncode or not output.is_file():
-            raise ValueError("orca_2mkl 无法转换该 GBW 文件，请检查 ORCA 版本是否与文件匹配。")
+            raise ValueError("orca_2mkl could not convert this GBW file. Check that the ORCA version matches the file.")
         record = read_quantum_structure(output, output.read_bytes(), remove_periodicity=remove_periodicity)
         return replace(record, molecule=replace(record.molecule, name=path.stem))
 
@@ -117,7 +117,7 @@ def _gbw_geometry(path, raw, *, remove_periodicity):
 def read_structure_file(path, confirmation=None):
     path = Path(path).resolve()
     if not path.is_file() and confirmation is None:
-        raise ValueError("请选择普通文件。")
+        raise ValueError("Select a regular file.")
     raw = path.read_bytes() if confirmation is None else confirmation.raw
     fmt = structure_format(path, raw)
     strip_cell = confirmation is not None
@@ -134,11 +134,11 @@ def read_structure_file(path, confirmation=None):
             record = read_quantum_structure(path, raw, remove_periodicity=strip_cell, format_id=fmt)
     except PeriodicStructureError as exc:
         if strip_cell:
-            raise ValueError("无法从文件中提取非周期结构。") from exc
+            raise ValueError("Could not extract a nonperiodic structure from the file.") from exc
         return PeriodicFile(raw, getattr(exc, "source", None))
     if strip_cell and confirmation.auxiliary is not None:
         source = confirmation.auxiliary
         if not any(item.sha256 == source.sha256 and item.path_hint == source.path_hint
                    for item in record.auxiliary_sources):
-            raise ValueError("确认期间引用的坐标文件已变更，请重新打开输入文件。")
+            raise ValueError("The referenced coordinate file changed during confirmation. Reopen the input file.")
     return OpenedStructure(record, ArtifactRef.from_bytes(raw, fmt, str(path)))

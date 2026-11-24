@@ -19,7 +19,7 @@ class LogProperty:
 
 
 _CYCLE = re.compile(r"\**\s*GEOMETRY OPTIMIZATION CYCLE\s+(\d+)\s*\**", re.I)
-_CYCLE_CONTEXT = re.compile(r"优化第 \d+ 步|优化末次能量评估")
+_CYCLE_CONTEXT = re.compile("Optimization step \\d+|Final optimization energy evaluation")
 _JOIN = " · "
 _FINAL = re.compile(rf"FINAL SINGLE POINT ENERGY\s+({_NUMBER})(?:\s+Eh)?"
                     r"(?:\s+\((Wavefunction not fully converged)!?\))?", re.I)
@@ -42,24 +42,24 @@ _THERMO = re.compile(rf"THERMOCHEMISTRY(?: AT\s+({_NUMBER})\s*K)?", re.I)
 _CONDITION = re.compile(rf"(Temperature|Pressure)\s+\.{{3}}\s+({_NUMBER})\s+(K|atm|bar|Pa)", re.I)
 _THERMAL_ROW = re.compile(rf"(.+?)\s+(?:\.{{3}}\s+)?({_NUMBER})\s+Eh(?:\s+{_NUMBER}\s+kcal/mol)?", re.I)
 _THERMAL_LABELS = {
-    ("INNER ENERGY", "zero point energy"): "零点振动能 ZPE",
-    ("INNER ENERGY", "total thermal energy"): "内能 U",
-    ("ENTHALPY", "total enthalpy"): "焓 H",
-    ("ENTROPY", "final entropy term"): "熵项 T·S",
-    ("GIBBS FREE ENERGY", "final gibbs free energy"): "吉布斯自由能 G",
-    ("GIBBS FREE ENERGY", "g-e(el)"): "吉布斯自由能校正 G−E(el)",
+    ("INNER ENERGY", "zero point energy"): "Zero-point vibrational energy ZPE",
+    ("INNER ENERGY", "total thermal energy"): "Internal energy U",
+    ("ENTHALPY", "total enthalpy"): "Enthalpy H",
+    ("ENTROPY", "final entropy term"): "Entropy term T·S",
+    ("GIBBS FREE ENERGY", "final gibbs free energy"): "Gibbs free energy G",
+    ("GIBBS FREE ENERGY", "g-e(el)"): "Gibbs energy correction G−E(el)",
 }
 _PRIORITY = {label: i for i, label in enumerate((
-    "最终单点能", "吉布斯自由能 G", "焓 H", "零点振动能 ZPE", "偶极矩大小", "各向同性静态极化率", "HOMO–LUMO 能隙",
-    "HOMO", "LUMO", "SCF 总能量", "耦合簇总能量", "内能 U", "熵项 T·S",
-    "吉布斯自由能校正 G−E(el)", "⟨S²⟩", "偶极矩 X", "偶极矩 Y", "偶极矩 Z",
+    "Final single-point energy", "Gibbs free energy G", "Enthalpy H", "Zero-point vibrational energy ZPE", "Dipole magnitude", "Isotropic static polarizability", "HOMO–LUMO gap",
+    "HOMO", "LUMO", "Total SCF energy", "Total coupled-cluster energy", "Internal energy U", "Entropy term T·S",
+    "Gibbs energy correction G−E(el)", "⟨S²⟩", "Dipole moment X", "Dipole moment Y", "Dipole moment Z",
 ))}
 
 
 def property_series_key(prop: LogProperty):
     """Group optimization history while keeping different jobs, densities, spins and baths distinct."""
     context = _JOIN.join(c for c in prop.context.split(_JOIN) if not _CYCLE_CONTEXT.fullmatch(c))
-    if prop.group == "转动常数":
+    if prop.group == "Rotational constants":
         # ORCA prints MHz and wavenumbers side by side in the rotational spectrum.
         context = _context(context, prop.unit)
     return prop.group, prop.label, context
@@ -109,8 +109,8 @@ def _property(group, label, token, unit, index, context):
 
 def _density_attribute(line):
     key, sep, value = line.partition(":")
-    prefix = {"Method": "", "Type of density": "", "Level": "", "Multiplicity": "多重度 ",
-              "Irrep": "不可约表示 ", "Root": "根 ", "State": "态 "}
+    prefix = {"Method": "", "Type of density": "", "Level": "", "Multiplicity": "Multiplicity ",
+              "Irrep": "Irreducible representation ", "Root": "Root ", "State": "State "}
     if sep and value.strip() and key.strip() in prefix:
         return prefix[key.strip()] + value.strip()
     return ""
@@ -128,10 +128,10 @@ def _dipole(lines, start, stage):
             except ValueError:
                 continue
             for label, component in zip("XYZ", xyz):
-                yield LogProperty("偶极矩", f"偶极矩 {label}", component, "a.u.", i+1, _context(stage, *attributes))
+                yield LogProperty("Dipole moment", f"Dipole moment {label}", component, "a.u.", i+1, _context(stage, *attributes))
         magnitude = _DEBYE.fullmatch(line)
         if magnitude:
-            yield _property("偶极矩", "偶极矩大小", magnitude[1], "Debye", i, _context(stage, *attributes))
+            yield _property("Dipole moment", "Dipole magnitude", magnitude[1], "Debye", i, _context(stage, *attributes))
             break
 
 
@@ -151,10 +151,10 @@ def _polarizability(lines, start, stage):
                     continue
                 for offset, (axis, row) in enumerate(zip("XYZ", matrix), 1):
                     for other, value in zip("XYZ", row):
-                        yield LogProperty("静态极化率", f"静态极化率 α{axis}{other}", value, "a.u.",
+                        yield LogProperty("Static polarizability", f"Static polarizability α{axis}{other}", value, "a.u.",
                                           i+offset+1, _context(stage, *attributes))
         elif atomic_units and (m := _ISOTROPIC.fullmatch(line)):
-            yield _property("静态极化率", "各向同性静态极化率", m[1], "a.u.", i, _context(stage, *attributes))
+            yield _property("Static polarizability", "Isotropic static polarizability", m[1], "a.u.", i, _context(stage, *attributes))
             break
 
 
@@ -165,7 +165,7 @@ def _rotational_constants(match, index, context):
     except ValueError:
         return
     for axis, value in zip("ABC", values):
-        yield LogProperty("转动常数", f"转动常数 {axis}", value, unit, index+1, context)
+        yield LogProperty("Rotational constants", f"Rotational constant {axis}", value, unit, index+1, context)
 
 
 def _orbital_frontier(lines, header, spin, stage, irrep):
@@ -197,9 +197,9 @@ def _orbital_frontier(lines, header, spin, stage, irrep):
     if homo is not None and lumo is not None:
         context = _context(stage, spin)
         for label, value, lineno in (("HOMO", *homo), ("LUMO", *lumo),
-                                     ("HOMO–LUMO 能隙", lumo[0]-homo[0], lumo[1])):
+                                     ("HOMO–LUMO gap", lumo[0]-homo[0], lumo[1])):
             if math.isfinite(value):
-                frontier.append(LogProperty("前线轨道", label, value, "eV", lineno, context))
+                frontier.append(LogProperty("Frontier orbitals", label, value, "eV", lineno, context))
     return frontier
 
 
@@ -208,7 +208,7 @@ def _orbitals(lines, start, stage):
     while i < len(lines):
         line = lines[i]
         if line in ("SPIN UP ORBITALS", "SPIN DOWN ORBITALS"):
-            spin = "α 自旋" if "UP" in line else "β 自旋"
+            spin = "α spin" if "UP" in line else "β spin"
         elif head := _ORB_HEAD.fullmatch(line):
             yield from _orbital_frontier(lines, i, spin, stage, bool(head[1]))
             # Skip this table including print limits, and look for its other spin block.
@@ -240,7 +240,7 @@ def _thermochemistry(lines, start, temperature, stage):
         elif i > start+2 and _section_title(lines, i):
             break
         if m := _ROTATION.fullmatch(line):
-            yield from _rotational_constants(m, i, _context(stage, "热化学", *conditions.values()))
+            yield from _rotational_constants(m, i, _context(stage, "Thermochemistry", *conditions.values()))
         elif cond := _CONDITION.fullmatch(line):
             key = cond[1].capitalize()
             unit = cond[3]
@@ -252,7 +252,7 @@ def _thermochemistry(lines, start, temperature, stage):
         elif "eh" in line.lower() and (match := _THERMAL_ROW.fullmatch(line)):
             label = _THERMAL_LABELS.get((subsection, match[1].casefold()))
             if label:
-                yield _property("热化学", label, match[2], "Eh", i, _context(stage, *conditions.values()))
+                yield _property("Thermochemistry", label, match[2], "Eh", i, _context(stage, *conditions.values()))
                 if match[1].casefold() == "g-e(el)":
                     break
 
@@ -270,15 +270,15 @@ def parse_log_properties(lines: Union[str, Sequence[str]]) -> Tuple[LogProperty,
         if line == "TOTAL SCF ENERGY":
             for j, body in _body(lines, i):
                 if m := _SCF.fullmatch(body):
-                    items.append(_property("电子能量", "SCF 总能量", m[1], "Eh", j, stage))
+                    items.append(_property("Electronic energy", "Total SCF energy", m[1], "Eh", j, stage))
                     break
         elif line == "COUPLED CLUSTER ENERGY":
             for j, body in _body(lines, i):
                 if m := _CC.fullmatch(body):
                     key = m[1].upper()
-                    label = ("T1 诊断" if key == "T1 DIAGNOSTIC" else
-                             "耦合簇总能量" if key == "E(TOT)" else "耦合簇相关能")
-                    items.append(_property("电子能量", label, m[2], "" if key == "T1 DIAGNOSTIC" else "Eh", j, stage))
+                    label = ("T1 diagnostic" if key == "T1 DIAGNOSTIC" else
+                             "Total coupled-cluster energy" if key == "E(TOT)" else "Coupled-cluster correlation energy")
+                    items.append(_property("Electronic energy", label, m[2], "" if key == "T1 DIAGNOSTIC" else "Eh", j, stage))
         elif line == "DIPOLE MOMENT":
             items.extend(_dipole(lines, i, stage))
         elif line == "STATIC POLARIZABILITY TENSOR (Dipole/Dipole)":
@@ -286,26 +286,26 @@ def parse_log_properties(lines: Union[str, Sequence[str]]) -> Tuple[LogProperty,
         elif line.casefold() == "rotational spectrum":
             for j, body in _body(lines, i):
                 if m := _ROTATION.fullmatch(body):
-                    items.extend(_rotational_constants(m, j, _context(stage, "转动谱")))
+                    items.extend(_rotational_constants(m, j, _context(stage, "Rotational spectrum")))
         elif line == "ORBITAL ENERGIES":
             items.extend(_orbitals(lines, i, stage))
         elif m := _THERMO.fullmatch(line):
             items.extend(_thermochemistry(lines, i, m[1], stage))
         elif m := _FINAL.fullmatch(line):
-            context = _context(stage, "波函数未完全收敛" if m[2] else "")
-            items.append(_property("电子能量", "最终单点能", m[1], "Eh", i, context))
+            context = _context(stage, "Wavefunction not fully converged" if m[2] else "")
+            items.append(_property("Electronic energy", "Final single-point energy", m[1], "Eh", i, context))
         elif m := _MP2.fullmatch(line):
-            items.append(_property("电子能量", f"{m[1].upper()} 相关能", m[2], "Eh", i, stage))
+            items.append(_property("Electronic energy", f"{m[1].upper()} correlation energy", m[2], "Eh", i, stage))
         elif m := _SOLVENT.fullmatch(line):
-            label = "CPCM 介电能" if m[1].upper().startswith("CPCM") else "SMD 非静电 CDS 项"
-            items.append(_property("溶剂化", label, m[2], "Eh", i, stage))
+            label = "CPCM dielectric energy" if m[1].upper().startswith("CPCM") else "SMD nonelectrostatic CDS term"
+            items.append(_property("Solvation", label, m[2], "Eh", i, stage))
         elif m := _SPIN.fullmatch(line):
-            items.append(_property("自旋", "⟨S²⟩", m[1], "ℏ²", i, stage))
+            items.append(_property("Spin", "⟨S²⟩", m[1], "ℏ²", i, stage))
         elif m := _DISP.fullmatch(line):
-            items.append(_property("电子能量", "色散校正", m[1], "Eh", i, stage))
+            items.append(_property("Electronic energy", "Dispersion model", m[1], "Eh", i, stage))
         elif m := _CYCLE.fullmatch(line):
-            stage = f"优化第 {m[1]} 步"
+            stage = f"Optimization step {m[1]}"
         elif line.strip("* ").upper() == "FINAL ENERGY EVALUATION AT THE STATIONARY POINT":
-            stage = "优化末次能量评估"
+            stage = "Final optimization energy evaluation"
 
     return ranked_properties(item for item in items if item is not None)

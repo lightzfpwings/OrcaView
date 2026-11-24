@@ -310,11 +310,11 @@ class PortableReplacementTests(unittest.TestCase):
         asset, path = self.bundle("0.1.0a42")
         pending = prepare_portable_update(asset, path, self.target)
         install_portable(asset, path, self.target)
-        with self.assertRaisesRegex(ValueError, "安装目录已变更"):
+        with self.assertRaisesRegex(ValueError, "installation has changed"):
             portable_replace.activate(pending.staged, self.target, pending.backup, True, pending.expected)
         pending.discard()
         (self.backup / ".orcaview-previous.json").unlink()
-        with self.assertRaisesRegex(UpdateDownloadError, "备份路径"):
+        with self.assertRaisesRegex(UpdateDownloadError, "backup path"):
             install_portable(asset, path, self.target)
         self.assertEqual((self.backup / self.init).read_text(), "0.1.0a40")
         self.assertEqual((self.target / self.init).read_text(), "0.1.0a42")

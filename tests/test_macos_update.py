@@ -56,7 +56,7 @@ class MacInstallationTests(unittest.TestCase):
         self.assertEqual(update._bundle_version(self.app), "0.1.0a40")
         with patch.object(update, "_system"):
             failed.install_on_exit()
-            with self.assertRaisesRegex(update.UpdateDownloadError, "安装目录已变更"):
+            with self.assertRaisesRegex(update.UpdateDownloadError, "installation has changed"):
                 competing.install_on_exit()
         competing.discard()
         self.assertEqual(update._bundle_version(self.app), "0.1.0a42")
@@ -73,7 +73,7 @@ class MacInstallationTests(unittest.TestCase):
                 update.prepare_macos_update(asset, path, self.app)
             system.assert_not_called()
             path.write_bytes(b"1234")
-            with self.assertRaisesRegex(update.UpdateDownloadError, "映像中的应用版本"):
+            with self.assertRaisesRegex(update.UpdateDownloadError, "app version in the disk image"):
                 update.prepare_macos_update(asset, path, self.app)
         self.assertEqual(update._bundle_version(self.app), "0.1.0a40")
         self.assertEqual(self.project.read_text(), "user work")
@@ -92,7 +92,7 @@ class MacInstallationTests(unittest.TestCase):
 
         with patch.object(update, "_system", side_effect=OSError("launch failed")), \
              patch.object(update, "_exchange", side_effect=swap_once):
-            with self.assertRaisesRegex(update.UpdateDownloadError, "旧版保存在"):
+            with self.assertRaisesRegex(update.UpdateDownloadError, "previous version is at"):
                 prepared.install_on_exit()
         prepared.discard()
         self.assertEqual(update._bundle_version(prepared.workspace / "OrcaView.app"), "0.1.0a40")

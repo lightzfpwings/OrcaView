@@ -19,27 +19,27 @@ class LogReport:
 
     def __post_init__(self):
         if not isinstance(self.source, ArtifactRef) or self.source.format != "orca-out" or not self.source.sha256:
-            raise ValueError("日志报告需要有摘要的 ORCA 来源文件")
-        nonempty(self.status, "日志状态")
+            raise ValueError("A log report requires an ORCA source file with a digest")
+        nonempty(self.status, "Log status")
         for prop in self.properties:
             for label in (prop.group, prop.label):
-                nonempty(label, "计算结果标签")
-            finite_number(prop.value, "计算结果")
-            integer(prop.line, "来源行号", 1)
+                nonempty(label, "Result label")
+            finite_number(prop.value, "Calculation results")
+            integer(prop.line, "Source line number", 1)
             if not isinstance(prop.context, str) or not isinstance(prop.unit, str):
-                raise ValueError("计算结果上下文和单位应为文字")
+                raise ValueError("Result context and unit must be text")
         for table in self.spectra:
-            integer(table.source_line, "光谱来源行号", 1)
+            integer(table.source_line, "Spectrum source line", 1)
             for label in (table.kind, table.title, *table.columns):
-                nonempty(label, "光谱标签")
+                nonempty(label, "Spectrum label")
             if not table.columns or not table.rows:
-                raise ValueError("光谱需要列标题与数据")
+                raise ValueError("A spectrum requires column headings and data")
             for row in table.rows:
                 if len(row) != len(table.columns):
-                    raise ValueError("光谱行与表头列数不一致")
+                    raise ValueError("Spectrum row does not match the header column count")
                 for cell in row:
                     if cell is not None and not isinstance(cell, str):
-                        finite_number(cell, "光谱数据")
+                        finite_number(cell, "Spectral data")
 
 
 _SUBJOB = re.compile(r"\s*\**\s*(?:COMPOUND JOB|JOB (?:NUMBER|NO\.))\s*[:#]?\s*(\d+)\s*\**\s*", re.I)
@@ -77,7 +77,7 @@ def parse_log_report(lines, artifact):
         props = parse_log_properties(section)
         spectra = parse_log_spectra(section)
         printed = _SUBJOB.fullmatch(lines[start])
-        step = f"作业 {printed[1] if printed else n}" if len(sections) > 1 else ""
+        step = f"Job {(printed[1] if printed else n)}" if len(sections) > 1 else ""
         properties.extend(replace(p, line=p.line + start, context=" · ".join(filter(None, (step, p.context))))
                           for p in props)
         tables.extend(replace(t, source_line=t.source_line + start, title=" · ".join(filter(None, (step, t.title))))
@@ -88,11 +88,11 @@ def parse_log_report(lines, artifact):
     normal_lines = [i for i in range(final_start, len(lines)) if normal.fullmatch(lines[i])]
     last_data_line = max([p.line for p in properties] + [t.source_line for t in tables], default=0)
     if any(failure.match(line) for line in lines):
-        status = "记录了异常终止"
+        status = "Abnormal termination recorded"
     elif normal_lines and normal_lines[-1] + 1 >= last_data_line:
-        status = "正常终止"
+        status = "Normal termination"
     else:
-        status = "未记录正常终止"
+        status = "Normal termination not recorded"
     if len(sections) > 1:
-        status += " · 多作业日志"
+        status += " · multiple-job log"
     return LogReport(artifact, ranked_properties(properties), tuple(tables), status)

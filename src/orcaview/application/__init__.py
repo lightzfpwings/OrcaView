@@ -1,2 +1,2 @@
-"""应用层组织用例，不依赖 Qt 或具体绘图引擎。"""
+"""Application use cases independent of Qt and plotting engines."""
 
