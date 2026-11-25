@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a56 alpha测试版
+
+All 658 regression tests passed. The editable input tests cover mouse leave and keyboard commits, invalid text recovery, atom identity and precision, and applying the same input through the command line. All 568 method templates passed a render–read–render check. [Editable input tests](../tests/test_edit_input_preview.py)
+
+All 143 OrcaView Python modules matched the source in each of the three desktop packages. Both extension ZIPs rebuilt byte for byte. A read-only mount of the macOS DMG passed code signature verification. Its executable saved an edited input to a project and reproduced the normalized input on reopening. It loaded all four interface languages and rendered water with each of the three external palettes. For every palette, installing it and passing it to a single render produced identical BMPs. [Release package checks](../packaging/check_release_extensions.py)
+
 ## 0.1.0a54 prerelease
 
 All 648 regression tests passed. Six design tests exercise keyboard deletion and undo, atom and bond targeting, overlapping atoms, dragging and placement depth after rotation. They also compare exported images before and during hover. In a native macOS window using the packaged code, deleting a selected benzene atom reduced the atom count from 12 to 11. Undo restored all 12. [Design interaction tests](../tests/test_design_targets.py)

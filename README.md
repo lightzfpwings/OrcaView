@@ -1,18 +1,20 @@
 # OrcaView
 
-OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a54 highlights atoms and bonds under the editing pointer and supports keyboard deletion in both design views. All three platforms include English and support external language and element color packs. [Download 0.1.0a54](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a54)
+OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a56 supports editing the ORCA input preview and syncing changes with the calculation panel. English is built in. Optional extensions provide four interface languages and three element color palettes. [Download OrcaView 0.1.0a56 alpha测试版](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a56)
 
 ## Install and try OrcaView
 
 | Platform | Package | Start |
 | --- | --- | --- |
+| Linux x86-64 | Portable tar.gz archive | Extract and run `./OrcaView` from the extracted folder on a graphical desktop. |
 | Windows x64 | ZIP containing `OrcaView.exe`, `LICENSE` and `Examples/` | Extract into a dedicated folder and double-click the EXE. |
 | macOS on Apple Silicon | DMG containing `OrcaView.app` and `Examples/` | Drag the app into Applications and copy the examples to a writable folder. |
-| Linux x86-64 | Portable tar.gz archive | Extract and run `./OrcaView` from the extracted folder on a graphical desktop. |
 
 Each download includes Python, Qt, Open Babel and 20 example files. Structures, input generation and imported results work offline. New quantum chemistry calculations require a separate ORCA installation. The local job runner uses POSIX process control. The macOS app uses an ad hoc signature. [GitHub releases and checksums](https://github.com/lightzfpwings/OrcaView/releases) · [macOS opening instructions](https://support.apple.com/en-us/102445)
 
 Open `Examples/water.xyz` to inspect the molecule and preview an ORCA input. Open `Examples/water-sp.out` for a small teaching example of energy and charge import. The sample single-point energy is −76.123456789012 hartree. Real ORCA output files include water vibrational and NMR results and peroxide electronic transitions.
+
+Edit **ORCA input preview**, then move the pointer outside the editor or press Tab. The calculation panel and molecular coordinates update together. The preview uses the same formatting as the exported input. An incomplete or unsupported edit stays in the editor with a diagnostic. Press Escape in the editor to restore the last applied input. The terminal equivalent is `orcaview preview molecule.xyz --edit-input edited.inp -o normalized.inp`.
 
 ### Export a structure image
 
@@ -36,15 +38,17 @@ Try `Examples/water-raman.out` for IR and Raman or `Examples/peroxide-uv-cd.out`
 
 ### Language and element color packs
 
-English is built in. Simplified and Traditional Chinese are provided together in the separate Chinese language extension. German and Japanese also have optional extensions. Extract the desired language ZIP to a directory of your choice. In **View → Interface language…**, choose that directory, refresh the list, select the language, save and restart. Each extension includes OrcaView messages and the corresponding Qt translations. [Extension sources](language-packs/)
+The language extension includes Simplified Chinese, Traditional Chinese, German and Japanese, together with matching Qt translations. Extract the ZIP, open **View → Interface language…**, choose the extracted **languages** folder, select a language, save and restart. The ZIP includes installation instructions and an editable template. [Language extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a56/OrcaView-Extensions-01-Language-0.1.0a56.zip)
 
-Download the Contrast color pack, then open **View → Molecular appearance… → Import color pack…**, choose the JSON and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Contrast palette](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a54/OrcaView-0.1.0a54-Contrast-color-pack.json)
+The color extension includes Contrast, Pastel and Grayscale palettes. Extract the ZIP, open **View → Molecular appearance… → Import color pack…**, choose a JSON file from **colors** and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Color extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a56/OrcaView-Extensions-02-Color-0.1.0a56.zip)
 
-The extension kit contains an editable message catalog, a working palette and JSON schemas for both formats. [Author guide](docs/extensions/README.md) · [Download the extension kit](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a54/OrcaView-0.1.0a54-extension-kit.zip)
+Both ZIPs include their own installation guide and JSON schema. [Extension author guide](docs/extensions/README.md)
 
 ### Updating
 
 Use **Help → Check for Updates…** to discover a release for your platform and verify its SHA-256 checksum. Save your project before choosing the option to quit and update. The installed app restarts from the same location. Windows and Linux keep a sibling `.previous` backup and preserve personal projects and edited examples. Stable versions follow stable releases. Preview versions also discover prereleases.
+
+On Apple Silicon, versions through 0.1.0a55 recognize the new release but look for the previous DMG filename. To upgrade once, quit OrcaView, open the 0.1.0a56 DMG, and drag the app into Applications to replace the old copy. Version 0.1.0a56 recognizes both filename formats.
 
 Windows 0.1.0a42 and earlier require a one-time manual upgrade to the single-file layout. Download and extract the Windows ZIP into a dedicated folder, then open your existing project in the new app. To retain an existing shortcut, quit the old app, rename its folder as a backup, and extract the new version at the original path.
 
@@ -86,11 +90,10 @@ python -m orcaview gui
 python -m orcaview preview examples/water.xyz --job OPT_FREQ
 python tools/run_tests.py -q
 python packaging/desktop/build.py both
-python packaging/build_language_packs.py
 python packaging/build_extension_kit.py
 ```
 
-For macOS, install `PyInstaller==6.22.3` in the build environment and run `python packaging/macos/build.py`. Package outputs appear under `dist/<platform>/<version>/`. The test command includes both archived verification cases and tests in the checkout. [Portable build details](packaging/desktop/README.md) · [Validation history](docs/PUBLIC_VALIDATION.md)
+For macOS, install `PyInstaller==6.22.3` in the build environment and run `python packaging/macos/build.py`. Package outputs appear under `dist/<platform>/<version>/`. Once all platforms and extensions are built, run `python packaging/stage_release.py` to collect the five downloads and their `SHA256UMS.txt` manifest in release order. The test command includes both archived verification cases and tests in the checkout. [Portable build details](packaging/desktop/README.md) · [Validation history](docs/PUBLIC_VALIDATION.md)
 
 ## Licensing
 

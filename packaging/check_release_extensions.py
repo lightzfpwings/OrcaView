@@ -18,7 +18,7 @@ def open_package(assets, prefix, work):
     if sys.platform == "darwin":
         mount = work / "disk"
         mount.mkdir()
-        dmg = assets / (prefix + "-macOS-arm64.dmg")
+        dmg, = (path for path in assets.glob(prefix + "?macOS-arm64.dmg") if path.is_file())
         subprocess.run(["hdiutil", "attach", "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount, dmg],
                        check=True)
         try:
@@ -43,24 +43,25 @@ def open_package(assets, prefix, work):
 
 def check(assets, version):
     prefix = "OrcaView-" + version
+    manifest = "SHA256UMS.txt"
     checksums = {name: digest for digest, name in
-                 (line.split("  ", 1) for line in (assets / "SHA256SUMS.txt").read_text().splitlines())}
+                 (line.split("  ", 1) for line in (assets / manifest).read_text().splitlines())}
     for path in assets.iterdir():
-        if path.is_file() and path.name != "SHA256SUMS.txt":
+        if path.is_file() and path.name != manifest:
             with path.open("rb") as stream:
                 assert hashlib.file_digest(stream, "sha256").hexdigest() == checksums[path.name], path.name
     with TemporaryDirectory(prefix="orcaview-release-") as temporary:
         work = Path(temporary)
-        languages = work / "external languages"
-        for group in ("Chinese", "German", "Japanese"):
-            with ZipFile(assets / f"{prefix}-{group}-language-pack.zip") as archive:
-                for name in archive.namelist():
-                    if name.endswith((".json", ".qm")):
-                        archive.extract(name, languages)
-        with ZipFile(assets / f"{prefix}-extension-kit.zip") as kit:
-            (languages / "en-GB.json").write_bytes(kit.read("languages/en-GB.json"))
-            palette = assets / f"{prefix}-Contrast-color-pack.json"
-            assert kit.read("colors/contrast.json") == palette.read_bytes()
+        for title in ("01-Language", "02-Color"):
+            dest = work / title
+            with ZipFile(assets / f"OrcaView-Extensions-{title}-{version}.zip") as bundle:
+                assert bundle.testzip() is None and b"orcaview settings" in bundle.read("INSTALL.md")
+                bundle.extractall(dest)
+        languages = work / "01-Language/languages"
+        qt_locales = ("zh_CN", "zh_TW", "de", "ja")
+        assert {p.name for p in languages.glob("*.qm")} == {f"qtbase_{loc}.qm" for loc in qt_locales}
+        colors = work / "02-Color/colors"
+        assert {p.stem for p in colors.glob("*.json")} == {"contrast", "pastel", "grayscale"}
         env = dict(os.environ, ORCAVIEW_CONFIG_DIR=str(work / "preferences"), ORCAVIEW_HEADLESS="1")
         with open_package(assets, prefix, work) as (binary, examples):
             def run(*args):
@@ -73,26 +74,34 @@ def check(assets, version):
             assert run("--version").strip() == version
             water = examples / "water.xyz"
             assert "* xyz -1 2" in run("preview", water, "--charge", "-1", "--multiplicity", "2").splitlines()
+            edited = work / "edited.inp"
+            edited.write_text("! pbe0 def2-svp sp pal8\n%maxcore=2048\n* XYZ 0 1\nO 0 0 0\nH 0 1 0\nH 1 0 0\n*\n")
+            normalized = run("preview", water, "--edit-input", edited)
+            run("project", water, "--edit-input", edited, "-o", "edited.oview.json")
+            assert "PBE0" in normalized and "nprocs 8" in normalized and "%maxcore 2048" in normalized
+            assert run("preview", "edited.oview.json") == normalized
             run("gui", water, "--screenshot", "english.png")
-            selected = json.loads(run("settings", "language", "--directory", languages, "--locale", "zh-Hans"))
-            assert set(selected["available"]) == {"en", "en-GB", "zh-Hans", "zh-Hant", "de", "ja"}
-            assert selected["locale"] == "zh-Hans" and not selected["invalid_files"]
-            assert json.loads(run("settings", "language")) == selected
+            for locale in ("de", "ja", "zh-Hant", "zh-Hans"):
+                selected = json.loads(run("settings", "language", "--directory", languages, "--locale", locale))
+                assert set(selected["available"]) == {"en", "zh-Hans", "zh-Hant", "de", "ja"}
+                assert selected["locale"] == locale and not selected["invalid_files"]
+                assert json.loads(run("settings", "language")) == selected
             run("gui", water, "--screenshot", "chinese.png")
             english, chinese = ((work / name).read_bytes() for name in ("english.png", "chinese.png"))
             assert english[:8] == chinese[:8] == b"\x89PNG\r\n\x1a\n" and english != chinese
             render = ("--model", "space-filling", "--width", "240", "--height", "180", "--scale", "1")
             run("render", water, "default.bmp", *render)
-            installed = json.loads(run("settings", "appearance", "--import-palette", palette))
-            assert installed["settings"]["palette_id"] == "contrast"
-            assert installed["overrides"] == json.loads(palette.read_bytes())["colors"]
-            run("render", water, "installed.bmp", *render)
-            run("settings", "appearance", "--palette", "default")
-            run("render", water, "one-off.bmp", *render, "--color-pack", palette)
-            original, recolored, once = ((work / name).read_bytes() for name in
-                                         ("default.bmp", "installed.bmp", "one-off.bmp"))
-            assert original[:2] == recolored[:2] == once[:2] == b"BM" and original != recolored == once
-    print(f"Verified OrcaView {version} on {sys.platform}: languages, persistent color pack and one-off export.")
+            original = (work / "default.bmp").read_bytes()
+            for palette in sorted(colors.glob("*.json")):
+                installed = json.loads(run("settings", "appearance", "--import-palette", palette))
+                assert installed["settings"]["palette_id"] == palette.stem
+                assert installed["overrides"] == json.loads(palette.read_bytes())["colors"]
+                run("render", water, "installed.bmp", *render)
+                run("settings", "appearance", "--palette", "default")
+                run("render", water, "one-off.bmp", *render, "--color-pack", palette)
+                recolored, once = ((work / name).read_bytes() for name in ("installed.bmp", "one-off.bmp"))
+                assert original[:2] == recolored[:2] == once[:2] == b"BM" and original != recolored == once
+    print(f"Verified OrcaView {version} on {sys.platform}: editable input, four locales and three color palettes.")
 
 
 if __name__ == "__main__":

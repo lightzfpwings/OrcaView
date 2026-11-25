@@ -191,12 +191,12 @@ _FREQ = (
     BlockOption("freq", "TransInvar", "Enforce Hessian translation invariance after calculation", "bool"),
     BlockOption("freq", "ProjectTR", "Project out translations and rotations", "bool"),
 )
-_NUMFREQ = (
+NUMERICAL_FREQUENCY_OPTIONS = (
     BlockOption("freq", "CentralDiff", "Use central differences", "bool", hint="When off, use one-sided differences."),
     _positive("freq", "Increment", "Numerical displacement (bohr)"),
     BlockOption("freq", "NumHessTransInvar", "Use translation invariance for displaced gradients", "bool"),
 )
-_NUMFREQ_KEYS = tuple(option.key for option in _NUMFREQ)
+_NUMFREQ_KEYS = tuple(option.key for option in NUMERICAL_FREQUENCY_OPTIONS)
 
 
 def uses_numerical_frequencies(spec):
@@ -274,7 +274,7 @@ def catalog_options(spec):
     if has_frequency:
         options.extend(_FREQ)
         if numerical:
-            options.extend(_NUMFREQ)
+            options.extend(NUMERICAL_FREQUENCY_OPTIONS)
     return tuple(options)
 
 

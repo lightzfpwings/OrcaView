@@ -50,8 +50,8 @@ jobs:
           SUFFIX: ${{ matrix.suffix }}
         run: |
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir assets \
-            --pattern "*-$SUFFIX" --pattern '*-language-pack.zip' --pattern '*-color-pack.json' \
-            --pattern '*-extension-kit.zip' --pattern 'SHA256SUMS.txt'
+            --pattern "*$SUFFIX" --pattern 'OrcaView-Extensions-*.zip' --pattern 'SHA256UMS.txt' \
+            --pattern '*-language-pack.zip' --pattern '*-color-pack.json' --pattern '*-extension-kit.zip' --pattern 'SHA256SUMS.txt'
       - name: Apply extensions and compare exported images
         shell: bash
         run: python packaging/check_release_extensions.py assets "$RELEASE_TAG"

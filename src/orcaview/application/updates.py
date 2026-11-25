@@ -148,17 +148,20 @@ def _platform_asset(release, suffix, cancelled):
     if not suffix:
         return None
     tag = release["tag_name"]
-    name = f"OrcaView-{tag.removeprefix('v')}-{suffix}"
     assets = release.get("assets")
     if not isinstance(assets, list):
         raise UpdateError(_INVALID_METADATA)
-    asset = _asset_info(assets, tag, name)
+    base = f"OrcaView-{tag.removeprefix('v')}"
+    asset = _asset_info(assets, tag, f"{base}-{suffix}")
+    if asset is None and suffix == "macOS-arm64.dmg":
+        asset = _asset_info(assets, tag, f"{base}.{suffix}")
     if asset is None or type(asset.get("size")) is not int or asset["size"] <= 0:
         return None
+    name = asset["name"]
     match = _SHA256.fullmatch(str(asset.get("digest", "")))
     if match:
         return UpdateAsset(name, asset["browser_download_url"], asset["size"], match[1].lower())
-    for filename in ("SHA256SUMS.txt", "SHA256SUMS"):
+    for filename in ("SHA256UMS.txt", "SHA256SUMS.txt", "SHA256SUMS"):
         manifest = _asset_info(assets, tag, filename)
         if manifest:
             data, _ = _read(manifest["browser_download_url"], limit=512 * 1024, cancelled=cancelled)

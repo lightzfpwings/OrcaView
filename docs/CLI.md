@@ -24,6 +24,8 @@
 | 按原项目规则迁移 schema 1 | `migrate OLD.oview.json NEW.oview.json` |
 | 更新计算设置、基组、电子态和 ORCA 输入块 | `project PROJECT --job OPT --cores 4 --set scf.MaxIter=250 -o opt.oview.json` |
 | 预览或导出计算输入 | `preview opt.oview.json -o job.inp`，省略 `-o` 则写标准输出 |
+| 应用编辑过的输入并规范化 | `preview water.xyz --edit-input edited.inp -o normalized.inp` |
+| 将同一份编辑保存为项目 | `project water.xyz --edit-input edited.inp -o edited.oview.json` |
 | 读写独立原生 ORCA 输入、通过管道编辑 | `native-input job.inp`、`native-input - -o edited.inp`，保留 UTF-8 BOM 与原始换行 |
 | 结构设计、选区、键长、补氢、二维整理、三维优化、恢复历史 | `design INPUT --script steps.json -o edited.oview.json`，详见[设计命令](CLI_DESIGN.md) |
 | 计算方法、可用计算参数和手册 | `methods`、`methods B3LYP --blocks`、`manual MaxIter` |
@@ -36,6 +38,8 @@
 | 检查更新、下载、安装或替换当前安装 | `update check`、`update download DIR`、`update install DIR`、`update replace-current`。便携版替换当前运行目录时返回后台安装状态及错误日志位置。 |
 
 只有显式加上 `--finite` 才会将周期性输入作为有限结构导入。读取项目时沿用保存的计算设置，命令行传入的选项覆盖相应字段。可使用 `--reset-calculation` 从默认值开始，`--clear-blocks` 清除已保存的输入块覆盖项。运行计算按作业建立独立目录，可用 `--timeout` 限时或 Ctrl-C 取消。
+
+`--edit-input` 接受一个含内嵌 `* xyz` 坐标段的单任务输入，传 `-` 可从标准输入读取。桌面预览和 `preview`、`project`、`run` 使用相同的解析器。程序先应用文本，再应用单独传入的参数，例如 `--cores 8`。未声明的核数和内存采用新任务默认值。格式化会统一空格、块缩进和坐标小数位，自定义注释集中在文件开头。无法映射到参数面板的指令会报告错误，独立原生输入编辑器可保存这类文本。
 
 例如，`orcaview preview water.xyz --job OPT_FREQ --method B3LYP-D4 --solvation SMD --solvent water` 生成 `Opt Freq`。RI-MP2 气相任务的优化加频率生成 `Opt NumFreq`。两者与桌面预览共用频率规则。[ORCA 6.1.1 振动频率](https://orca-manual.mpi-muelheim.mpg.de/contents/structurereactivity/frequencies.html)
 

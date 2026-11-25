@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
     from PySide6.QtCore import QCoreApplication, QEvent, QThreadPool
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFileDialog
+    from PySide6.QtWidgets import QApplication, QFileDialog, QPushButton, QStyle, QStyleOptionButton
     from orcaview.gui import update_dialog
     from orcaview.gui.main_window import MainWindow
     from orcaview.application.updates import RELEASES_URL, UpdateAsset, UpdateError, UpdateRelease
@@ -58,6 +58,23 @@ class UpdateWindowTest(unittest.TestCase):
         dialog = self.window._update_dialog
         self.wait_for(lambda: dialog._task is None)
         return dialog
+
+    def test_buttons_fit_when_an_open_dialog_offers_an_in_place_update(self):
+        dialog = self.open_check()
+        dialog.resize(dialog.minimumWidth(), dialog.height())
+        self.check.return_value = self.release("OrcaView-9.0.0-Windows-x64-portable.zip")
+        with patch.object(update_dialog, "current_portable_installation", return_value=Path("OrcaView")):
+            dialog.check_button.click()
+            self.wait_for(lambda: dialog._task is None and dialog.manual_button.isVisible())
+        self.app.processEvents()
+        for button in dialog.findChildren(QPushButton):
+            if button.isVisible():
+                with self.subTest(button=button.text()):
+                    option = QStyleOptionButton()
+                    button.initStyleOption(option)
+                    contents = button.style().subElementRect(QStyle.SubElement.SE_PushButtonContents, option, button)
+                    self.assertGreaterEqual(contents.width(), option.fontMetrics.horizontalAdvance(button.text()))
+                    self.assertGreaterEqual(contents.height(), option.fontMetrics.height())
 
     @staticmethod
     def release(name=None):

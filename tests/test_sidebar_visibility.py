@@ -47,18 +47,24 @@ class SidebarVisibilityTests(unittest.TestCase):
         return sum(any(image.pixelColor(x, y).lightness() < 128 for x in range(left, right))
                    for y in range(image.height()))
 
-    def test_titles_draw_the_full_height_of_their_chinese_glyphs(self):
+    def test_dock_titles_show_english_descenders_and_chinese_glyphs(self):
         docks = (self.window.tree_dock, self.window.inspector_dock)
-        displayed = [self.title_ink_rows(dock) for dock in docks]
-        # Render the same native title at the same DPI with room for the
-        # descenders. Its reference ink height accounts for platform fonts.
-        for dock in docks:
-            dock.setStyleSheet("QDockWidget::title { padding: 0 9px; }")
-        self.settle()
-        for actual, dock in zip(displayed, docks):
-            reference = self.title_ink_rows(dock)
-            self.assertGreater(reference, 5)
-            self.assertGreaterEqual(actual, reference - 1, dock.windowTitle())
+        for titles in (("Project navigation", "Calculation settings"), ("项目导航", "计算设置")):
+            for dock, title in zip(docks, titles):
+                dock.setWindowTitle(title)
+                dock.setStyleSheet("")
+            self.settle()
+            displayed = [self.title_ink_rows(dock) for dock in docks]
+            # Keep the top inset, title height and pixel grid identical. Open
+            # the bottom of the text rectangle to reveal any clipped strokes.
+            for dock in docks:
+                dock.setStyleSheet('QDockWidget[sidePane="true"]::title { padding: 8px 9px 0px; }')
+            self.settle()
+            for actual, dock in zip(displayed, docks):
+                with self.subTest(title=dock.windowTitle()):
+                    reference = self.title_ink_rows(dock)
+                    self.assertGreater(reference, 5)
+                    self.assertEqual(actual, reference)
 
     def test_bottom_dock_starts_at_the_functional_tab_row(self):
         window = self.window

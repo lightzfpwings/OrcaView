@@ -4,6 +4,8 @@ Open **View → Molecular appearance… → Import color pack…**, select a loc
 
 Start with [contrast.json](contrast.json). It changes carbon, nitrogen, oxygen, sulfur and chlorine. Each listed color applies to the 3D molecule and its element labels in the 2D sketch. Other elements retain their original colors in each view. Structure image exports use the active view's colors.
 
+Pastel provides softer colors for ten common elements. Grayscale assigns neutral grays to all 118 elements for monochrome figures. [Pastel](pastel.json) · [Grayscale](grayscale.json)
+
 Stick and wireframe views darken very light colors so bonds to hydrogen and other pale elements stay visible on the light canvas.
 
 | Field | Value |

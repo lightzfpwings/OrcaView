@@ -124,10 +124,10 @@ class BlockOptionsPanel(QWidget):
         self.expanded_blocks = set()
         self.drafts = {}
 
-    def load(self, spec):
-        """Start a project with precisely its saved overrides and a folded inspector."""
-        self.toggle.setChecked(False)
-        self.expanded_blocks.clear()
+    def load(self, spec, *, keep_expanded=False):
+        if not keep_expanded:
+            self.toggle.setChecked(False)
+            self.expanded_blocks.clear()
         self.drafts = {(item.block, item.key): str(item.value).lower() if type(item.value) is bool else str(item.value)
                        for item in spec.block_options}
         self.set_context(spec, force=True)

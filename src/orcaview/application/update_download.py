@@ -33,7 +33,7 @@ class UpdateCancelled(UpdateDownloadError):
 
 
 _BLOCK = 256 * 1024
-_PACKAGE = re.compile(r"OrcaView-([A-Za-z0-9.+_-]+)-(?:macOS-arm64\.dmg|Windows-x64(?:-portable)?\.zip|Linux-x86_64\.tar\.gz)")
+_PACKAGE = re.compile(r"OrcaView-([A-Za-z0-9.+_-]+)(?:[-.]macOS-arm64\.dmg|-Windows-x64(?:-portable)?\.zip|-Linux-x86_64\.tar\.gz)")
 _BAD_ASSET = "The update package information is invalid."
 _BAD_HASH = "The installer's SHA-256 does not match the release."
 _BAD_SIZE = "The installer size does not match the release."
@@ -55,6 +55,7 @@ def _check_asset(asset):
     if asset.url not in (f"{RELEASES_URL}/download/{version}/{asset.name}",
                          f"{RELEASES_URL}/download/v{version}/{asset.name}"):
         raise UpdateDownloadError(_BAD_ASSET)
+    return version
 
 
 def _read_verified(asset, source, *, sink=None, progress=None, cancelled=None):

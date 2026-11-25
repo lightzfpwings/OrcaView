@@ -37,12 +37,14 @@ def approximation_flags(parser, *, inherit=False):
 
 
 def calculation_flags(parser):
+    parser.add_argument("--edit-input", metavar="FILE", help="Apply an edited inline ORCA preview (use - for stdin) before command-line overrides")
     parser.add_argument("--job", dest="job_type", choices=ALL_JOBS, default=argparse.SUPPRESS)
     parser.add_argument("--method", default=argparse.SUPPRESS, help="Run 'orcaview methods' for supported methods")
     parser.add_argument("--basis", default=argparse.SUPPRESS)
     parser.add_argument("--ri", "--integral-approximation", dest="integral_approximation", default=argparse.SUPPRESS)
     for name in ("aux-j", "aux-jk", "aux-c", "cabs", "reference-functional"):
         parser.add_argument("--" + name, default=argparse.SUPPRESS)
+    parser.add_argument("--scf-convergence", default=argparse.SUPPRESS)
     parser.add_argument("--electron-channel", choices=("alpha", "beta"), default=argparse.SUPPRESS)
     for name in ("active-electrons", "active-orbitals", "nroots", "charge", "multiplicity"):
         parser.add_argument("--" + name, type=int, default=argparse.SUPPRESS)

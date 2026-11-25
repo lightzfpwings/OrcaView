@@ -40,6 +40,21 @@ class DisplayCommandTests(unittest.TestCase):
             self.assertIn("#3265a7", colors)
             self.assertIn("#b84138", colors)
 
+    @unittest.skipUnless(QImage, "Requires Qt raster support")
+    def test_offscreen_atom_labels_draw_distinct_glyphs(self):
+        with TemporaryDirectory() as temp, patch.dict(os.environ, {"ORCAVIEW_CONFIG_DIR": temp}):
+            root = Path(temp)
+            palette = root / "palette.json"
+            palette.write_text('{"id":"ink","name":"Ink","colors":{"N":"#222222","O":"#222222"}}')
+            source, output = root / "atom.xyz", root / "atom.png"
+            images = []
+            for element in ("N", "O"):
+                source.write_text(f"1\nAtom\n{element} 0 0 0\n")
+                self.assertEqual(self.run_cli("render", source, output, "--view", "2d", "--width", 96,
+                                              "--height", 96, "--color-pack", palette), (0, "", ""))
+                images.append(QImage(str(output)))
+            self.assertNotEqual(images[0], images[1], "N and O were painted as the same missing glyph")
+
     def test_headless_display_skips_without_opening_input_or_qt(self):
         for system, env in (("linux", {}), ("linux", {"DISPLAY": ":5", "QT_QPA_PLATFORM": "offscreen"}),
                             ("darwin", {"SSH_CONNECTION": "remote"}), ("darwin", {"ORCAVIEW_HEADLESS": "1"})):

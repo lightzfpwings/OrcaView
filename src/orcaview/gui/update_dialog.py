@@ -75,7 +75,6 @@ class UpdateDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("updateDialog")
         self.setWindowTitle(tr("Check for Updates"))
-        self.setMinimumWidth(480)
         self.release = None
         self._task = None
         self._prepared = None
@@ -83,6 +82,8 @@ class UpdateDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 18, 20, 16)
         layout.setSpacing(12)
+        # Let the layout raise the dialog minimum when longer actions appear.
+        layout.addStrut(440)
         layout.addWidget(QLabel(tr("Current version {version}", version=__version__)))
         self.status = QLabel()
         self.status.setObjectName("updateStatus")

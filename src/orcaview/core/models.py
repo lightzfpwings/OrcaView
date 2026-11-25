@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from ._validation import finite_number, integer as _integer
-from .block_options import BlockOverride, validated_block_values
+from .block_options import BlockOverride, available_options, validated_block_values
 from .elements import ATOMIC_NUMBERS
 from .integrals import BASES, orbital_and_aux_keywords
 from .methods import ALL_JOBS, METHODS, dispersion_options, frozen_core_options, pno_options, reference_options
@@ -14,6 +14,7 @@ from .solvation import validate_solvation
 
 SUPPORTED_METHODS = tuple(METHODS)
 SUPPORTED_BASES = BASES
+SCF_CONVERGENCE = ("SloppySCF", "LooseSCF", "NormalSCF", "MediumSCF", "StrongSCF", "TightSCF", "VeryTightSCF", "ExtremeSCF")
 
 BOND_STYLES = {
     1: ("plain", "coordinate", "coordinate_arrow", "wedge", "hashed_wedge", "hollow_wedge",
@@ -153,6 +154,8 @@ class CalculationSpec:
     block_options: Tuple[BlockOverride, ...] = ()
     solvation_model: str = "Gas"
     solvent: Optional[str] = None
+    scf_convergence: str = "Auto"
+    input_comments: Tuple[str, ...] = ()
 
     @property
     def peak_maxcore_per_process(self) -> int:
@@ -161,6 +164,12 @@ class CalculationSpec:
                                       if item.key.casefold() == "maxcore")))
 
     def validate(self) -> None:
+        if self.scf_convergence not in ("Auto", *SCF_CONVERGENCE):
+            raise ValueError("Unknown SCF convergence preset")
+        if not isinstance(self.input_comments, tuple) or any(
+                not isinstance(note, str) or not note or "#" in note or not note.isprintable()
+                for note in self.input_comments):
+            raise ValueError("Input comments must be individual printable lines without a # delimiter")
         if not isinstance(self.method, str) or self.method not in METHODS:
             raise ValueError(f"Unknown computational method {self.method!r}")
         if self.job_type not in ALL_JOBS:
@@ -185,3 +194,8 @@ class CalculationSpec:
             raise ValueError(f"{self.method} does not support the selected frozen-core setting")
         validate_solvation(self)
         validated_block_values(self)
+        if self.scf_convergence != "Auto":
+            if not any((o.block, o.key) == ("scf", "Convergence") for o in available_options(self)):
+                raise ValueError("The selected method does not offer an SCF convergence preset")
+            if any((o.block, o.key) == ("scf", "Convergence") for o in self.block_options):
+                raise ValueError("SCF convergence is already set by the method or the %scf block")

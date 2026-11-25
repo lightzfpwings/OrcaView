@@ -31,7 +31,7 @@ from orcaview.core.methods import (
     METHODS, REFERENCE_FUNCTIONAL_METHODS, RESPONSE_FUNCTIONALS, canonical_method, dispersion_options, frozen_core_options,
     pno_options, reference_options,
 )
-from orcaview.core.models import Atom, CalculationSpec, Molecule
+from orcaview.core.models import Atom, CalculationSpec, Molecule, SCF_CONVERGENCE
 from orcaview.core.resource_defaults import detect_resources
 from orcaview.core.solvation import SOLVENTS, solvation_options, uses_numerical_frequencies
 from orcaview.gui.appearance_dialog import AppearanceDialog
@@ -44,7 +44,7 @@ from orcaview.gui.inspector_form import InspectorForm, InspectorScrollArea, Insp
 from orcaview.gui.language_settings import LanguageDialog, load_interface_language
 from orcaview.gui.manual import ManualDialog
 from orcaview.gui.native_input import edit_native_input
-from orcaview.gui.preview_tabs import PreviewTabBar
+from orcaview.gui.preview_tabs import InputPreview, PreviewTabBar
 from orcaview.gui.project_navigation import ProjectNavigationTree
 from orcaview.gui.result_demo import build_result_demo
 from orcaview.gui.result_display import display_file_name
@@ -85,7 +85,9 @@ QLabel#muted { color: #70635F; }
 /* Size native dock titles with the font that paints the Chinese glyphs. */
 QDockWidget { font-weight: $section_weight; $dock_family }
 QDockWidget::title { background: #FAF7F2; border-bottom: 1px solid #DDD5CB; padding: 9px; }
-QDockWidget[sidePane="true"]::title { padding: 8px 9px 9px; }
+/* Qt sizes the title using twice the top inset. Leave the descenders and
+   bottom divider room in that same row, including at fractional DPI. */
+QDockWidget[sidePane="true"]::title { padding: 8px 9px 5px; }
 QTreeWidget { background: #FAF7F2; border: none; padding: 10px 4px; }
 QTreeWidget::item { padding: 7px 2px; }
 QTreeWidget::item:selected, QTableWidget::item:selected { background: #F2E4E6; color: #904359; }
@@ -475,6 +477,9 @@ class MainWindow(QMainWindow):
                         *self.auxiliary_bases.values()):
             control.currentIndexChanged.connect(self._settings_changed)
         self.charge = self._spin(-100, 100, 0)
+        self.scf_convergence = QComboBox()
+        self._fill_options(self.scf_convergence, ("Auto", *SCF_CONVERGENCE), "Auto")
+        self.scf_convergence.currentIndexChanged.connect(self._settings_changed)
         self.multiplicity = self._spin(1, 101, 1)
         self.cores = self._spin(1, 256, self.default_calculation.cores)
         self.maxcore = self._spin(1, 1048576, self.default_calculation.maxcore_mb)
@@ -489,7 +494,8 @@ class MainWindow(QMainWindow):
                                (tr("Reference functional"), self.reference_functional), (tr("Target roots"), self.nroots), (tr("Charge"), self.charge),
                                (tr("Spin multiplicity"), self.multiplicity), (tr("Electron spin channel"), self.electron_channel),
                                (tr("Reference wavefunction"), self.wavefunction), (tr("Scalar relativity"), self.relativity),
-                               (tr("Integral approximation"), self.integral_approximation), (tr("Solvent model"), self.solvation_model),
+                               (tr("Integral approximation"), self.integral_approximation), (tr("SCF convergence preset"), self.scf_convergence),
+                               (tr("Solvent model"), self.solvation_model),
                                (tr("Solvent"), self.solvent)]:
             form.addRow(label, control)
         for name, label in auxiliary_labels.items():
@@ -716,7 +722,12 @@ class MainWindow(QMainWindow):
         self.tabs.setObjectName("inputOutputTabs")
         self.tabs.setTabBar(PreviewTabBar(self.tabs, self.workspace_tabs, self.tree_dock, self.inspector_dock))
         self.tabs.setDocumentMode(True)
-        self.input_preview = self._text_panel()
+        self.input_preview = InputPreview()
+        self.input_preview.setFont(typography.preview_font())
+        self.input_preview.setToolTip(tr("Edit the input here. Move the pointer outside or press Tab to apply. Escape discards the pending edit."))
+        self.input_preview.editingFinished.connect(self._commit_preview_edit)
+        self.input_preview.revertRequested.connect(self._revert_preview_edit)
+        self.input_preview.textChanged.connect(self._preview_edited)
         # A short validation message and a full input deck share this viewport.
         self.input_preview.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.output_summary = self._text_panel()
@@ -732,9 +743,7 @@ class MainWindow(QMainWindow):
         title_bar.setFixedHeight(0)
         self.bottom_dock.setTitleBarWidget(title_bar)
 
-    def _load_controls(self, *, project_path=None, opened_path=None):
-        self._workspace_version += 1
-        self._loading = True
+    def _load_calculation_controls(self, *, keep_expanded=False):
         molecule, spec = self.session.molecule, self.session.calculation
         family = METHODS[spec.method].family
         with QSignalBlocker(self.method_group):
@@ -751,7 +760,17 @@ class MainWindow(QMainWindow):
             # Expand the controls to retain values from previously saved projects.
             control.setRange(min(control.minimum(), value), max(control.maximum(), value))
             control.setValue(value)
-        self.block_options.load(spec)
+        self.scf_convergence.setCurrentIndex(self.scf_convergence.findData(spec.scf_convergence))
+        self.block_options.load(spec, keep_expanded=keep_expanded)
+
+    def _load_controls(self, *, project_path=None, opened_path=None):
+        self._workspace_version += 1
+        self._loading = True
+        self.input_preview.pending = False
+        self.method_form.setEnabled(True)
+        self.block_options.setEnabled(True)
+        self._load_calculation_controls()
+        molecule = self.session.molecule
         self._refresh_input_geometry(molecule)
         self._set_structure_heading(project_path or self.session.source_path)
         if molecule.atoms:
@@ -973,7 +992,66 @@ class MainWindow(QMainWindow):
         self.log.appendPlainText(tr("Loaded M1 synthetic atomic charges with one missing value."))
 
     def _update_title(self):
-        self.setWindowTitle("{}{} · OrcaView {}".format("* " if self.dirty else "", self.session.molecule.name, __version__))
+        changed = self.dirty or self.input_preview.pending
+        self.setWindowTitle("{}{} · OrcaView {}".format("* " if changed else "", self.session.molecule.name, __version__))
+
+    def _preview_edited(self):
+        if self.input_preview.pending:
+            self._workspace_version += 1
+            self._update_title()
+
+    def _commit_preview_edit(self):
+        editor = self.input_preview
+        if not editor.pending:
+            return True
+        before = self.session.document.head
+        selection = [before.atom_ids[i] for i in self.viewport.selected if i < len(before.atom_ids)]
+        previous_spec = self.session.calculation
+        try:
+            self.session.apply_input_preview(editor.toPlainText(), expected=editor.base_ref)
+        except ValueError as exc:
+            message = tr("Input edits have not been applied. {reason} · Escape discards this edit.",
+                         reason=diagnostic_text(exc))
+            self.validation.setText(message)
+            self.validation.setToolTip(message)
+            self.validation.setStyleSheet("color: #944A25; padding: 8px 0;")
+            self.statusBar().showMessage(message)
+            self.export_button.setEnabled(False)
+            self.method_form.setEnabled(False)
+            self.block_options.setEnabled(False)
+            return False
+        editor.pending = False
+        self.method_form.setEnabled(True)
+        self.block_options.setEnabled(True)
+        self.statusBar().clearMessage()
+        head = self.session.document.head
+        changed = previous_spec != self.session.calculation or before is not head
+        if changed or not self.export_button.isEnabled():
+            self._loading = True
+            try:
+                self._load_calculation_controls(keep_expanded=True)
+                if before is not head:
+                    self._refresh_input_geometry(head.molecule, keep_view=True)
+                    if selection:
+                        rows = {atom_id: i for i, atom_id in enumerate(head.atom_ids)}
+                        self.viewport.selected = [rows[key] for key in selection if key in rows]
+                        self.viewport.selection_changed.emit(self.viewport.selected)
+                    self.design_panel.set_document(self.session.document)
+                    self.foundation_panel.set_document(self.session.document)
+            finally:
+                self._loading = False
+            self.dirty |= changed
+        self._update_preview(commit_settings=False)
+        self._update_title()
+        return True
+
+    def _revert_preview_edit(self):
+        self.input_preview.pending = False
+        self.method_form.setEnabled(True)
+        self.block_options.setEnabled(True)
+        self.statusBar().clearMessage()
+        self._update_preview()
+        self._update_title()
 
     def _update_frequency_labels(self, spec):
         numerical = uses_numerical_frequencies(spec)
@@ -986,10 +1064,12 @@ class MainWindow(QMainWindow):
 
     def _update_preview(self, *, commit_settings=True) -> str:
         """Return the validated input shown in the preview, or an empty string on failure."""
+        if self.input_preview.pending:
+            return self.input_preview.toPlainText() if self._commit_preview_edit() else ""
         cores, memory = self.cores.value(), self.maxcore.value()
         self.memory_hint.setText(tr("Configured total: {total:,} MB", total=cores * memory))
         if not self.session.molecule.atoms:
-            self.input_preview.clear()
+            self.input_preview.display("", self.session.document.head.ref, editable=False)
             self.validation.clear()
             self.validation.setToolTip("")
             self.export_button.setEnabled(False)
@@ -1007,6 +1087,7 @@ class MainWindow(QMainWindow):
             spec = CalculationSpec(
                 method=method, basis=self.basis.currentData(), job_type=job_type,
                 cores=self.cores.value(), maxcore_mb=self.maxcore.value(),
+                scf_convergence=self.scf_convergence.currentData(), input_comments=self.session.calculation.input_comments,
                 integral_approximation=self.integral_approximation.currentData() or "Auto",
                 pno_preset=self.pno_preset.currentData() or "Auto",
                 dispersion=self.dispersion.currentData() or "Auto",
@@ -1033,6 +1114,12 @@ class MainWindow(QMainWindow):
                 self.log.appendPlainText(message)
                 self.statusBar().showMessage(message, 10000)
             spec = replace(spec, block_options=self.block_options.overrides())
+            has_scf_preset = ("scf", "Convergence") in self.block_options.options
+            self.method_form.setRowVisible(self.scf_convergence, has_scf_preset)
+            if not has_scf_preset and spec.scf_convergence != "Auto":
+                with QSignalBlocker(self.scf_convergence):
+                    self.scf_convergence.setCurrentIndex(0)
+                spec = replace(spec, scf_convergence="Auto")
             self._refresh_auxiliary_controls(spec)
             spec = replace(spec, **{name: control.currentData() for name, control in self.auxiliary_bases.items()})
             charge, multiplicity = self.charge.value(), self.multiplicity.value()
@@ -1050,7 +1137,7 @@ class MainWindow(QMainWindow):
                 peak = spec.peak_maxcore_per_process
                 self.memory_hint.setText(tr("Highest configured module budget: {peak:,} MB per process, {total:,} MB total",
                                             peak=peak, total=peak * cores))
-            self.input_preview.setPlainText(text)
+            self.input_preview.display(text, self.session.document.head.ref)
             self.validation.setText(tr("● Geometry and electron count validated"))
             self.validation.setToolTip(self.validation.text())
             self.validation.setStyleSheet("color: #466446; padding: 8px 0;")
@@ -1058,7 +1145,7 @@ class MainWindow(QMainWindow):
             return text
         except ValueError as exc:
             message = diagnostic_text(exc)
-            self.input_preview.setPlainText(tr("Input cannot be exported yet:\n{}", message))
+            self.input_preview.display(tr("Input cannot be exported yet:\n{}", message), self.session.document.head.ref)
             self.validation.setText("● " + " ".join(message.splitlines()))
             self.validation.setToolTip(message)
             self.validation.setStyleSheet("color: #944A25; padding: 8px 0;")
@@ -1087,7 +1174,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, tr("Operation incomplete"), message)
 
     def _guard_discard(self):
-        if not self.dirty:
+        if not self.dirty and not self.input_preview.pending:
             return True
         choice = QMessageBox.question(self, tr("Unsaved settings"), tr("Save the current project first?"), QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
         if choice == QMessageBox.StandardButton.Save:
@@ -1178,7 +1265,8 @@ class MainWindow(QMainWindow):
     def open_native_input_editor(self):
         if not self.session.molecule.atoms:
             return
-        edit_native_input(self, self._update_preview())
+        text = self._update_preview()
+        edit_native_input(self, text or (self.input_preview.toPlainText() if self.input_preview.pending else ""))
 
     def import_native_output(self):
         if not self.import_action.isEnabled():

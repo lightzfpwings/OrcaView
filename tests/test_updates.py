@@ -64,6 +64,20 @@ class ReleaseUpdatesTest(unittest.TestCase):
         self.assertIsNone(self.check(data, system="Darwin", machine="x86_64").asset)
         self.assertIsNone(self.check(data, system="Linux", machine="aarch64").asset)
 
+    def test_macos_release_filename_and_checksum_manifest(self):
+        from orcaview.application.update_download import _check_asset
+
+        tag = "v0.1.0a56"
+        name = "OrcaView-0.1.0a56.macOS-arm64.dmg"
+        record = release(tag, [WINDOWS, LINUX], preview=True)
+        record["assets"].append(asset(tag, name, digest=None))
+        record["assets"].append(asset(tag, "SHA256UMS.txt", digest=None))
+        with patch.object(updates, "open_update_url", side_effect=[Response([record]),
+                          Response(f"{HASH}  {name}\n".encode())]):
+            found = updates.check_for_update("0.1.0a55", "Darwin", "arm64").asset
+        self.assertEqual(found.name, name)
+        self.assertEqual(_check_asset(found), "0.1.0a56")
+
     def test_latest_on_later_page_can_lack_platform_asset(self):
         first = Response([release("v0.1.0a10", [MAC])],
                          '<https://api.github.com/repositories/123/releases?per_page=100&page=2>; rel="next"')
@@ -79,7 +93,7 @@ class ReleaseUpdatesTest(unittest.TestCase):
         record = release("v0.1.0a10", [MAC])
         item = record["assets"][0]
         item["digest"] = None
-        record["assets"].append(asset(record["tag_name"], "SHA256SUMS.txt", digest=None))
+        record["assets"].append(asset(record["tag_name"], "SHA256UMS.txt", digest=None))
         name = item["name"]
         for lines, expected in [(f"{HASH.upper()}  {name}\r\n", HASH),
                                 (f"{HASH} *{name}.bak\n", None),

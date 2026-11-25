@@ -1,7 +1,61 @@
 """Align the input/output tab strip with the docked workspace columns."""
 
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QTimer
-from PySide6.QtWidgets import QTabBar
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QSignalBlocker, Qt, QTimer, Signal
+from PySide6.QtWidgets import QApplication, QPlainTextEdit, QTabBar
+
+
+class InputPreview(QPlainTextEdit):
+    editingFinished = Signal()
+    revertRequested = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.pending = False
+        self.base_ref = None
+        self.setTabChangesFocus(True)
+        self.textChanged.connect(self._edited)
+
+    def _edited(self):
+        self.pending = not self.isReadOnly()
+
+    def display(self, text, base_ref, *, editable=True):
+        self.pending = False
+        self.base_ref = base_ref
+        self.setReadOnly(not editable)
+        if self.toPlainText() != text:
+            cursor = self.textCursor()
+            line, column = cursor.blockNumber(), cursor.positionInBlock()
+            scroll = self.verticalScrollBar().value()
+            with QSignalBlocker(self):
+                self.setPlainText(text)
+                block = self.document().findBlockByNumber(min(line, self.blockCount() - 1))
+                cursor = self.textCursor()
+                cursor.setPosition(block.position() + min(column, block.length() - 1))
+                self.setTextCursor(cursor)
+                self.verticalScrollBar().setValue(scroll)
+        self.document().setModified(False)
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        if self.pending and not QApplication.activePopupWidget() and not QApplication.mouseButtons():
+            self.editingFinished.emit()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        if self.pending and event.reason() != Qt.FocusReason.PopupFocusReason:
+            self.editingFinished.emit()
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if self.pending and not self.rect().contains(self.mapFromGlobal(event.globalPosition().toPoint())):
+            self.editingFinished.emit()
+
+    def keyPressEvent(self, event):
+        if self.pending and event.key() == Qt.Key.Key_Escape:
+            self.revertRequested.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class PreviewTabBar(QTabBar):

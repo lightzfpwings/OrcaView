@@ -67,6 +67,19 @@ def _resources(args):
 
 
 def _job_session(args):
+    session = _base_session(args)
+    if args.edit_input is not None:
+        if args.edit_input == "-":
+            text = sys.stdin.read()
+        else:
+            path = Path(args.edit_input)
+            check_output(path, getattr(args, "output", None))
+            text = path.read_text(encoding="utf-8-sig")
+        session.apply_input_preview(text)
+    return session
+
+
+def _base_session(args):
     if getattr(args, "demo", None) == "m6":
         from orcaview.gui.result_demo import build_result_demo
         session, _ = build_result_demo()

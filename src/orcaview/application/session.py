@@ -140,3 +140,24 @@ class Session:
         )
         return render_input(molecule, self.calculation)
 
+    def apply_input_preview(self, text, *, expected=None):
+        """Commit a validated text edit to the same geometry history as the inspector."""
+        from orcaview.orca.preview import parse_preview
+
+        document = self.tracked_document
+        base = document.head if document is not None else None
+        if expected is not None and (base is None or expected != base.ref):
+            raise StaleRevisionError("Geometry changed while the input preview was being edited")
+        original = self.molecule if base is None else base.molecule
+        molecule, mapping, calculation, normalized = parse_preview(text, original, self.calculation)
+        if molecule != original:
+            if document is None:
+                document = self.document
+                base = document.head
+            ids = tuple(base.atom_ids[i] if i is not None else None for i in mapping)
+            document.publish_revision(base.ref, molecule, ids, Provenance("input-preview-edit"))
+        elif base is not None and document.head.ref != base.ref:
+            raise StaleRevisionError("Geometry changed while the input preview was being edited")
+        self.calculation = calculation
+        return normalized
+

@@ -1,10 +1,10 @@
 # Language and element color extensions
 
-OrcaView reads UTF-8 JSON on macOS, Windows and Linux. The release includes language ZIPs ready to extract, an importable Contrast color pack and an extension kit for authors. The kit contains the two schemas, an editable English message catalog in `languages/en-GB.json` and a working palette in `colors/contrast.json`.
+OrcaView reads UTF-8 JSON on macOS, Windows and Linux. The release has two ZIPs. Each includes an offline installation guide and an `authoring/` directory with its JSON schema. The language ZIP also contains an editable English message catalog in `authoring/en-GB.json`. The color ZIP provides three ready-to-import palettes in `colors/`. [Language installation](install-language.md) · [Color installation](install-color.md)
 
 ## Interface languages
 
-Extract one or more language ZIPs into the same folder. In **View → Interface language…**, choose this folder, reload the list, select a language and save. Restart the desktop app to load it. The command line uses the same preferences.
+Extract the language ZIP. In **View → Interface language…**, choose the extracted `languages` folder, select a language and save. Restart the desktop app to load it. The command line uses the same preferences.
 
 ```sh
 orcaview settings language --directory ./languages --locale zh-Hans
@@ -25,9 +25,9 @@ To create a language, give your JSON file a distinct locale and a display name. 
 }
 ```
 
-Keep one JSON file per locale at the top level of the chosen folder. Omitted messages use English. OrcaView reserves `en` for its built-in interface. Keep source keys, punctuation and format fields intact, including their conversions and numeric formats. Fields can move in the translation. The loader reports invalid files in the language dialog and in the CLI's `invalid_files` output. The catalog and schemas in the kit are kept in separate locations so that only language files are discovered.
+Keep one JSON file per locale at the top level of the chosen folder. Omitted messages use English. OrcaView reserves `en` for its built-in interface. Keep source keys, punctuation and format fields intact, including their conversions and numeric formats. Fields can move in the translation. The loader reports invalid files in the language dialog and in the CLI's `invalid_files` output. Keep authoring files outside the active language folder.
 
-An optional `qtbase_<locale>.qm` alongside the JSON translates Qt's standard controls. The current builds use Qt 6.8.3. For Simplified and Traditional Chinese the filenames are `qtbase_zh_CN.qm` and `qtbase_zh_TW.qm`. The official ZIPs include the matching files. [Language file schema](language-pack.schema.json)
+An optional `qtbase_<locale>.qm` alongside the JSON translates Qt's standard controls. The current builds use Qt 6.8.3. For Simplified and Traditional Chinese the filenames are `qtbase_zh_CN.qm` and `qtbase_zh_TW.qm`. The language ZIP includes the matching files. [Language file schema](language-pack.schema.json)
 
 ## Element colors
 

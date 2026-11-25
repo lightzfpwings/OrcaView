@@ -102,11 +102,9 @@ class PreparedMacUpdate:
 
 
 def _stage_app(asset, archive, staged, *, cancelled=None):
-    _check_asset(asset)
-    suffix = "-macOS-arm64.dmg"
-    if not asset.name.endswith(suffix):
+    expected = _check_asset(asset)
+    if not asset.name.endswith(".dmg"):
         raise UpdateDownloadError("Choose a macOS arm64 disk image.")
-    expected = asset.name[len("OrcaView-"):-len(suffix)]
     with TemporaryDirectory(prefix="orcaview-image-") as temp:
         image = Path(temp) / "verified.dmg"
         mount = Path(temp) / "mount"

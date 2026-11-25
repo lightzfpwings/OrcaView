@@ -3,7 +3,8 @@
 from dataclasses import asdict, fields
 
 from orcaview import (ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION,
-                      EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
+                      EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, INPUT_TEXT_PROJECT_SCHEMA_VERSION,
+                      SKETCH_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
                       STATE_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION)
 from orcaview.core.block_options import BlockOverride
 from orcaview.core._state_methods import EARLIER_RESPONSE_FUNCTIONALS
@@ -68,7 +69,8 @@ def has_calculation_parameters(spec):
 
 def _calculation_fields(version):
     if version >= SOLVATION_PROJECT_SCHEMA_VERSION:
-        return _BASE_CALCULATION_FIELDS + _PARAMETER_FIELDS + _ADVANCED_FIELDS + ("solvation_model", "solvent")
+        extra = ("scf_convergence", "input_comments") if version >= INPUT_TEXT_PROJECT_SCHEMA_VERSION else ()
+        return _BASE_CALCULATION_FIELDS + _PARAMETER_FIELDS + _ADVANCED_FIELDS + ("solvation_model", "solvent") + extra
     if version >= ADVANCED_PROJECT_SCHEMA_VERSION:
         return _BASE_CALCULATION_FIELDS + _PARAMETER_FIELDS + _ADVANCED_FIELDS
     if version == STATE_PROJECT_SCHEMA_VERSION:
@@ -89,6 +91,8 @@ def read_calculation(record, version):
         data = dict(check_fields(record, (*keys, "block_options"), "Calculation settings"))
         data["block_options"] = tuple(BlockOverride(**_fields_for(item, BlockOverride))
                                       for item in _array(data["block_options"]))
+        if version >= INPUT_TEXT_PROJECT_SCHEMA_VERSION:
+            data["input_comments"] = tuple(_array(data["input_comments"]))
     else:
         data = check_fields(record, keys, "Calculation settings")
     spec = CalculationSpec(**data)

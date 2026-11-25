@@ -318,6 +318,14 @@ def worker_main(argv):
     try:
         operation, = argv
         args = argparse.Namespace(**json.load(sys.stdin.buffer))
+        windows_fonts = None
+        if sys.platform == "win32" and operation != "probe":
+            from PySide6.QtCore import QStandardPaths
+
+            # The Windows offscreen backend discovers fonts in a directory.
+            windows_fonts = os.environ.get("QT_QPA_FONTDIR") or QStandardPaths.writableLocation(
+                QStandardPaths.StandardLocation.FontsLocation)
+            os.environ["QT_QPA_FONTDIR"] = windows_fonts
         from PySide6.QtWidgets import QApplication
         app = QApplication(["OrcaView"])
         app.setApplicationName("OrcaView")
@@ -325,6 +333,12 @@ def worker_main(argv):
             return 0 if app.primaryScreen() else 1
         if app.platformName() != "offscreen":
             raise ValueError("The Qt offscreen platform is unavailable")
+        if windows_fonts:
+            from PySide6.QtGui import QFontDatabase
+
+            # Qt 6.8 scans TTF and OTF, but many Windows CJK fonts are collections.
+            for collection in Path(windows_fonts).glob("*.ttc"):
+                QFontDatabase.addApplicationFont(str(collection))
         if operation == "screenshot":
             from orcaview.gui.main_window import launch
             return launch(args.screenshot, configure=lambda window: _configure_window(window, args))
