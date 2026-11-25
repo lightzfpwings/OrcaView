@@ -64,6 +64,15 @@ jobs:
           persist-credentials: false
           sparse-checkout: tests/test_design_targets.py
           sparse-checkout-cone-mode: false
+      - name: Load Windows system fonts for offscreen Qt tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $fontDirectory = [Environment]::GetFolderPath('Fonts')
+          if (-not (Test-Path -LiteralPath $fontDirectory -PathType Container)) {
+            throw "Windows system font directory is unavailable"
+          }
+          "QT_QPA_FONTDIR=$fontDirectory" >> $env:GITHUB_ENV
       - name: Test 2D and 3D design interactions
         if: hashFiles('tests/test_design_targets.py') != ''
         shell: bash
