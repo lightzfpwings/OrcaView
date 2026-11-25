@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a54 prerelease
+
+All 648 regression tests passed. Six design tests exercise keyboard deletion and undo, atom and bond targeting, overlapping atoms, dragging and placement depth after rotation. They also compare exported images before and during hover. In a native macOS window using the packaged code, deleting a selected benzene atom reduced the atom count from 12 to 11. Undo restored all 12. [Design interaction tests](../tests/test_design_targets.py)
+
+All 141 OrcaView Python modules in each desktop package matched the source. The four language dictionaries and their Qt translation files matched the release inputs. The extension kit contained 1,787 message keys and reproduced byte for byte. [Native package checks](../.github/workflows/release-extensions.yml)
+
 ## 0.1.0a53 prerelease
 
 All 642 regression tests passed from a checkout of the release files. All 140 frozen OrcaView Python modules in the macOS app matched that source. The Windows and Linux packages contained the same modules and the same application image asset. The four shipped translation dictionaries and their Qt catalogs matched the files used to prepare the release.

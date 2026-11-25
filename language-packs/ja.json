@@ -164,6 +164,7 @@
     "Choose where to install the new version of OrcaView": "新しい OrcaView のインストール先を選択",
     "Choose where to save the installer": "インストーラの保存先を選択",
     "Clean up 2D": "2D 整形",
+    "Click a bond to change it, or click two atoms to connect them. In 2D, drag from an atom to extend the molecule.": "結合をクリックすると変更でき、2個の原子を順にクリックすると結合を作れます。2D では原子から空白部分へドラッグすると分子を伸ばせます。",
     "Click an atom in either view to attach one H. Keep clicking to add more, or press Esc to exit.": "2D または 3D 表示の原子をクリックするたびに H を1個付加します。Esc で終了します。",
     "Click empty space to add an atom, or click an atom to change its element.": "空白をクリックすると原子を追加し、既存の原子をクリックすると元素を置換します。",
     "Click the second atom.": "2 番目の原子をクリックしてください。",

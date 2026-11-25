@@ -4,10 +4,11 @@ import math
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication
 
 from orcaview.core.geometry import display_bonds
-from orcaview.gui.bond_drawing import aromatic_ring_paths, draw_bond, ring_center
+from orcaview.gui.bond_drawing import aromatic_ring_paths, bond_half_width, draw_bond, ring_center
+from orcaview.gui.design_picking import MoleculeEditView, distance_to_segment
 from orcaview.i18n import tr
 
 
@@ -16,7 +17,7 @@ _LABEL_COLORS = {"O": "#B84138", "N": "#3265A7", "S": "#856224", "Cl": "#237B54"
                  "F": "#237B54", "Br": "#8F5141", "I": "#79559B", "P": "#AA5729"}
 
 
-class DesignCanvas(QWidget):
+class DesignCanvas(MoleculeEditView):
     atom_clicked = Signal(int)
     atom_shift_clicked = Signal(int)
     box_selected = Signal(list, bool)
@@ -40,6 +41,7 @@ class DesignCanvas(QWidget):
         self.bond_style = "plain"
         self._center = (0., 0.)
         self._extent = (1., 1.)
+        self._projection_key = None
         self.cancel_gesture()
 
     def set_element_colors(self, overrides):
@@ -50,10 +52,12 @@ class DesignCanvas(QWidget):
         self._start = self._pressed = self._drag = self._bond_tip = None
         self._box = None
         self._can_box = self._append_box = False
+        self._track_hover(None)
         self.update()
 
     def set_molecule(self, molecule, *, fit=False, independent_sketch=False):
         self.molecule = molecule
+        self._projection_key = None
         # A detached drawing has no depth. Keep its paint and hit-test order
         # stable when a 3D optimization moves atoms through the page plane.
         self._paint_order = list(range(len(molecule.atoms)))
@@ -82,10 +86,19 @@ class DesignCanvas(QWidget):
         return min(72., (w - min(68., .4 * w)) / self._extent[0],
                    (h - min(80., .4 * h)) / self._extent[1])
 
+    def _atom_positions(self):
+        scale = self._scale()
+        key = (self.width(), self.height(), self._center, scale)
+        if key != self._projection_key:
+            cx, cy = self._center
+            w, h = self.width() / 2, self.height() / 2
+            self._positions = tuple(QPointF(w + (atom.x - cx) * scale, h - (atom.y - cy) * scale)
+                                    for atom in self.molecule.atoms)
+            self._projection_key = key
+        return self._positions
+
     def atom_position(self, index):
-        atom = self.molecule.atoms[index]
-        return QPointF(self.width() / 2 + (atom.x - self._center[0]) * self._scale(),
-                       self.height() / 2 - (atom.y - self._center[1]) * self._scale())
+        return QPointF(self._atom_positions()[index])
 
     def _xyz(self, point, anchor):
         atoms = self.molecule.atoms
@@ -94,27 +107,33 @@ class DesignCanvas(QWidget):
                 self._center[1] - (point.y() - self.height() / 2) / self._scale(), z)
 
     def _hit_atom(self, point):
-        hits = []
-        for layer, i in enumerate(self._paint_order):
-            offset = self.atom_position(i) - point
-            hits.append((math.hypot(offset.x(), offset.y()), -layer, i))
-        distance, _, index = min(hits, default=(math.inf, 0, None))
-        return index if distance <= 15 else None
+        positions = self._atom_positions()
+        closest, best = None, math.inf
+        for i in reversed(self._paint_order):
+            offset = positions[i] - point
+            distance2 = QPointF.dotProduct(offset, offset)
+            if distance2 <= 15 ** 2 and distance2 < best:
+                closest, best = i, distance2
+        return closest
 
-    def _hit_bond(self, point):
+    def _target_at(self, point):
+        if self.molecule is None:
+            return ()
+        atom = self._hit_atom(point)
+        if self._start is not None and self._pressed is not None and self.tool == "bond":
+            return (atom,) if atom is not None and atom != self._pressed else ()
+        if atom is not None:
+            return (atom,)
+        if self.tool not in ("select", "bond"):
+            return ()
         best = None
+        positions = self._atom_positions()
         for bond in self._bonds:
-            a, b = self.atom_position(bond.a), self.atom_position(bond.b)
-            vector = b - a
-            length2 = QPointF.dotProduct(vector, vector)
-            if length2 == 0:
-                continue
-            fraction = max(0., min(1., QPointF.dotProduct(point - a, vector) / length2))
-            miss = point - (a + vector * fraction)
-            distance = math.hypot(miss.x(), miss.y())
-            if distance <= 7 and (best is None or distance < best[0]):
+            distance, fraction, length = distance_to_segment(point, positions[bond.a], positions[bond.b])
+            half_width = bond_half_width(bond.order, bond.style, 1.8, 4.2, length, fraction)
+            if distance <= max(7., half_width + 4.) and (best is None or distance < best[0]):
                 best = (distance, bond.a, bond.b)
-        return best
+        return best[1:] if best else ()
 
     def mousePressEvent(self, event):
         self.cancel_gesture()
@@ -122,15 +141,17 @@ class DesignCanvas(QWidget):
             self.setFocus()
             self._press_tool = self.tool
             self._start = event.position()
-            self._pressed = self._hit_atom(self._start)
-            self._can_box = (self.tool == "select" and self._pressed is None
-                             and self._hit_bond(self._start) is None)
+            self._press_target = self._target_at(self._start)
+            self._pressed = self._press_target[0] if len(self._press_target) == 1 else None
+            self._can_box = self.tool == "select" and not self._press_target
             self._append_box = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         else:
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self._start is None:
+            if not event.buttons():
+                self._track_hover(event.position())
             return
         if not event.buttons() & Qt.MouseButton.LeftButton or self.tool != self._press_tool:
             self.cancel_gesture()
@@ -143,8 +164,10 @@ class DesignCanvas(QWidget):
             self._box = QRectF(self._start, event.position()).normalized()
         elif self._pressed is not None and self.tool == "select":
             self._drag = self.atom_position(self._pressed) + delta
-        elif self._pressed is not None and self.tool == "bond" and self.bond_order:
-            self._bond_tip = event.position()
+        elif self._pressed is not None and self.tool == "bond":
+            self._track_hover(event.position())
+            if self.bond_order:
+                self._bond_tip = event.position()
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -162,8 +185,7 @@ class DesignCanvas(QWidget):
             rect = QRectF(start, event.position()).normalized()
             indices = [i for i in range(len(self.molecule.atoms)) if rect.contains(self.atom_position(i))]
             self.box_selected.emit(indices, append)
-            return
-        if moved:
+        elif moved:
             if self.tool == "select" and index is not None:
                 self.atom_moved.emit(index, *self._xyz(self.atom_position(index) + delta, index))
             elif self.tool == "bond" and index is not None:
@@ -172,8 +194,7 @@ class DesignCanvas(QWidget):
                     self.bond_clicked.emit(index, other)
                 elif other is None and self.bond_order:
                     self.bond_to_space.emit(index, *self._xyz(event.position(), index))
-            return
-        if index is not None and self.tool == "select" and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+        elif index is not None and self.tool == "select" and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
             self.atom_shift_clicked.emit(index)
         elif index is not None:
             fixed = self.mapToGlobal(self.atom_position(index)) if self.tool == "hydrogen" else None
@@ -185,11 +206,12 @@ class DesignCanvas(QWidget):
                 scale = self._scale()
                 self._center = (self._center[0] + delta.x() / scale, self._center[1] - delta.y() / scale)
                 self.update()
-        elif self.tool in ("select", "bond") and (hit := self._hit_bond(event.position())) is not None:
-            self.bond_clicked.emit(hit[1], hit[2])
+        elif len(self._press_target) == 2:
+            self.bond_clicked.emit(*self._press_target)
         else:
             anchor = self.selected[-1] if self.selected else None
             self.space_clicked.emit(*self._xyz(event.position(), anchor))
+        self._track_hover(self.mapFromGlobal(event.globalPosition()))
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape and self._start is not None:
@@ -222,8 +244,9 @@ class DesignCanvas(QWidget):
 
     def _draw_molecule(self, painter, *, interactive):
         ink = QColor("#3E4141")
-        positions = [self.atom_position(i) for i in range(len(self.molecule.atoms))]
+        positions = self._atom_positions()
         if interactive and self._drag is not None:
+            positions = list(positions)
             positions[self._pressed] = self._drag
         font = self.font()
         font.setPixelSize(17)
@@ -233,6 +256,7 @@ class DesignCanvas(QWidget):
                   for atom in self.molecule.atoms]
         masks = [QSizeF(w / 2 + 1, 13) for w in widths]
         boxes = [QRectF(p.x() - w / 2, p.y() - 12, w, 24) for p, w in zip(positions, widths)]
+        hover = self._refresh_hover() if interactive else ()
         painter.save()
         if not interactive and self._bonds:
             # Cut the underlying bond layer away, including any unrelated bond
@@ -245,6 +269,11 @@ class DesignCanvas(QWidget):
             visible.addRect(QRectF(self.rect()))
             painter.setClipPath(visible.subtracted(labels), Qt.ClipOperation.IntersectClip)
         for bond in self._bonds:
+            if hover == (bond.a, bond.b):
+                span = positions[bond.b] - positions[bond.a]
+                width = bond_half_width(bond.order, bond.style, 1.8, 4.2, math.hypot(span.x(), span.y()))
+                painter.setPen(QPen(QColor("#A2DCD7"), 2 * width + 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                painter.drawLine(positions[bond.a], positions[bond.b])
             draw_bond(painter, positions[bond.a], positions[bond.b], bond.order, bond.style, ink, 1.8, 4.2,
                       clearance=(masks[bond.a], masks[bond.b]),
                       interior=ring_center(self._aromatic_paths.get(bond), positions))
@@ -258,8 +287,14 @@ class DesignCanvas(QWidget):
             box = boxes[i]
             if interactive:
                 selected = i in selected_indices
+                background = _PAPER
+                if hover == (i,):
+                    background = QColor("#D8F1EC")
+                    painter.setPen(QPen(QColor("#157D7B"), 1.7))
+                    painter.setBrush(background)
+                    painter.drawRoundedRect(box.adjusted(-3, -3, 3, 3), 8, 8)
                 painter.setPen(QPen(QColor("#9F5970"), 1.5) if selected else Qt.PenStyle.NoPen)
-                painter.setBrush(QColor("#F6E7EC") if selected else _PAPER)
+                painter.setBrush(QColor("#F6E7EC") if selected else background)
                 painter.drawRoundedRect(box, 6, 6)
             painter.setPen(QColor(self._label_colors.get(el, "#394445")))
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter, el)

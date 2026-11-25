@@ -4,14 +4,15 @@ import math
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QRadialGradient
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication
 
 from orcaview.appearance import AppearanceSettings, MODEL_LABELS
 from orcaview.core.elements import ELEMENT_COLORS, VDW_RADII
 from orcaview.core.geometry import DEFAULT_BOND_DISTANCE_FACTOR, display_bonds
 from orcaview.core.point_group import geometric_symmetry
 from orcaview.core.symmetry import DEFAULT_TOLERANCE
-from orcaview.gui.bond_drawing import aromatic_ring_paths, draw_bond, ring_center
+from orcaview.gui.bond_drawing import aromatic_ring_paths, bond_half_width, draw_bond, ring_center
+from orcaview.gui.design_picking import MoleculeEditView, distance_to_segment
 from orcaview.i18n import tr
 
 
@@ -57,22 +58,30 @@ def _in_frame(rows, x, y, z):
     return tuple(a * x + b * y + c * z for a, b, c in rows)
 
 
-class MoleculeViewport(QWidget):
+class MoleculeViewport(MoleculeEditView):
     selection_changed = Signal(list)
     atom_targeted = Signal(int)
+    bond_targeted = Signal(int, int)
+    space_targeted = Signal(float, float, float)
+    delete_requested = Signal()
 
     def __init__(self, parent=None, *, result_view=False, design_selection=False):
-        super().__init__(parent)
+        super().__init__(parent, mouse_tracking=design_selection)
         self._result_view = result_view
         self.design_selection = design_selection
-        self.atom_targeting = False
+        self._design_tool = "select"
+        if design_selection:
+            self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._box_select = False
         self.molecule = None
         self.bonds = ()
         self.visual_bonds = ()
+        self._editable_bonds = ()
         self.appearance = AppearanceSettings()
         self._colors = _atom_colors(self.appearance, {})
         self._center_distances = ()
+        self._center = (0., 0., 0.)
+        self._fit_radius = 1.2
         self._frame = _INPUT_FRAME
         self._point_group_label = ""
         self.symmetry_label = ""
@@ -81,8 +90,13 @@ class MoleculeViewport(QWidget):
         self.labels = False
         self._projected = []
         self.setMinimumSize(360, 300)
-        self.setMouseTracking(True)
         self.fit()
+
+    def set_design_tool(self, mode):
+        self._design_tool = mode
+        self._end_gesture()
+        self._track_hover(None)
+        self.update()
 
     def set_appearance(self, settings, colors):
         old = self.appearance
@@ -103,6 +117,10 @@ class MoleculeViewport(QWidget):
         # The design editor still uses self.bonds for measurements and edits.
         self.visual_bonds = (self.bonds if factor == DEFAULT_BOND_DISTANCE_FACTOR
                              else display_bonds(self.molecule, factor))
+        if self.design_selection:
+            # A custom distance cutoff can show extra guides outside the editor's topology.
+            topology = set(self.bonds)
+            self._editable_bonds = tuple(b for b in self.visual_bonds if b in topology)
 
     def _update_atom_radii(self):
         style = self.appearance
@@ -127,14 +145,17 @@ class MoleculeViewport(QWidget):
     def set_molecule(self, molecule, *, keep_view=False):
         keep_view = keep_view and self.molecule is not None and bool(self.molecule.atoms)
         self.molecule = molecule
+        self._track_hover(None)
         self.selected = []
         # Previously projected atoms must not be pickable after changing geometry.
         self._projected = []
         if molecule is None or not molecule.atoms:
-            self.bonds = self.visual_bonds = ()
+            self.bonds = self.visual_bonds = self._editable_bonds = ()
             self._aromatic_paths = {}
             self._local_positions = ()
             self._center_distances = ()
+            self._center = (0., 0., 0.)
+            self._fit_radius = 1.2
             self.principal_axis = None
             self._frame = _INPUT_FRAME
             self._point_group_label = self.symmetry_label = ""
@@ -156,6 +177,7 @@ class MoleculeViewport(QWidget):
         # Rotation, zoom and export all use the same centered molecular geometry.
         atoms = molecule.atoms
         cx, cy, cz = (sum(getattr(atom, axis) for atom in atoms) / len(atoms) for axis in "xyz")
+        self._center = (cx, cy, cz)
         centered = [(atom.x - cx, atom.y - cy, atom.z - cz) for atom in atoms]
         self._center_distances = tuple(math.sqrt(sum(v ** 2 for v in point)) for point in centered)
         self._update_atom_radii()
@@ -220,8 +242,11 @@ class MoleculeViewport(QWidget):
         self._camera = tuple(rows)
         self.update()
 
+    def _projection_scale(self):
+        return min(self.width(), self.height()) * 0.32 / self._fit_radius * self.zoom
+
     def _project_atoms(self, fixed_target=None):
-        scale = min(self.width(), self.height()) * 0.32 / self._fit_radius * self.zoom
+        scale = self._projection_scale()
         if fixed_target is not None:
             # Adding a peripheral H changes the centre and extent. Keep the
             # clicked nucleus under the cursor for the next click.
@@ -236,6 +261,16 @@ class MoleculeViewport(QWidget):
             size = max(self._min_atom_pixels, radius * scale)
             projected.append((origin_x + x * scale, origin_y - y * scale, z, size))
         return scale, projected
+
+    def _world_at(self, point):
+        # An empty-space click lies in the screen plane of the last selected atom,
+        # or through the molecular centre when there is no selection.
+        scale = self._projection_scale()
+        x = (point.x() - self.width() / 2 - self._pan.x()) / scale
+        y = (self.height() / 2 + self._pan.y() - point.y()) / scale
+        z = self._projected[self.selected[-1]][2] if self.selected else 0.
+        return tuple(center + sum(a * b for a, b in zip(self.transform(*axis), (x, y, z)))
+                     for center, axis in zip(self._center, _INPUT_FRAME))
 
     def has_exportable_structure(self):
         return self.molecule is not None and bool(self.molecule.atoms)
@@ -257,7 +292,50 @@ class MoleculeViewport(QWidget):
         finally:
             painter.restore()
 
-    def _draw_molecule(self, painter, scale, projected, selection_labels=()):
+    def _stick_half_width(self, bond, scale):
+        model = self.appearance.model
+        if model == "ball-and-stick":
+            atoms = self.molecule.atoms
+            weight = .062 if "H" in (atoms[bond.a].element, atoms[bond.b].element) else .083
+            radius = max(.7, weight * scale * self.appearance.bond_scale)
+        elif model == "stick":
+            radius = max(.7, _STICK_RADIUS * scale * self.appearance.bond_scale)
+        else:
+            radius = max(.5, .85 * self.appearance.bond_scale)
+        return radius if bond.order == 1 else max(.6, radius * .52)
+
+    def _target_at(self, point):
+        front = None
+        px, py = point.x(), point.y()
+        for i, (x, y, z, radius) in enumerate(self._projected):
+            distance2 = (x - px) ** 2 + (y - py) ** 2
+            if distance2 <= (radius + 5) ** 2:
+                # A nearby sphere's picking margin must not mask a visible atom.
+                hit = (self.design_selection and distance2 <= radius ** 2, z, i)
+                if front is None or hit > front:
+                    front = hit
+        if front is not None:
+            return (front[2],)
+        if (not self.design_selection or self._design_tool not in ("select", "bond") or self._box_select
+                or self.appearance.model == "space-filling" or not self._projected):
+            return ()
+        if self._button is None and QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
+            return ()
+        scale = self._projection_scale()
+        best = None
+        for bond in self._editable_bonds:
+            x1, y1, z1, _ = self._projected[bond.a]
+            x2, y2, z2, _ = self._projected[bond.b]
+            miss, fraction, length = distance_to_segment(point, QPointF(x1, y1), QPointF(x2, y2))
+            stick = self._stick_half_width(bond, scale)
+            half_width = bond_half_width(bond.order, bond.style, 2 * stick, 3.1 * stick, length, fraction)
+            if miss <= half_width + 5:
+                hit = (miss, -(z1 + fraction * (z2 - z1)), bond.a, bond.b)
+                if best is None or hit < best:
+                    best = hit
+        return best[2:] if best else ()
+
+    def _draw_molecule(self, painter, scale, projected, selection_labels=(), hover=()):
         atoms = self.molecule.atoms
         colors = [self._colors.get(atom.element, _FALLBACK_ATOM) for atom in atoms]
         model = self.appearance.model
@@ -265,14 +343,14 @@ class MoleculeViewport(QWidget):
             points = [QPointF(x, y) for x, y, z, radius in projected]
             draw_as_ball_and_stick = model == "ball-and-stick"
             for bond in self.visual_bonds:
-                if draw_as_ball_and_stick:
-                    weight = .062 if "H" in (atoms[bond.a].element, atoms[bond.b].element) else .083
-                    radius = max(.7, weight * scale * self.appearance.bond_scale)
-                elif model == "stick":
-                    radius = max(.7, _STICK_RADIUS * scale * self.appearance.bond_scale)
-                else:
-                    radius = max(.5, .85 * self.appearance.bond_scale)
-                stick = radius if bond.order == 1 else max(.6, radius * .52)
+                stick = self._stick_half_width(bond, scale)
+                if hover == (bond.a, bond.b):
+                    span = points[bond.b] - points[bond.a]
+                    width = 2 * bond_half_width(bond.order, bond.style, 2 * stick, 3.1 * stick,
+                                                math.hypot(span.x(), span.y()))
+                    for extra, color in ((10, QColor(46, 161, 203, 75)), (5, QColor("#368FB2"))):
+                        painter.setPen(QPen(color, width + extra, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                        painter.drawLine(points[bond.a], points[bond.b])
                 draw_bond(painter, points[bond.a], points[bond.b], bond.order, bond.style,
                           _STICK if draw_as_ball_and_stick else colors[bond.a],
                           2 * stick, 3.1 * stick, shaded=draw_as_ball_and_stick,
@@ -282,6 +360,15 @@ class MoleculeViewport(QWidget):
         for index in sorted(range(len(atoms)), key=lambda i: projected[i][2]):
             x, y, z, size = projected[index]
             color = colors[index]
+            if hover == (index,):
+                outer = size + 8
+                halo = QRadialGradient(QPointF(x, y), outer)
+                halo.setColorAt(size / outer, QColor("#277FAB"))
+                halo.setColorAt((size + 3) / outer, QColor(52, 165, 215, 185))
+                halo.setColorAt(1, QColor(52, 165, 215, 0))
+                painter.setBrush(halo)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawEllipse(QPointF(x, y), outer, outer)
             if model in ("stick", "wireframe"):
                 painter.setBrush(color)
                 painter.setPen(Qt.PenStyle.NoPen)
@@ -307,7 +394,7 @@ class MoleculeViewport(QWidget):
         atoms = self.molecule.atoms
         scale, self._projected = self._project_atoms()
         selection_labels = set(self.selected) if self.labels else ()
-        self._draw_molecule(painter, scale, self._projected, selection_labels)
+        self._draw_molecule(painter, scale, self._projected, selection_labels, self._refresh_hover())
         # Table selection may address an atom behind another in this projection.
         if self.selected:
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -410,17 +497,21 @@ class MoleculeViewport(QWidget):
 
     def mousePressEvent(self, event):
         if self._button is None and event.button() in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+            if self.design_selection:
+                self.setFocus(Qt.FocusReason.MouseFocusReason)
+                self._track_hover(None)
             self._button = event.button()
             self._press = self._last = event.position()
             self._dragged = False
-            self._box_select = (self.design_selection and not self.atom_targeting and self._button == Qt.MouseButton.LeftButton
+            self._box_select = (self.design_selection and self._design_tool != "hydrogen"
+                                and self._button == Qt.MouseButton.LeftButton
                                 and bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier))
-            if self._box_select:
-                self.setFocus(Qt.FocusReason.MouseFocusReason)
 
     def mouseMoveEvent(self, event):
         if self._button is not None and event.buttons() & self._button:
             self._drag_to(event.position())
+        elif self.design_selection and self._button is None and not event.buttons():
+            self._track_hover(event.position())
 
     def _drag_to(self, position):
         if position == self._last:
@@ -449,39 +540,52 @@ class MoleculeViewport(QWidget):
             selected = set(self.selected)
             self.selected.extend(i for i, (x, y, _, _) in enumerate(self._projected)
                                  if i not in selected and bounds.contains(x, y))
+            self._end_gesture()
+            self.selection_changed.emit(list(self.selected))
         elif self._button == Qt.MouseButton.LeftButton and not self._dragged:
-            hits = [(z, i) for i, (x, y, z, radius) in enumerate(self._projected)
-                    if math.hypot(x - event.position().x(), y - event.position().y()) <= radius + 5]
-            target = max(hits)[1] if hits else None
-            if self.atom_targeting:
-                self._end_gesture()
-                if target is not None:
-                    fixed = self.mapToGlobal(QPointF(*self._projected[target][:2]))
-                    previous = self.molecule
-                    self.atom_targeted.emit(target)
-                    if self.molecule is not previous:
-                        point = self.mapFromGlobal(fixed)
-                        _, self._projected = self._project_atoms((target, point.x(), point.y()))
-                        self.update()
-                return
-            self._pick_atom(target)
+            self._click_point(event.position())
         else:
             self._end_gesture()
-            return
-        self._end_gesture()
-        self.selection_changed.emit(list(self.selected))
+        if self.design_selection:
+            self._track_hover(self.mapFromGlobal(event.globalPosition()))
         self.update()
 
-    def _pick_atom(self, index):
+    def _click_point(self, point):
+        if self.has_exportable_structure():
+            _, self._projected = self._project_atoms()
+        target = self._target_at(point)
+        additive = self._box_select
+        tool = "select" if additive else self._design_tool
+        self._end_gesture()
+        if tool == "select":
+            if len(target) == 2:
+                self.selected = list(target)
+            else:
+                self._pick_atom(target[0] if target else None, additive)
+            self.selection_changed.emit(list(self.selected))
+        elif len(target) == 2:
+            self.bond_targeted.emit(*target)
+        elif target:
+            index, = target
+            fixed = self.mapToGlobal(QPointF(*self._projected[index][:2])) if tool == "hydrogen" else None
+            previous = self.molecule
+            self.atom_targeted.emit(index)
+            if fixed is not None and self.molecule is not previous:
+                pos = self.mapFromGlobal(fixed)
+                _, self._projected = self._project_atoms((index, pos.x(), pos.y()))
+        elif tool in ("atom", "ring", "bond"):
+            self.space_targeted.emit(*self._world_at(point))
+
+    def _pick_atom(self, index, additive):
         if index is None:
-            if not self._box_select:
+            if not additive:
                 self.selected = []
             return
-        if self.design_selection and not self._box_select and len(self.selected) > 2:
+        if self.design_selection and not additive and len(self.selected) > 2:
             self.selected = [index]
         elif index in self.selected:
             self.selected.remove(index)
-        elif self._box_select:
+        elif additive:
             self.selected.append(index)
         else:
             self.selected = (self.selected + [index])[-2:]
@@ -491,14 +595,22 @@ class MoleculeViewport(QWidget):
         self._dragged = self._box_select = False
 
     def event(self, event):
-        if event.type() in (QEvent.Type.UngrabMouse, QEvent.Type.FocusOut, QEvent.Type.Hide,
-                            QEvent.Type.WindowDeactivate, QEvent.Type.Resize) and getattr(self, "_box_select", False):
+        if (event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease)
+                and event.key() == Qt.Key.Key_Shift and self._hover_point is not None):
+            self.update()
+        if getattr(self, "_button", None) is not None and (
+                event.type() in (QEvent.Type.UngrabMouse, QEvent.Type.FocusOut, QEvent.Type.Hide,
+                                 QEvent.Type.WindowDeactivate) or self._box_select and event.type() == QEvent.Type.Resize):
             self._end_gesture()
             self.update()
         return super().event(event)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape and self._box_select:
+        if self.design_selection and event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self._end_gesture()
+            self.delete_requested.emit()
+            event.accept()
+        elif event.key() == Qt.Key.Key_Escape and self._box_select:
             self._end_gesture()
             self.update()
             event.accept()

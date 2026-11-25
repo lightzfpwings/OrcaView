@@ -1,6 +1,6 @@
 # OrcaView
 
-OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a53 supports external interface languages and element color schemes across macOS, Windows and Linux. English is built in on every platform. [Download 0.1.0a53](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a53)
+OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a54 highlights atoms and bonds under the editing pointer and supports keyboard deletion in both design views. All three platforms include English and support external language and element color packs. [Download 0.1.0a54](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a54)
 
 ## Install and try OrcaView
 
@@ -38,9 +38,9 @@ Try `Examples/water-raman.out` for IR and Raman or `Examples/peroxide-uv-cd.out`
 
 English is built in. Simplified and Traditional Chinese are provided together in the separate Chinese language extension. German and Japanese also have optional extensions. Extract the desired language ZIP to a directory of your choice. In **View → Interface language…**, choose that directory, refresh the list, select the language, save and restart. Each extension includes OrcaView messages and the corresponding Qt translations. [Extension sources](language-packs/)
 
-Download the Contrast color pack, then open **View → Molecular appearance… → Import color pack…**, choose the JSON and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Contrast palette](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a53/OrcaView-0.1.0a53-Contrast-color-pack.json)
+Download the Contrast color pack, then open **View → Molecular appearance… → Import color pack…**, choose the JSON and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Contrast palette](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a54/OrcaView-0.1.0a54-Contrast-color-pack.json)
 
-The extension kit contains an editable message catalog, a working palette and JSON schemas for both formats. [Author guide](docs/extensions/README.md) · [Download the extension kit](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a53/OrcaView-0.1.0a53-extension-kit.zip)
+The extension kit contains an editable message catalog, a working palette and JSON schemas for both formats. [Author guide](docs/extensions/README.md) · [Download the extension kit](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a54/OrcaView-0.1.0a54-extension-kit.zip)
 
 ### Updating
 
@@ -73,6 +73,8 @@ The design workspace pairs an editable 2D drawing with its 3D geometry. Drag the
 5. Click **+H**, then click atoms to add individual bonded hydrogens. Double-click **+H** to fill missing hydrogens for supported neutral singlets in one undoable operation. Manual addition is available for other charge and spin states. The design validation area reports unusual bonding.
 6. The 2D cleanup action arranges the drawing's bond lengths, angles and rings. The independent 3D optimization uses Open Babel MMFF94, with UFF as a fallback. ORCA input uses the 3D coordinates. The status shows the force field used. [Open Babel force fields](https://openbabel.org/docs/Forcefields/Overview.html)
 7. Return to Input to inspect or export a calculation. Each result remains associated with its calculated geometry. An individual result geometry can be sent back to Design.
+
+The sketch highlights the target atom or bond in teal, and the 3D pane uses a blue halo. With a bond tool active, click a bond in either pane to change or remove it. To delete atoms, select them and press Delete or Backspace. A new atom placed in empty 3D space uses the depth of the last selected atom, or the centre of the molecule when the selection is empty.
 
 ## Build and test
 

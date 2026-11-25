@@ -215,6 +215,9 @@ class DesignPanel(QWidget):
         self.canvas.delete_requested.connect(self._delete)
         self.viewport.selection_changed.connect(self._select)
         self.viewport.atom_targeted.connect(self._atom_clicked)
+        self.viewport.bond_targeted.connect(self._bond_clicked)
+        self.viewport.space_targeted.connect(self._space_clicked)
+        self.viewport.delete_requested.connect(self._delete)
         self._set_tool("select")
         self._sync_selection()
 
@@ -326,13 +329,13 @@ class DesignPanel(QWidget):
         self._bond_start = None
         targeting = mode == "hydrogen"
         self._leave_hydrogens.setEnabled(targeting)
-        self.viewport.atom_targeting = targeting
+        self.viewport.set_design_tool(mode)
         if targeting:
             self.canvas.setCursor(self._hydrogen_cursor)
             self.viewport.setCursor(self._hydrogen_cursor)
         else:
             self.canvas.setCursor(Qt.CursorShape.ArrowCursor if mode == "select" else Qt.CursorShape.CrossCursor)
-            self.viewport.unsetCursor()
+            self.viewport.setCursor(self.canvas.cursor())
         self._show_hint()
 
     def _choose_ring(self, action):
@@ -355,7 +358,7 @@ class DesignPanel(QWidget):
         elif self._bond_start is not None:
             text = tr("Click the second atom.")
         elif self.canvas.bond_order:
-            text = tr("Click two atoms to bond them. Drag from an atom into empty space to extend the molecule.")
+            text = tr("Click a bond to change it, or click two atoms to connect them. In 2D, drag from an atom to extend the molecule.")
         else:
             text = tr("Click two atoms in order, or click an existing bond.")
         self.status.setText(text)

@@ -51,6 +51,27 @@ def _inset(clearance, unit):
     return clearance
 
 
+def _symbol_span(length, spacing):
+    return min(length * .28, max(3.5, spacing * 1.35))
+
+
+def bond_half_width(order, style, width, spacing, length, fraction=1.):
+    """Transverse extent of a bond symbol for pointer picking and highlighting."""
+    if style in ("wedge", "hollow_wedge", "hashed_wedge", "wavy_wedge", "hashed", "wavy", "coordinate_arrow"):
+        span = _symbol_span(length, spacing)
+        if style in ("wedge", "hollow_wedge", "hashed_wedge", "wavy_wedge"):
+            span *= fraction
+        elif style == "wavy":
+            span *= .74
+        elif style == "coordinate_arrow" and (1 - fraction) * length > min(length * .38, span * 2):
+            span = 0.
+        return span + width / 2
+    if style == "bold":
+        width *= 1.7
+        spacing *= 1.5
+    return (width + (order - 1) * spacing) / 2
+
+
 def draw_bond(painter, start, end, order, style, ink, width, spacing, *,
               clearance=(0., 0.), interior=None, shaded=False, end_ink=None):
     vector = end - start
@@ -90,7 +111,7 @@ def draw_bond(painter, start, end, order, style, ink, width, spacing, *,
                     Qt.PenJoinStyle.RoundJoin)
 
     painter.setPen(pen())
-    span = min(length * .28, max(3.5, spacing * 1.35))
+    span = _symbol_span(length, spacing)
     if style in ("wedge", "hollow_wedge"):
         triangle = QPolygonF([QPointF(), QPointF(length, -span), QPointF(length, span)])
         painter.setPen(pen(weight=min(width, span / 2)))

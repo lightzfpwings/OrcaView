@@ -226,6 +226,7 @@
     "Choose where to install the new version of OrcaView": "選擇新版 OrcaView 的安裝目錄",
     "Choose where to save the installer": "選擇安裝包儲存位置",
     "Clean up 2D": "整理 2D",
+    "Click a bond to change it, or click two atoms to connect them. In 2D, drag from an atom to extend the molecule.": "點選現有的鍵可修改它，依序點選兩個原子可以連鍵。在二維視圖中，從原子拖曳至空白處可延伸分子。",
     "Click an atom in either view to attach one H. Keep clicking to add more, or press Esc to exit.": "點選二維或三維視圖中的原子以添加一個氫。可連續點選，按 Esc 退出。",
     "Click empty space to add an atom, or click an atom to change its element.": "點選空白處新增原子，點選已有原子取代元素。",
     "Click the second atom.": "點選第二個原子。",
