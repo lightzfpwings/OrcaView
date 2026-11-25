@@ -15,6 +15,9 @@ _NUMBER = r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[EeDd][+-]?[0-9]+)?"
 _INT = r"[+-]?[0-9]{1,18}"
 _ELEMENT = r"[A-Z][a-z]?"
 _DASHES = re.compile(r"-{3,}")
+_COORDINATE_HEADING = re.compile(
+    r"CARTESIAN COORDINATES\s+\((?:(?P<angstrom>ANGSTROEM)|(?P<bohr>A\.U\.)|(?P<unsupported>.*))\)", re.I,
+)
 _XYZ_ROW = re.compile(rf"({_ELEMENT})\s+({_NUMBER})\s+({_NUMBER})\s+({_NUMBER})")
 _AU_ROW = re.compile(
     rf"([0-9]{{1,18}})\s+({_ELEMENT})\s+({_NUMBER})\s+[0-9]+\s+{_NUMBER}"
@@ -22,7 +25,6 @@ _AU_ROW = re.compile(
 )
 _MULLIKEN_ROW = re.compile(rf"([0-9]{{1,18}})\s+({_ELEMENT})\s*:\s*({_NUMBER})")
 _MULLIKEN_SUM = re.compile(rf"SUM OF ATOMIC CHARGES\s*:\s*({_NUMBER})", re.I)
-_ECHO = r"\|\s*[0-9]+>\s*(.*)"
 _ECHO_STATE = re.compile(rf"\*\s*XYZ(FILE)?\s+({_INT})\s+({_INT})(?:\s+(.+))?", re.I)
 _ECHO_RUN_TYPE = re.compile(r"(?:%METHOD\s+)?RUNTYP(?:\s*=\s*|\s+)([A-Z][A-Z0-9_-]*)\b", re.I)
 _ECHO_TASK_BLOCK = re.compile(r"%(?:COMPOUND|MD|NEB)\b", re.I)
@@ -84,6 +86,20 @@ def _line_numbers(lines, pattern):
     return [line_number for line_number, _ in _matches(lines, pattern)]
 
 
+def _coordinate_headings(lines):
+    by_unit = {"angstrom": [], "bohr": [], "unsupported": []}
+    for number, line in enumerate(lines, 1):
+        match = _COORDINATE_HEADING.fullmatch(line)
+        if match:
+            by_unit[match.lastgroup].append(number)
+    return by_unit["angstrom"], by_unit["bohr"], by_unit["unsupported"]
+
+
+def _input_echo(lines):
+    return [(line, match[1].partition("#")[0].strip())
+            for line, match in _matches(lines, r"\|\s*[0-9]+>\s*(.*)")]
+
+
 def _finite(token):
     value = float(token.replace("D", "E").replace("d", "e"))
     if not isfinite(value):
@@ -102,7 +118,7 @@ def _table(lines, heading):
         yield index + 1, line
 
 
-def _geometry(lines, angstrom, bohr, atom_counts, scf_line):
+def _geometry(lines, angstrom, bohr, scf_line):
     if len(angstrom) != 1:
         if angstrom:
             return (), angstrom[0], OutputIssue("ambiguous_geometry", "Multiple coordinate tables in angstroms were found.", angstrom[1])
@@ -120,14 +136,17 @@ def _geometry(lines, angstrom, bohr, atom_counts, scf_line):
             raise ValueError("The coordinate table in angstroms is empty")
     except ValueError as error:
         return (), heading, OutputIssue("invalid_geometry", str(error), row_number)
-    if any(count != len(atoms) for _, count in atom_counts):
-        count_line = next(line for line, count in atom_counts if count != len(atoms))
-        return (), heading, OutputIssue("conflicting_geometry", "The actual coordinates do not match the reported atom count.", count_line)
+    count_before_scf = False
+    for line, match in _matches(lines, r"NUMBER OF ATOMS\s*\.{3,}\s*([0-9]{1,18})"):
+        if int(match[1]) != len(atoms):
+            return (), heading, OutputIssue("conflicting_geometry", "The actual coordinates do not match the reported atom count.", line)
+        if heading < line and (scf_line is None or line < scf_line):
+            count_before_scf = True
     if bohr:
         conflict = _crosscheck_bohr(lines, heading, bohr, atoms, scf_line)
         if conflict is not None:
             return (), heading, conflict
-    elif not any(heading < line and (scf_line is None or line < scf_line) for line, _ in atom_counts):
+    elif not count_before_scf:
         return tuple(atoms), heading, OutputIssue(
             "missing_atom_count", "Missing Bohr coordinates or precalculation atom count to verify the coordinate table in angstroms.", heading,
         )
@@ -224,6 +243,11 @@ def _energy(lines):
         return None, heading, OutputIssue("invalid_energy", "The final single-point energy is not a finite Hartree value.", heading)
 
 
+def _matches_printed_charge_sum(values, printed_total):
+    # Per-atom charges have six decimal places and the printed total has seven.
+    return isclose(fsum(values), printed_total, rel_tol=0, abs_tol=len(values) * 0.5e-6 + 1e-7)
+
+
 def _mulliken(lines, atoms, charge, scf_line, normal_line):
     headings = list(_matches(lines, r"MULLIKEN ATOMIC CHARGES\b(.*)"))
     if not headings:
@@ -252,11 +276,10 @@ def _mulliken(lines, atoms, charge, scf_line, normal_line):
             values.append(_finite(entry[3]))
         if not values or len(values) != len(atoms):
             raise ValueError("The Mulliken charge table has the wrong atom count.")
-        # Printed per-atom values have six decimal places, and the printed total has seven.
         if printed_total is not None:
             if charge is not None and not isclose(printed_total, charge, rel_tol=0.0, abs_tol=1e-6):
                 raise ValueError("The total Mulliken charge is inconsistent with the electronic state.")
-            if not isclose(fsum(values), printed_total, rel_tol=0.0, abs_tol=len(values) * 0.5e-6 + 1e-7):
+            if not _matches_printed_charge_sum(values, printed_total):
                 raise ValueError("The sum of the atomic Mulliken charges differs from the reported total.")
     except (ValueError, OverflowError) as error:
         reason = str(error)
@@ -283,14 +306,8 @@ def parse_native_output(text: str) -> NativeOutputEvidence:
         lines, r"\**\s*ORCA\s+(?:FINISHED\s+BY\s+ERROR\s+TERMINATION|TERMINATED\s+ABNORMALLY)(?:\s+.*|\**)",
     )
     single_point = _line_numbers(lines, r"\**\s*SINGLE\s+POINT\s+CALCULATION\s*\**")
-    angstrom = _line_numbers(lines, r"CARTESIAN COORDINATES\s+\(ANGSTROEM\)")
-    bohr = _line_numbers(lines, r"CARTESIAN COORDINATES\s+\(A\.U\.\)")
-    length_headers = _line_numbers(lines, r"CARTESIAN COORDINATES\s+\(.*\)")
-    unsupported_units = sorted(set(length_headers) - set(angstrom) - set(bohr))
-    atom_counts = [(line, int(match[1])) for line, match in _matches(
-        lines, r"NUMBER OF ATOMS\s*\.{3,}\s*([0-9]{1,18})",
-    )]
-    echoes = [(line, match[1].split("#", 1)[0].strip()) for line, match in _matches(lines, _ECHO)]
+    angstrom, bohr, unsupported_units = _coordinate_headings(lines)
+    echoes = _input_echo(lines)
     echoed_other_tasks = [line for line, echo in echoes if _echo_has_other_task(echo)]
     job_directives = _line_numbers(lines, r"\**\s*(?:COMPOUND JOB\b.*|\$\s*NEW_JOB\b.*)")
     job_directives += [line for line, echo in echoes if re.match(r"\$\s*NEW_JOB\b|%COMPOUND\b", echo, re.I)]
@@ -319,7 +336,7 @@ def parse_native_output(text: str) -> NativeOutputEvidence:
     normal_line = next(iter(normal_lines), None)
     normal = False if abnormal_lines else True if normal_line is not None else None
     termination_line = abnormal_lines[0] if abnormal_lines else normal_line
-    atoms, geometry_line, geometry_issue = _geometry(lines, angstrom, bohr, atom_counts, scf_line)
+    atoms, geometry_line, geometry_issue = _geometry(lines, angstrom, bohr, scf_line)
     charge, multiplicity, charge_line, mult_line, state_issue = _electronic_state(
         lines, echoes, geometry_line, scf_line, atoms,
     )
@@ -380,7 +397,7 @@ def parse_native_output(text: str) -> NativeOutputEvidence:
 def reported_geometry(text):
     """Read one explicit structure for a report, including a converged optimisation's final evaluation."""
     lines = tuple(line.strip() for line in text.splitlines())
-    headings = _line_numbers(lines, r"CARTESIAN COORDINATES\s+\(ANGSTROEM\)")
+    headings, bohr_headings, _ = _coordinate_headings(lines)
     stationary = _line_numbers(lines, r"\*+\s*FINAL ENERGY EVALUATION AT THE STATIONARY POINT\s*\*+")
     if len(headings) == 1:
         heading = headings[0]
@@ -391,18 +408,17 @@ def reported_geometry(text):
     if heading is None:
         return None
     end = next((line for line in headings if line > heading), len(lines) + 1)
-    bohr = [n for n in _line_numbers(lines, r"CARTESIAN COORDINATES\s+\(A\.U\.\)") if heading < n < end]
-    counts = [(n, int(m[1])) for n, m in _matches(lines, r"NUMBER OF ATOMS\s*\.{3,}\s*([0-9]{1,18})")]
-    atoms, _, issue = _geometry(lines, [heading], bohr, counts, None)
+    bohr = [n for n in bohr_headings if heading < n < end]
+    atoms, _, issue = _geometry(lines, [heading], bohr, None)
     if issue:
         return None
-    echoes = [(n, m[1].split("#", 1)[0].strip()) for n, m in _matches(lines, _ECHO)]
-    charge, mult, _, _, issue = _electronic_state(lines, echoes, None, None, atoms)
+    charge, mult, _, _, issue = _electronic_state(lines, _input_echo(lines), None, None, atoms)
     return None if issue else (atoms, charge, mult, heading)
 
 
-def _hirshfeld_table(lines, start, end, atoms):
+def _hirshfeld_table(lines, start, atoms):
     """Read the atom charges and spins printed by ORCA's grid integration."""
+    end = len(lines)
     i = start + 1
     while i < end and (not lines[i] or _DASHES.fullmatch(lines[i])
                        or re.fullmatch(r"Total integrated (?:alpha|beta) density\s*=\s*" + _NUMBER, lines[i], re.I)):
@@ -434,13 +450,14 @@ def _hirshfeld_table(lines, start, end, atoms):
 def population_tables(lines, geometry_line, molecule):
     """Read ordered, charge-balanced population tables printed for this coordinate block."""
     lines = tuple(line.strip() for line in lines)
-    end = next((i for i in range(geometry_line, len(lines))
-                if lines[i].upper() == "CARTESIAN COORDINATES (ANGSTROEM)"), len(lines))
     population_row = re.compile(rf"([0-9]+)\s+({_ELEMENT})\s*:\s*({_NUMBER})(?:\s+({_NUMBER}))?")
-    for i in range(geometry_line, end):
+    for i in range(geometry_line, len(lines)):
+        heading = _COORDINATE_HEADING.fullmatch(lines[i])
+        if heading and heading.lastgroup == "angstrom":
+            break
         if lines[i].upper() == "HIRSHFELD ANALYSIS":
             try:
-                result = _hirshfeld_table(lines, i, end, molecule.atoms)
+                result = _hirshfeld_table(lines, i, molecule.atoms)
             except (ValueError, OverflowError):
                 result = None
             if result is not None:
@@ -452,7 +469,8 @@ def population_tables(lines, geometry_line, molecule):
         values, spins = [], []
         try:
             for _, row in _table(lines, i + 1):
-                if _MULLIKEN_SUM.fullmatch(row) or row.lower().startswith("sum of atomic charges"):
+                total = _MULLIKEN_SUM.fullmatch(row)
+                if total:
                     break
                 m = population_row.fullmatch(row)
                 idx = len(values)
@@ -463,10 +481,12 @@ def population_tables(lines, geometry_line, molecule):
                 if m[4]:
                     spins.append(_finite(m[4]))
             else:
-                row = ""
-            total = _MULLIKEN_SUM.fullmatch(row)
-            if total and not isclose(_finite(total[1]), molecule.charge, rel_tol=0, abs_tol=1e-6):
-                continue
+                total = None
+            if total:
+                printed_total = _finite(total[1])
+                if (not isclose(printed_total, molecule.charge, rel_tol=0, abs_tol=1e-6)
+                        or not _matches_printed_charge_sum(values, printed_total)):
+                    continue
             if (len(values) != len(molecule.atoms) or
                     not isclose(fsum(values), molecule.charge, rel_tol=0, abs_tol=len(values)*0.5e-6 + 1e-6)):
                 continue

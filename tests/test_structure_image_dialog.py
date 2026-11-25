@@ -38,6 +38,22 @@ class StructureImageDialogTests(unittest.TestCase):
         self.addCleanup(dialog.close)
         return dialog
 
+    def test_image_picker_starts_inside_the_open_structure_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder, "water.xyz")
+            source.write_bytes(Path("examples/water.xyz").read_bytes())
+            with patch.object(QFileDialog, "getOpenFileName", return_value=(str(source), "")):
+                self.window.open_file()
+            dialog = self.sketch_dialog(300, 240)
+
+            def cancel(picker):
+                self.assertEqual(Path(picker.directory().absolutePath()), source.parent)
+                return 0
+
+            with patch.object(QFileDialog, "exec", cancel):
+                dialog._choose_file()
+            self.assertIsNone(dialog.output_path)
+
     def test_design_export_starts_as_png_and_preserves_alpha_preference_across_formats(self):
         from orcaview.gui.structure_image_dialog import StructureImageDialog
         w = self.window

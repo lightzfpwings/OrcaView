@@ -93,7 +93,7 @@ func launch() (int, error) {
 		args = []string{"gui"}
 	}
 	python := "pythonw.exe"
-	if args[0] != "gui" {
+	if len(os.Args) > 1 {
 		python = "python.exe"
 	}
 	cmd := exec.Command(filepath.Join(root, "python", python), append([]string{"-I", "-B", "-m", "orcaview"}, args...)...)
@@ -125,7 +125,7 @@ func launch() (int, error) {
 func main() {
 	code, err := launch()
 	if err != nil {
-		if len(os.Args) > 1 && os.Args[1] != "gui" {
+		if len(os.Args) > 1 || os.Getenv("ORCAVIEW_HEADLESS") == "1" {
 			fmt.Fprintln(os.Stderr, err)
 		} else {
 			message, _ := syscall.UTF16PtrFromString(err.Error())

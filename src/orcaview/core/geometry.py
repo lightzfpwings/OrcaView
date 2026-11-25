@@ -7,6 +7,9 @@ from .elements import COVALENT_RADII
 from .models import Bond, Molecule
 
 
+DEFAULT_BOND_DISTANCE_FACTOR = 1.20
+
+
 def occupied_valences(molecule, bonds, *, ambiguous_donors=None):
     """Count explicit valence and optionally collect unresolved aromatic protonation sites."""
     occupied = [0] * len(molecule.atoms)
@@ -90,20 +93,20 @@ def _bridges(neighbors):
     return bridges
 
 
-def display_bonds(molecule: Molecule) -> Tuple[Bond, ...]:
+def display_bonds(molecule: Molecule, distance_factor: float = DEFAULT_BOND_DISTANCE_FACTOR) -> Tuple[Bond, ...]:
     if molecule.bonds or molecule.bonds_explicit:
         return molecule.bonds
-    return infer_bonds(molecule)
+    return infer_bonds(molecule, distance_factor)
 
 
-def infer_bonds(molecule: Molecule) -> Tuple[Bond, ...]:
+def infer_bonds(molecule: Molecule, distance_factor: float = DEFAULT_BOND_DISTANCE_FACTOR) -> Tuple[Bond, ...]:
     molecule.validate_structure(allow_empty=True)
     bonds = []
     for i, first in enumerate(molecule.atoms):
         for j in range(i + 1, len(molecule.atoms)):
             second = molecule.atoms[j]
             distance = math.sqrt((first.x - second.x) ** 2 + (first.y - second.y) ** 2 + (first.z - second.z) ** 2)
-            cutoff = 1.20 * (COVALENT_RADII.get(first.element, 0.85) + COVALENT_RADII.get(second.element, 0.85))
+            cutoff = distance_factor * (COVALENT_RADII.get(first.element, 0.85) + COVALENT_RADII.get(second.element, 0.85))
             if 0.1 < distance <= cutoff:
                 bonds.append(Bond(i, j))
     return tuple(bonds)

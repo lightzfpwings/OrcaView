@@ -21,7 +21,8 @@
 - **SCF 积分**。按方法可选 RI、Split-RI-J、NoSplit-RI-J、RIJONX、RIJCOSX、RI-JK 或 NoRI。RI-JK 在这里提供单点模板。SCF 的积分近似与后续 RI-MP2 等方法的关联拟合可同时设置。[RI 近似](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/RI.html)
 - **辅助基组**。`AuxJ` 用于库仑拟合，`AuxJK` 用于库仑与交换拟合，`AuxC` 用于关联拟合，`CABS` 用于显式相关。界面按轨道基组显示适用槽位，`AutoAux` 写入指定槽。程序还按分子逐元素检查轨道与辅助基组覆盖范围。[基组及辅助槽](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/basisset.html)
 - **参考态与精度**。适用方法可选 RHF/UHF/ROHF、RKS/UKS/ROKS，保留或取消冻结芯，设置 LoosePNO/NormalPNO/TightPNO，选择 DEFGRID1/2/3 及有对应参数的 D3BJ/D3ZERO/D4。参考波函数和分子多重度一并校验。[参考波函数](https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/hftype.html) · [冻结芯](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/frozencore.html) · [数值积分](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/numericalintegration.html)
-- **相对论**。专用轨道基组会带入 ZORA、DKH2 或 X2C，并匹配辅助基组。X2C 基组还可显式选择 DLU-X2C。DKH2/ZORA 的频率模板使用 NumFreq。数值频率需要在位移几何上重复计算。[标量相对论](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/relativistic.html)
+- **频率**。普通 HF/DFT、D3/D4 校正及目录中的六种 3c 方法默认生成 `Freq`。对支持解析 Hessian 的 HF/DFT，加上默认表面的 C-PCM 或 SMD 仍生成 `Freq`。MP2、双杂化、含 VV10 非局域项的泛函等使用 `NumFreq`。旧项目中显式设置的数值位移参数会继续生效。[振动频率](https://orca-manual.mpi-muelheim.mpg.de/contents/structurereactivity/frequencies.html) · [MP2 梯度与 Hessian](https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/MP2.html) · [非局域色散](https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/dispersioncorrections.html) · [隐式溶剂](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/solvationmodels.html)
+- **相对论**。专用轨道基组会带入 ZORA、DKH2 或 X2C，并匹配辅助基组。X2C 基组还可显式选择 DLU-X2C。DKH2 和 ZORA 在 ORCA 默认的单中心近似下支持解析 Hessian。[标量相对论](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/relativistic.html)
 
 ## 6.1.1 双版手册
 

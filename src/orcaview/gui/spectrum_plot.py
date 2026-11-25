@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import csv
 import math
-from dataclasses import dataclass
-from io import StringIO
-from pathlib import Path
 
 from PySide6.QtCore import QIODevice, QObject, QPointF, QRectF, QRunnable, QSaveFile, Qt, QThreadPool, Signal, Slot
 from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
@@ -16,9 +12,11 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
+from orcaview.gui.file_dialogs import suggested_file
 from orcaview.gui.result_display import report_text
 from orcaview.i18n import tr
-from orcaview.results.broadening import StickSpectrum, broaden_spectrum, spectrum_range, stick_spectrum
+from orcaview.results.broadening import stick_spectrum
+from orcaview.results.spectrum_profile import PlotProfile, PlotStyle, spectrum_csv
 
 
 _LEFT = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
@@ -28,8 +26,6 @@ _INK = QColor("#352e33")
 _MUTED = QColor("#6d6467")
 _AXIS = QColor("#a79da1")
 _GRID = QColor("#e8e2e3")
-_CURVE = "#365987"
-_DEFAULT_STROKE_WIDTH = 2.0
 _POSITIVE = "#904359"
 _NEGATIVE = "#39736d"
 _SHAPES = (("Gaussian", "gaussian"), ("Lorentzian", "lorentzian"), ("Pseudo-Voigt", "pseudo-voigt"))
@@ -37,41 +33,6 @@ _SHAPES = (("Gaussian", "gaussian"), ("Lorentzian", "lorentzian"), ("Pseudo-Voig
 
 def _fmt(value, precision=5):
     return f"{value:.{precision}g}" if value else "0"
-
-
-@dataclass
-class PlotStyle:
-    reverse: bool
-    layers: str = "both"
-    grid: bool = True
-    normalized: bool = False
-    color: str = _CURVE
-    stroke_width: float = _DEFAULT_STROKE_WIDTH
-
-
-@dataclass
-class PlotProfile:
-    source: StickSpectrum
-    curve: tuple[tuple[float, float], ...]
-    limits: tuple[float, float]
-    shape: str
-    fwhm: float
-    mix: float
-    peak_height: float
-    points: int = 1201
-
-    @classmethod
-    def setup(cls, source, shape, fwhm, mix, limits=None, points=1201):
-        if limits is None:
-            limits = spectrum_range(source.peaks, fwhm)
-            if len(source.units) > 1:
-                limits = max(0.0, limits[0]), limits[1]
-        return cls(source, (), limits, shape, fwhm, mix, 0., points)
-
-    def scale(self, style):
-        if style.normalized and self.peak_height:
-            return self.peak_height
-        return 1.0
 
 
 class _Completion(QObject):
@@ -87,9 +48,7 @@ class _SampleJob(QRunnable):
     def run(self):
         p = self.settings
         try:
-            curve = broaden_spectrum(p.source.peaks, p.fwhm, shape=p.shape, mix=p.mix, x_range=p.limits, points=p.points)
-            profile = PlotProfile(p.source, curve, p.limits, p.shape, p.fwhm, p.mix,
-                                  max((abs(y) for _, y in curve), default=0.), p.points)
+            profile = p.sampled()
         except (ValueError, ArithmeticError) as exc:
             self.completion.done.emit(self, p, str(exc))
         else:
@@ -544,15 +503,15 @@ class SpectrumPlotDialog(QDialog):
         self.reverse.setChecked(source.reversed_axis)
         self.layers.setCurrentIndex(0)
         self.grid.setChecked(True)
-        self.figure.style.color = _CURVE
-        self.stroke_width.setValue(_DEFAULT_STROKE_WIDTH)
+        self.figure.style.color = PlotStyle.color
+        self.stroke_width.setValue(PlotStyle.stroke_width)
         self._loading = False
         self.update_profile()
         self.update_style()
 
     def choose_export(self, kind):
         extension = "png" if kind == "png" else "csv"
-        name = f"{self.table.kind}-{kind}.{extension}"
+        name = suggested_file(self, f"{self.table.kind}-{kind}", "." + extension)
         target, _ = QFileDialog.getSaveFileName(self, tr("Export spectrum"), name,
                                                 f"{extension.upper()} (*.{extension})")
         if target:
@@ -562,35 +521,31 @@ class SpectrumPlotDialog(QDialog):
                 QMessageBox.warning(self, tr("Export spectrum"), str(error))
 
     def save_export(self, filename, kind):
-        if self.figure.error:
-            raise ValueError(self.figure.error)
-        profile, style = self.figure.profile, self.figure.style
-        output = QSaveFile(str(Path(filename)))
-        if not output.open(QIODevice.OpenModeFlag.WriteOnly):
-            raise OSError(output.errorString())
-        if kind == "png":
-            image = QImage(1800, 1100, QImage.Format.Format_ARGB32_Premultiplied)
-            painter = QPainter(image)
-            try:
-                painter.scale(2, 2)
-                self.figure.draw(painter, QRectF(0, 0, 900, 550))
-            finally:
-                painter.end()
-            success = image.save(output, "PNG")
-        else:
-            text = StringIO(newline="")
-            writer = csv.writer(text)
-            source = profile.source
-            if kind == "sticks":
-                writer.writerow([f"{source.x_label} ({source.unit})", source.y_label])
-                writer.writerows(source.peaks)
-            else:
-                caption = "Relative height" if style.normalized else source.y_label
-                writer.writerow([f"{source.x_label} ({source.unit})", caption])
-                scale = profile.scale(style)
-                writer.writerows((x, y / scale) for x, y in profile.curve)
-            data = text.getvalue().encode("utf-8")
-            success = output.write(data) == len(data)
-        if not success or not output.commit():
-            output.cancelWriting()
-            raise OSError(output.errorString())
+        save_spectrum_figure(self.figure, filename, kind)
+
+
+def save_spectrum_figure(figure, filename, kind):
+    """Write the desktop figure using a paint device without showing a window."""
+    if figure.error:
+        raise ValueError(figure.error)
+    profile, style = figure.profile, figure.style
+    output = QSaveFile(str(filename))
+    if not output.open(QIODevice.OpenModeFlag.WriteOnly):
+        raise OSError(output.errorString())
+    if kind == "png":
+        image = QImage(1800, 1100, QImage.Format.Format_ARGB32_Premultiplied)
+        painter = QPainter(image)
+        try:
+            painter.scale(2, 2)
+            figure.draw(painter, QRectF(0, 0, 900, 550))
+        finally:
+            painter.end()
+        success = image.save(output, "PNG")
+    else:
+        curve = None if kind == "sticks" else profile.curve
+        data = spectrum_csv(profile.source, curve, scale=profile.scale(style),
+                            normalized=style.normalized).encode("utf-8")
+        success = output.write(data) == len(data)
+    if not success or not output.commit():
+        output.cancelWriting()
+        raise OSError(output.errorString())

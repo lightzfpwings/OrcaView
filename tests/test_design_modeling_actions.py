@@ -331,7 +331,7 @@ class DesignModelingActions(unittest.TestCase):
     def test_editing_a_cleaned_sketch_and_extending_its_topology(self):
         original = self.draw_second_carbon()
         layout = ((4., 5.), (5.5, 5.))
-        with patch("orcaview.gui.structure_job.clean_sketch", return_value=layout):
+        with patch("orcaview.editing.modeling.clean_sketch", return_value=layout):
             cleaned = self.run_optimization(self.panel.clean_2d)
         self.assertEqual(cleaned.sketch_xy, layout)
         canvas = self.panel.canvas
@@ -373,7 +373,7 @@ class DesignModelingActions(unittest.TestCase):
                 raise ValueError("test worker timed out")
             return ((0., 0.), (1.5, 0.))
 
-        with patch("orcaview.gui.structure_job.clean_sketch", side_effect=clean):
+        with patch("orcaview.editing.modeling.clean_sketch", side_effect=clean):
             self.panel.clean_2d.click()
             self.wait_until(entered.is_set)
             self.assertFalse(self.panel.optimize_3d.isEnabled())
@@ -400,7 +400,7 @@ class DesignModelingActions(unittest.TestCase):
                 raise ValueError("test worker timed out")
             return layout
 
-        with patch("orcaview.gui.structure_job.clean_sketch", side_effect=clean):
+        with patch("orcaview.editing.modeling.clean_sketch", side_effect=clean):
             self.panel.clean_2d.click()
             self.wait_until(entered.is_set)
             try:
@@ -416,7 +416,7 @@ class DesignModelingActions(unittest.TestCase):
 
     def test_worker_failure_keeps_current_revision_and_enables_retry(self):
         initial = self.draw_second_carbon()
-        with patch("orcaview.gui.structure_job.optimize_structure", side_effect=ValueError("backend failure")):
+        with patch("orcaview.editing.modeling.optimize_structure", side_effect=ValueError("backend failure")):
             self.assertIs(self.run_optimization(self.panel.optimize_3d), initial)
         self.assertEqual(self.panel.status.text(), "backend failure")
         self.assertTrue(self.panel.optimize_3d.isEnabled())
@@ -436,7 +436,7 @@ class DesignModelingActions(unittest.TestCase):
             changed = replace(molecule.atoms[0], z=2.)
             return OptimizationResult(replace(molecule, atoms=(changed, molecule.atoms[1])), "MMFF94")
 
-        with patch("orcaview.gui.structure_job.optimize_structure", side_effect=paused_optimization):
+        with patch("orcaview.editing.modeling.optimize_structure", side_effect=paused_optimization):
             self.panel.optimize_3d.click()
             self.wait_until(entered.is_set)
             completed = QSignalSpy(self.panel._structure_job.completion.finished)

@@ -1,0 +1,260 @@
+"""Read scientific results and export spectra without an interactive desktop."""
+
+import argparse
+import csv
+from dataclasses import asdict
+from io import StringIO
+import json
+from pathlib import Path
+import re
+
+from orcaview.gui.result_display import log_property_series, source_label
+from orcaview.results.broadening import stick_spectrum
+from orcaview.results.spectrum_profile import PlotProfile, PlotStyle, spectrum_csv
+
+
+def register(sub):
+    results = sub.add_parser("results", help="Inspect result history, geometry, datasets and source evidence")
+    results.add_argument("input", type=Path, help="OrcaView project, ORCA log or structure")
+    select = results.add_mutually_exclusive_group()
+    select.add_argument("--geometry", metavar="SELECTOR", help="Geometry number, snapshot ID or frame ID")
+    select.add_argument("--dataset", metavar="SELECTOR", help="Dataset number, ID or unique kind")
+    select.add_argument("--properties", action="store_true", help="All printed calculation properties")
+    select.add_argument("--property", metavar="SERIES", help="Property series number or unique label")
+    select.add_argument("--evidence", action="store_true", help="Recorded sources, paths and checksums")
+    select.add_argument("--all", action="store_true", help="Full JSON with all snapshots, datasets and log tables")
+    results.add_argument("--format", choices=("json", "csv", "tsv"), default="json")
+    results.add_argument("-o", "--output", type=Path, help="Write to a file (default: standard output)")
+    results.add_argument("--finite", action="store_true", help="Use the finite structure of a periodic input")
+    results.set_defaults(handler=_results)
+
+    spectrum = sub.add_parser("spectrum", help="List spectra or export a printed table, sticks, curve or PNG")
+    spectrum.add_argument("input", type=Path, help="ORCA log or OrcaView project containing a log")
+    spectrum.add_argument("--table", metavar="NUMBER_OR_KIND", help="One-based table number, unique kind or title")
+    spectrum.add_argument("--format", choices=("table", "sticks", "curve", "png"),
+                          help="CSV table, printed sticks, sampled curve, or offscreen PNG")
+    spectrum.add_argument("-o", "--output", type=Path, help="Output path (required for PNG)")
+    spectrum.add_argument("--unit", choices=("nm", "eV", "cm-1", "cm⁻¹"))
+    spectrum.add_argument("--shape", choices=("gaussian", "lorentzian", "pseudo-voigt"), default="gaussian")
+    spectrum.add_argument("--fwhm", type=float, help="Full width at half maximum in the selected axis unit")
+    spectrum.add_argument("--mix", type=float, default=.5, help="Lorentzian fraction for pseudo-Voigt (0–1)")
+    spectrum.add_argument("--points", type=int, default=1201, help="Base sampling grid (2–20001)")
+    spectrum.add_argument("--range", nargs=2, type=float, metavar=("LOW", "HIGH"),
+                          help="Set the x-axis limits in the selected unit")
+    spectrum.add_argument("--normalize", action="store_true", help="Normalize by the largest absolute curve height")
+    spectrum.add_argument("--reverse", action=argparse.BooleanOptionalAction, default=None,
+                          help="Reverse the plotted x-axis (default follows spectrum type)")
+    spectrum.add_argument("--grid", action=argparse.BooleanOptionalAction, default=True)
+    spectrum.add_argument("--layers", choices=("both", "curve", "sticks"), default="both")
+    spectrum.add_argument("--color", default=PlotStyle.color, help="Curve color in #RRGGBB")
+    spectrum.add_argument("--stroke-width", type=float, default=PlotStyle.stroke_width,
+                          help="Curve width in logical pixels (0.5–6)")
+    spectrum.set_defaults(handler=_spectrum)
+
+
+def _pick(items, selector, keys, name):
+    if selector is None:
+        if len(items) == 1:
+            return items[0]
+        raise ValueError(f"Select one of the {len(items)} {name} entries by number.")
+    if selector.isascii() and selector.isdecimal():
+        position = int(selector)
+        if 1 <= position <= len(items):
+            return items[position - 1]
+    matches = [item for item in items if selector in keys(item)]
+    if len(matches) != 1:
+        raise ValueError(f"Expected one {name} matching {selector!r}, found {len(matches)}. Use its listed number.")
+    return matches[0]
+
+
+def _delimited(columns, rows, delimiter=","):
+    stream = StringIO(newline="")
+    writer = csv.writer(stream, delimiter=delimiter)
+    writer.writerow(columns)
+    writer.writerows(rows)
+    return stream.getvalue()
+
+
+def _json(value):
+    return json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+
+
+def _spectrum_entries(report):
+    return [{"number": index, "kind": table.kind, "title": table.title, "source_line": table.source_line,
+             "rows": len(table.rows), "columns": table.columns}
+            for index, table in enumerate(report.spectra, 1)] if report else []
+
+
+def _evidence(report, snapshots, datasets):
+    sources = {}
+    if report:
+        sources[report.source.artifact_id] = report.source
+    for record in (*snapshots, *datasets):
+        for source in record.provenance.parents:
+            sources[source.artifact_id] = source
+    for data in datasets:
+        if data.array_ref:
+            sources[data.array_ref.artifact_id] = data.array_ref
+    return [asdict(source) for source in sources.values()]
+
+
+def _inventory(snapshots, datasets, report, series):
+    return {
+        "geometries": [{"number": n, **asdict(s.ref), "atoms": len(s.atom_ids),
+                        "geometry_sha256": s.content_hash, "source_type": source_label(s, None)} for n, s in enumerate(snapshots, 1)],
+        "datasets": [{"number": n, "id": d.dataset_id, "kind": d.kind, "unit": d.unit, "shape": d.shape,
+                      "geometry": asdict(d.geometry), "missing_reason": d.missing_reason}
+                     for n, d in enumerate(datasets, 1)],
+        "status": report.status if report else None,
+        "source": asdict(report.source) if report else None,
+        "properties": [{"number": n, **asdict(group[0]), "observations": len(group)}
+                       for n, group in enumerate(series, 1)],
+        "spectra": _spectrum_entries(report),
+    }
+
+
+def _atomic_table(snapshot, dataset=None):
+    columns = ["atom", "id", "element", "x (angstrom)", "y (angstrom)", "z (angstrom)"]
+    values = {}
+    if dataset:
+        columns.extend([f"value ({dataset.unit})", "value_status"])
+        values = dict(zip(dataset.axes[0].ids, dataset.values or [None] * len(dataset.axes[0].ids)))
+    rows = []
+    for index, (identity, atom) in enumerate(zip(snapshot.atom_ids, snapshot.molecule.atoms), 1):
+        row = [index, identity, atom.element, atom.x, atom.y, atom.z]
+        if dataset:
+            value = values.get(identity)
+            if identity not in values:
+                status = "off-axis"
+            elif dataset.array_ref:
+                status = "not loaded"
+            else:
+                status = "missing" if value is None else "available"
+            row.extend([value, status])
+        rows.append(row)
+    return columns, rows
+
+
+def _results(args):
+    from orcaview.cli_io import check_output, load_session, write_text
+
+    check_output(args.input, args.output)
+    session = load_session(args.input, finite=args.finite)
+    snapshots, datasets = session.document.records()
+    report = session.log_report
+    # A standalone log's empty draft is a storage container, not a measured geometry.
+    if report and len(snapshots) == 1 and not snapshots[0].atom_ids:
+        snapshots = ()
+    series = log_property_series(report) if report else ()
+    table = None
+    if args.geometry is not None:
+        snapshot = _pick(snapshots, args.geometry, lambda s: (s.ref.snapshot_id, s.ref.frame_id), "geometry")
+        payload = asdict(snapshot)
+        payload["source_type"] = source_label(snapshot, None)
+        table = _atomic_table(snapshot)
+    elif args.dataset is not None:
+        data = _pick(datasets, args.dataset, lambda d: (d.dataset_id, d.kind), "dataset")
+        snapshot = session.document.resolve(data.geometry)
+        payload = asdict(data)
+        payload["source_type"] = source_label(snapshot, data)
+        if len(data.axes) == 1 and data.axes[0].kind == "atom":
+            table = _atomic_table(snapshot, data)
+        else:
+            table = (("flat_index", f"value ({data.unit})"), enumerate(data.values or (), 1))
+        if args.format == "json" and len(data.axes) == 1 and data.axes[0].kind == "atom":
+            payload["atoms"] = [dict(zip(table[0], row)) for row in table[1]]
+    elif args.properties or args.property is not None:
+        props = (report.properties if report else ()) if args.properties else _pick(
+            series, args.property, lambda group: (group[0].label,), "property series")
+        columns = ("group", "label", "context", "value", "unit", "line")
+        table = (columns, (tuple(getattr(p, field) for field in columns) for p in props))
+        payload = {"source": asdict(report.source) if report else None, "properties": [asdict(p) for p in props]}
+    elif args.evidence:
+        payload = _evidence(report, snapshots, datasets)
+        columns = ("artifact_id", "format", "path_hint", "sha256")
+        table = (columns, (tuple(source[c] for c in columns) for source in payload))
+    elif args.all:
+        payload = {"geometries": [asdict(s) for s in snapshots], "datasets": [asdict(d) for d in datasets],
+                   "log_report": asdict(report) if report else None}
+    else:
+        payload = _inventory(snapshots, datasets, report, series)
+
+    if args.format == "json":
+        text = _json(payload)
+    elif table is not None:
+        text = _delimited(*table, delimiter="," if args.format == "csv" else "\t")
+    else:
+        raise ValueError("Select a geometry, dataset, property table or source evidence for CSV/TSV output.")
+    write_text(args.output, text)
+    return 0
+
+
+def _selected_spectrum(args, report):
+    if not report or not report.spectra:
+        raise ValueError("This file contains no printed spectrum tables.")
+    return _pick(report.spectra, args.table, lambda t: (t.kind, t.title), "spectrum")
+
+
+def _spectrum_source(table, unit):
+    source = stick_spectrum(table, "cm⁻¹" if unit == "cm-1" else unit)
+    if source is None:
+        raise ValueError("This table has no printed stick strengths. Choose --format table to export its columns.")
+    return source
+
+
+def _profile(source, args):
+    width = source.default_fwhm if args.fwhm is None else args.fwhm
+    return PlotProfile.setup(source, args.shape, width, args.mix, args.range, args.points).sampled()
+
+
+def _spectrum(args):
+    from orcaview.cli_io import check_output, load_session, write_text
+
+    check_output(args.input, args.output)
+    kind = args.format
+    if kind is None and args.output and args.output.suffix.lower() == ".png":
+        kind = "png"
+    if kind == "png":
+        if args.output is None or str(args.output) == "-":
+            raise ValueError("PNG export requires --output FILE.")
+        from orcaview.cli_render import run_offscreen
+        return run_offscreen("spectrum", args)
+    report = load_session(args.input).log_report
+    if args.table is None and kind is None:
+        text = _json(_spectrum_entries(report))
+    else:
+        table = _selected_spectrum(args, report)
+        if kind is None or kind == "table":
+            text = _delimited(table.columns, table.rows)
+        else:
+            source = _spectrum_source(table, args.unit)
+            if kind == "curve":
+                profile = _profile(source, args)
+                scale = profile.peak_height if args.normalize and profile.peak_height else 1.0
+                text = spectrum_csv(source, profile.curve, normalized=args.normalize, scale=scale)
+            else:
+                text = spectrum_csv(source)
+    write_text(args.output, text)
+    return 0
+
+
+def render_spectrum_image(args):
+    """Called in a Qt worker configured for offscreen drawing."""
+    from orcaview.cli_io import load_session
+    from orcaview.gui.result_display import report_text
+    from orcaview.gui.spectrum_plot import SpectrumFigure, save_spectrum_figure
+
+    table = _selected_spectrum(args, load_session(Path(args.input)).log_report)
+    source = _spectrum_source(table, args.unit)
+    if not re.fullmatch(r"#[\da-fA-F]{6}", args.color, re.ASCII):
+        raise ValueError("The curve color must use #RRGGBB.")
+    if not .5 <= args.stroke_width <= 6:
+        raise ValueError("The curve width must be between 0.5 and 6 pixels.")
+    figure = SpectrumFigure()
+    figure.title = report_text(table.title)
+    figure.profile = _profile(source, args)
+    figure.style = PlotStyle(reverse=source.reversed_axis if args.reverse is None else args.reverse,
+                             layers=args.layers, grid=args.grid, normalized=args.normalize,
+                             color=args.color, stroke_width=args.stroke_width)
+    save_spectrum_figure(figure, args.output, "png")
+    return 0

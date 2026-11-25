@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a53 prerelease
+
+All 642 regression tests passed from a checkout of the release files. All 140 frozen OrcaView Python modules in the macOS app matched that source. The Windows and Linux packages contained the same modules and the same application image asset. The four shipped translation dictionaries and their Qt catalogs matched the files used to prepare the release.
+
+The signed macOS app ran from a read-only mount of the release DMG. It loaded the external language catalog after restart and produced different English and Chinese window images. Installing the Contrast palette and passing the same file to a single render produced identical BMPs. Both differed from the built-in palette. The extension kit rebuilt byte for byte and its language template contained 1,786 source messages. [Extension guide](extensions/README.md) · [Native package checks](../.github/workflows/release-extensions.yml)
+
 ## 0.1.0a46 prerelease
 
 Structure image export offers integer scale factors from 1× to 8× and defaults to 2×. In the native Cocoa dialog, a 400 × 400 benzene view exported at 4× measured 1600 × 1600 pixels. Its atom labels and bonds retained their relative positions. Enlarging the canvas to 1801 × 1621 preserved the complete 1600 × 1600 region pixel for pixel. The BMP header identifies an uncompressed 24-bit image with a white background. PNG and BMP recorded the 384 dpi density of the 4× export.

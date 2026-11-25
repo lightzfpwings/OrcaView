@@ -54,7 +54,7 @@ class BondLengthEditor(QWidget):
         row.addWidget(self.apply)
         layout.addWidget(self.controls)
 
-    def set_selection(self, snapshot, indices):
+    def set_selection(self, snapshot, indices, *, bonds=None):
         self.coordinate = None
         self.moving_atoms = ()
         self.controls.hide()
@@ -70,7 +70,9 @@ class BondLengthEditor(QWidget):
             self.summary.setText(tr("{first}–{second} distance  {distance:.6f} Å",
                                     first=labels[0], second=labels[1], distance=distance))
             self.details.show()
-            self.moving_atoms = bond_moving_atoms(snapshot, definition, display_bonds(snapshot.molecule))
+            if bonds is None:
+                bonds = display_bonds(snapshot.molecule)
+            self.moving_atoms = bond_moving_atoms(snapshot, definition, bonds)
         except ValueError as exc:
             self.details.setText(diagnostic_text(exc))
             self.details.show()

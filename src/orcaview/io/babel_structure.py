@@ -171,6 +171,6 @@ def read_babel_structure(raw, name, format_id, *, remove_periodicity=False):
         raise PeriodicStructureError("This structure contains a periodic unit cell.")
     molecule = Molecule(name, tuple(Atom(*row) for row in payload["atoms"]),
                         tuple(Bond(*row) for row in payload["bonds"]),
-                        payload["charge"], payload["multiplicity"])
+                        payload["charge"], payload["multiplicity"], bonds_explicit=payload["bonds_explicit"])
     molecule.validate_structure()
     return StructureRecord(molecule, generated_3d=payload["generated"], removed_periodicity=payload["finite"])

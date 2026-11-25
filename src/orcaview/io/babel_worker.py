@@ -90,7 +90,9 @@ def _single_xml(text, fmt):
                 raise ValueError("Specify explicit single, double or triple bonds in the ChemDraw structure.")
     # Re-serialization omits external DTDs. Only a self-contained structure
     # goes to the native reader, including for an ordinary ChemDraw DOCTYPE.
-    return ElementTree.tostring(root, encoding="unicode")
+    has_topology = fmt == "cdxml" or any(node.tag.rsplit("}", 1)[-1] in ("bond", "bondArray")
+                                         for node in nodes)
+    return ElementTree.tostring(root, encoding="unicode"), has_topology
 
 
 def _is_periodic(text, fmt, cell):
@@ -119,10 +121,17 @@ def _convert(raw, fmt, finite):
     text = raw.decode("utf-8-sig")
     if "\x00" in text:
         raise ValueError("The molecular file must contain text.")
+    explicit_graph = fmt in ("mol", "sdf", "smi", "inchi")
     if fmt in ("cdxml", "cml"):
-        text = _single_xml(text, fmt)
+        text, explicit_graph = _single_xml(text, fmt)
     else:
         _single_record(text, fmt)
+        if fmt == "mol2":
+            # The bond count after the atom count and the BOND section are optional.
+            explicit_graph = bool(re.search(r"(?im)^@<TRIPOS>MOLECULE[^\n]*\n[^\n]*\n[ \t]*\d+[ \t]+\d+\b"
+                                            r"|^@<TRIPOS>BOND\b", text))
+        elif fmt == "pdb":
+            explicit_graph = bool(re.search(r"(?m)^CONECT\s+\d", text))
     declared_cell = False
     if fmt in ("pdb", "mol2"):
         declared_cell = _is_periodic(text, fmt, None)
@@ -184,7 +193,8 @@ def _convert(raw, fmt, finite):
         if atom.GetIsotope():
             raise ValueError("The molecular model does not retain isotope masses and cannot fully import this structure.")
         atoms.append((ob.GetSymbol(atom.GetAtomicNum()), atom.GetX(), atom.GetY(), atom.GetZ()))
-    return {"atoms": atoms, "bonds": bonds, "charge": mol.GetTotalCharge(),
+    return {"atoms": atoms, "bonds": bonds, "bonds_explicit": explicit_graph and not periodic,
+            "charge": mol.GetTotalCharge(),
             "multiplicity": mol.GetTotalSpinMultiplicity(), "generated": generated, "finite": periodic}
 
 

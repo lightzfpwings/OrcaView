@@ -66,12 +66,13 @@ class MethodPreset:
 # basis assignment, supported jobs and frequency differentiation
 _PROFILES = {
     "standard": ("orbital", ALL_JOBS, False),
+    "dft-d": ("orbital", ORDINARY_JOBS, False),
     "numeric-freq": ("orbital", ORDINARY_JOBS, True),
     "double-hybrid": ("correlation", ORDINARY_JOBS, True),
     "mp2-aux": ("correlation", ORDINARY_JOBS, True),
     "sp": ("orbital", ("SP",), False),
     "sp-aux": ("correlation", ("SP",), False),
-    "fixed": ("fixed", ORDINARY_JOBS, True),
+    "fixed": ("fixed", ORDINARY_JOBS, False),
     "fixed-sp": ("fixed", ("SP",), False),
     "semiempirical": ("semiempirical", ORDINARY_JOBS, True),
     "semiempirical-sp": ("semiempirical", ("SP",), False),
@@ -88,7 +89,7 @@ DISPERSION_RECIPES = {
     "r2SCAN-D4": "R2SCAN D4", "B2PLYP-D4": "B2PLYP D4",
 }
 _DISPERSION_GROUP = (("DFT dispersion correction combinations", tuple(
-    (name, "double-hybrid" if name == "B2PLYP-D4" else "numeric-freq")
+    (name, "double-hybrid" if name == "B2PLYP-D4" else "dft-d")
     for name in DISPERSION_RECIPES
 )),)
 _ALL_GROUPS = (DFT_METHOD_GROUPS + EXTRA_DFT_GROUPS + DLPNO_DFT_GROUP + _DISPERSION_GROUP

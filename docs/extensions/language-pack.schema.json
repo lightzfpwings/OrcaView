@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OrcaView interface language",
+  "type": "object",
+  "required": ["locale", "name", "messages"],
+  "properties": {
+    "locale": {
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+      "not": {"const": "en"}
+    },
+    "name": {"type": "string", "pattern": "\\S"},
+    "messages": {
+      "type": "object",
+      "propertyNames": {"minLength": 1},
+      "additionalProperties": {"type": "string", "pattern": "\\S"},
+      "description": "Map exact English source strings to translations preserving their format fields."
+    }
+  }
+}

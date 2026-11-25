@@ -105,7 +105,7 @@ def _state_error(molecule: Molecule) -> Optional[str]:
 
 def _subset(base: GeometrySnapshot, order: Tuple[str, ...]):
     """Remap explicit bonds through stable IDs; never infer chemical bonds."""
-    indices = tuple(base.index_of(atom_id) for atom_id in order)
+    indices = SelectionContext(base.ref, order).indices(base)
     old_to_new = {old: new for new, old in enumerate(indices)}
     bonds = tuple(replace(b, a=old_to_new[b.a], b=old_to_new[b.b])
                   for b in base.molecule.bonds if b.a in old_to_new and b.b in old_to_new)
@@ -184,15 +184,13 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
         if set(op.atom_ids) != set(ids):
             raise ValueError("Reordering must contain every current atom ID exactly once")
         return _subset(base, op.atom_ids), op.atom_ids
-    if isinstance(op, ReplaceElement):
-        index = base.index_of(op.atom_id)
-        atoms = tuple(replace(atom, element=op.element) if i == index else atom
-                      for i, atom in enumerate(molecule.atoms))
-        return replace(molecule, atoms=atoms), ids
-    if isinstance(op, MoveAtom):
+    if isinstance(op, (ReplaceElement, MoveAtom)):
         row = base.index_of(op.atom_id)
         atoms = list(molecule.atoms)
-        atoms[row] = replace(atoms[row], x=op.x, y=op.y, z=op.z)
+        if isinstance(op, ReplaceElement):
+            atoms[row] = replace(atoms[row], element=op.element)
+        else:
+            atoms[row] = replace(atoms[row], x=op.x, y=op.y, z=op.z)
         return replace(molecule, atoms=tuple(atoms)), ids
     if isinstance(op, SetBond):
         a, b = base.index_of(op.atom_a), base.index_of(op.atom_b)

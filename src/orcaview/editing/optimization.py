@@ -7,7 +7,7 @@ from statistics import median
 
 from orcaview.core.geometry import display_bonds
 from orcaview.core.models import Atom, Molecule
-from orcaview.io.babel_geometry import build_obmol, geometry_payload
+from orcaview.io.babel_geometry import build_obmol, geometry_payload, with_perceived_orders
 from orcaview.io.babel_structure import run_babel_worker
 
 
@@ -17,8 +17,8 @@ class OptimizationResult:
     method: str
 
 
-def _calculate_points(molecule, mode):
-    payload = geometry_payload(molecule)
+def _calculate_points(molecule, mode, bonds):
+    payload = geometry_payload(molecule, bonds=bonds)
     payload["infer_orders"] = not molecule.bonds and not molecule.bonds_explicit
     if not payload["bonds"]:
         raise ValueError("Structure optimization requires at least one bond.")
@@ -72,7 +72,7 @@ def clean_sketch(molecule: Molecule, sketch_xy=None):
     molecule.validate_structure()
     points = _zigzag_chain(molecule)
     if points is None:
-        xyz, _ = _calculate_points(molecule, "2D")
+        xyz, _ = _calculate_points(molecule, "2D", display_bonds(molecule))
         points = [(x, y) for x, y, _ in xyz]
     reference = sketch_xy if sketch_xy is not None else tuple((a.x, a.y) for a in molecule.atoms)
     if len(reference) != len(points):
@@ -97,7 +97,8 @@ def optimize_structure(molecule: Molecule, mode: str, plane: str = "XY") -> Opti
     """Return a detached geometry; the editor uses clean_sketch for drawing-only edits."""
     if mode not in ("2D", "3D") or plane not in ("XY", "XZ", "YZ"):
         raise ValueError("Choose a valid optimization mode and projection plane.")
-    points, response = _calculate_points(molecule, mode)
+    bonds = display_bonds(molecule)
+    points, response = _calculate_points(molecule, mode, bonds)
     if mode == "2D":
         axes = tuple("XYZ".index(axis) for axis in plane)
         planar = []
@@ -112,13 +113,8 @@ def optimize_structure(molecule: Molecule, mode: str, plane: str = "XY") -> Opti
     new_center = _center(points)
     atoms = tuple(Atom(atom.element, *(v - n + o for v, n, o in zip(point, new_center, old_center)))
                   for atom, point in zip(molecule.atoms, points))
-    bonds = display_bonds(molecule)
     if not molecule.bonds and not molecule.bonds_explicit:
-        orders = response.get("orders")
-        if (not isinstance(orders, list) or len(orders) != len(bonds)
-                or any(type(order) is not int or order not in (1, 2, 3) for order in orders)):
-            raise ValueError("Open Babel could not construct this bond graph.")
-        bonds = tuple(replace(bond, order=order) for bond, order in zip(bonds, orders))
+        bonds = with_perceived_orders(bonds, response.get("orders"))
     result = replace(molecule, atoms=atoms, bonds=bonds, bonds_explicit=True)
     result.validate_structure()
     return OptimizationResult(result, response["method"])

@@ -2,14 +2,33 @@
 
 import re
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGridLayout, QLabel, QScrollArea, QSizePolicy, QWidget
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtWidgets import (
+    QAbstractSpinBox, QComboBox, QFrame, QGridLayout, QLabel, QScrollArea, QSizePolicy,
+    QStylePainter, QWidget,
+)
 
 
 def wrap_parameter_text(text):
     """Allow a displayed ORCA identifier to wrap at its natural word boundaries."""
     return re.sub(r"(?<=[._])(?=[A-Za-z])|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])",
                   "\u200b", text)
+
+
+class InspectorStatusLabel(QLabel):
+    """Display one line without letting the current diagnostic set the dock width."""
+
+    def __init__(self):
+        super().__init__()
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, event):
+        QFrame.paintEvent(self, event)
+        painter = QStylePainter(self)
+        rect = self.contentsRect()
+        line = painter.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, rect.width())
+        painter.drawItemText(rect, self.alignment(), self.palette(), self.isEnabled(), line, self.foregroundRole())
 
 
 class InspectorScrollArea(QScrollArea):
@@ -52,10 +71,18 @@ class InspectorForm(QWidget):
             label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         if not spanning:
             field.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        if isinstance(field, (QComboBox, QAbstractSpinBox)):
+            field.installEventFilter(self)
         field.setAttribute(Qt.WidgetAttribute.WA_LayoutUsesWidgetRect)
         self._labels[field] = label
         self._rows.append((label, field, spanning))
         self._place_row(len(self._rows) - 1)
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Wheel:
+            event.ignore()
+            return True
+        return super().eventFilter(watched, event)
 
     def labelForField(self, field):
         return self._labels[field]

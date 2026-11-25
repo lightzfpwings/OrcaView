@@ -1,12 +1,16 @@
 """Exchange a finite Cartesian molecule and its displayed topology with the native worker."""
 
+from dataclasses import replace
+
 from orcaview.core.geometry import display_bonds, occupied_valences
 from orcaview.core.models import COORDINATE_STYLES
 
 
-def geometry_payload(molecule):
+def geometry_payload(molecule, *, bonds=None):
+    """Serialize the supplied display bonds in the same order used to read back bond orders."""
     molecule.validate_structure()
-    bonds = display_bonds(molecule)
+    if bonds is None:
+        bonds = display_bonds(molecule)
     payload = {
         "atoms": [(atom.element, atom.x, atom.y, atom.z) for atom in molecule.atoms],
         "bonds": [(bond.a, bond.b, bond.order) for bond in bonds],
@@ -21,6 +25,13 @@ def geometry_payload(molecule):
         payload["aromatic_nh"] = [i for i, atom in enumerate(molecule.atoms)
                                   if atom.element in ("N", "P") and occupied[i] == 2]
     return payload
+
+
+def with_perceived_orders(bonds, orders):
+    if (not isinstance(orders, list) or len(orders) != len(bonds)
+            or any(type(order) is not int or order not in (1, 2, 3) for order in orders)):
+        raise ValueError("Open Babel could not construct this bond graph.")
+    return tuple(replace(bond, order=order) for bond, order in zip(bonds, orders))
 
 
 def build_obmol(payload, ob, *, layout_only=False):

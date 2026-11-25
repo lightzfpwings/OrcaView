@@ -19,6 +19,7 @@ from orcaview.gui.result_display import (
     dataset_name, matched_energy_lines, report_text, source_file_details,
 )
 from orcaview.gui.result_table import CalculationResultTable, enable_table_copy
+from orcaview.gui.file_dialogs import set_document_directory
 from orcaview.gui.spectrum_preview import SpectrumPreview
 from orcaview.gui.viewport import MoleculeViewport
 
@@ -291,12 +292,14 @@ class FoundationPanel(QWidget):
         if self.document is not None:
             self.set_document(self.document)
 
-    def set_log_report(self, report, *, standalone=False):
+    def set_log_report(self, report, *, standalone=False, opened_path=None):
         """Show the output file's own results, optionally without any molecular context."""
         if report is not self._report:
             self._preview_index = 0
         self._report = report
         self._standalone = report is not None and standalone
+        source = (opened_path or report.source.path_hint) if self._standalone else None
+        set_document_directory(self.spectrum_preview, source)
         self._log_selection = None
         if self.document is not None and not self.document.head.molecule.atoms:
             return

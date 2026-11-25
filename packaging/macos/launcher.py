@@ -7,6 +7,9 @@ if __name__ == "__main__":
     if arguments[:1] == ["--babel-worker"]:
         from orcaview.io.babel_worker import main
         raise SystemExit(main(arguments[1:]))
+    if arguments[:1] == ["--render-worker"]:
+        from orcaview.cli_render import worker_main
+        raise SystemExit(worker_main(arguments[1:]))
 
     from orcaview.cli import main
     raise SystemExit(main(arguments or ["gui"]))

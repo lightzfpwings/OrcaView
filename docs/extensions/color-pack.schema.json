@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OrcaView element colors",
+  "type": "object",
+  "required": ["id", "name", "colors"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+      "not": {"const": "default"}
+    },
+    "name": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "A printable display name of at most 80 characters after trimming."
+    },
+    "colors": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 118,
+      "propertyNames": {"pattern": "^[A-Za-z]{1,2}$"},
+      "additionalProperties": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+      "description": "Each key must identify a distinct chemical element. Symbol case is ignored."
+    }
+  }
+}

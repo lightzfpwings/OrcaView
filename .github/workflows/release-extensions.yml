@@ -1,0 +1,56 @@
+name: Verify release extensions
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to check
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            suffix: macOS-arm64.dmg
+          - runner: windows-2022
+            suffix: Windows-x64-portable.zip
+          - runner: ubuntu-24.04
+            suffix: Linux-x86_64.tar.gz
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Linux Qt system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
+      - name: Download the app and extension assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir assets \
+            --pattern "*-$SUFFIX" --pattern '*-language-pack.zip' --pattern '*-color-pack.json' \
+            --pattern '*-extension-kit.zip' --pattern 'SHA256SUMS.txt'
+      - name: Apply extensions and compare exported images
+        shell: bash
+        run: python packaging/check_release_extensions.py assets "$RELEASE_TAG"

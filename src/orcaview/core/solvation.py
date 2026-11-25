@@ -2,8 +2,9 @@
 
 from ._solvents import SOLVENT_ROWS
 from ._advanced_methods import LIBXC_PURE, LIBXC_HYBRID
+from ._block_catalog import uses_numerical_frequencies
 from ._dft_methods import DFT_METHOD_GROUPS
-from .methods import DISPERSION_RECIPES, METHODS
+from .methods import DISPERSION_RECIPES
 
 MODELS = ("CPCM", "SMD", "ALPB", "DDCOSMO", "CPCMX")
 _flags = {name: set(flags.split()) for name, flags in (row.split("|") for row in SOLVENT_ROWS)}
@@ -71,12 +72,6 @@ def solvation_input(spec):
         alias = {"carbon disulfide": "cs2", "diethyl ether": "diethylether", "ethyl acetate": "ethylacetate"}[solvent]
         return (f"ALPB({alias})",), ()
     return (), ("%xtb", f"  DO{model} true", f'  {model}SOLVENT "{solvent}"', "end")
-
-
-def uses_numerical_frequencies(spec):
-    from .integrals import uses_numerical_scalar_frequencies
-    return (METHODS[spec.method].uses_numerical_frequencies or uses_numerical_scalar_frequencies(spec)
-            or spec.solvation_model == "SMD")
 
 
 def solvation_block_options(spec):

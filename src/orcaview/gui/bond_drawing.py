@@ -52,7 +52,7 @@ def _inset(clearance, unit):
 
 
 def draw_bond(painter, start, end, order, style, ink, width, spacing, *,
-              clearance=(0., 0.), interior=None, shaded=False):
+              clearance=(0., 0.), interior=None, shaded=False, end_ink=None):
     vector = end - start
     length = math.hypot(vector.x(), vector.y())
     if length < .01:
@@ -69,6 +69,11 @@ def draw_bond(painter, start, end, order, style, ink, width, spacing, *,
     painter.save()
     painter.translate(start)
     painter.rotate(math.degrees(math.atan2(unit.y(), unit.x())))
+    if end_ink is not None and end_ink != ink:
+        halves = QLinearGradient(0, 0, length, 0)
+        halves.setColorAt(0.4999, ink)
+        halves.setColorAt(0.5001, end_ink)
+        ink = QBrush(halves)
 
     def pen(y=0., weight=width):
         brush = QBrush(ink)

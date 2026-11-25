@@ -2,9 +2,8 @@
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
-from orcaview.editing import AddHydrogens, GeometryEditCommand, OptimizeCoordinates, SetSketchLayout
-from orcaview.editing.hydrogens import missing_hydrogens
-from orcaview.editing.optimization import clean_sketch, optimize_structure
+from orcaview.editing import GeometryEditCommand
+from orcaview.editing.modeling import modeling_operation
 
 
 class _Completion(QObject):
@@ -19,19 +18,8 @@ class StructureJob(QRunnable):
         self.completion = _Completion()
 
     def run(self):
-        base = self.snapshot
         try:
-            if self.mode == "H":
-                added, perceived = missing_hydrogens(base.molecule)
-                operation = AddHydrogens(tuple((base.atom_ids[i], h) for i, h in added), perceived)
-            elif self.mode == "2D":
-                operation = SetSketchLayout(clean_sketch(base.molecule, base.sketch_xy))
-            else:
-                result = optimize_structure(base.molecule, self.mode)
-                xyz = tuple((atom.x, atom.y, atom.z) for atom in result.molecule.atoms)
-                implicit = not (base.molecule.bonds or base.molecule.bonds_explicit)
-                operation = OptimizeCoordinates(result.method, xyz, result.molecule.bonds if implicit else None)
-            command = GeometryEditCommand(base.ref, operation)
+            command = GeometryEditCommand(self.snapshot.ref, modeling_operation(self.snapshot, self.mode))
         except Exception as exc:
             # Report native-worker errors on the editing page without publishing a revision.
             self.completion.finished.emit(self, None, str(exc))

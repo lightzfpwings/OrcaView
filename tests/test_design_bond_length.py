@@ -2,9 +2,10 @@
 
 import os
 import unittest
+from unittest.mock import patch
 
 from orcaview.application.document import MoleculeDocument
-from orcaview.core.geometry import display_bonds
+from orcaview.core.geometry import display_bonds, infer_bonds
 from orcaview.core.models import Atom, Bond, Molecule
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -90,7 +91,9 @@ class BondLengthTests(unittest.TestCase):
     def test_editing_an_inferred_bond_preserves_it_past_the_distance_cutoff(self):
         original = Molecule("H2", (Atom("H", -.37, 0., 0.), Atom("H", .37, 0., 0.)))
         self.open_molecule(original)
-        self.click_bond(0, 1)
+        with patch("orcaview.core.geometry.infer_bonds", wraps=infer_bonds) as infer:
+            self.click_bond(0, 1)
+            infer.assert_not_called()
         self.length.target.setValue(2.5)
         QTest.mouseClick(self.length.apply, Qt.MouseButton.LeftButton)
         self.assertTrue(self.doc.head.molecule.bonds_explicit)

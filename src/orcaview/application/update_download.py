@@ -301,7 +301,7 @@ def prepare_portable_update(asset, archive, target, *, cancelled=None):
         raise
 
 
-def schedule_portable_update(prepared):
+def schedule_portable_update(prepared, *, relaunch=True):
     """Arm a detached helper and return after it has acquired a handle on this process."""
     work = prepared.staged.parent
     if (work / "ready").exists():
@@ -335,7 +335,7 @@ def schedule_portable_update(prepared):
         plan = work / "update.json"
         token = uuid4().hex
         (tool / ".orcaview-helper-token").write_text(token)
-        data = {"helper_token": token,"target": str(prepared.target), "backup": str(prepared.backup),
+        data = {"helper_token": token, "relaunch": relaunch, "target": str(prepared.target), "backup": str(prepared.backup),
                 "package": prepared.staged.name, "windows": prepared.windows, "expected": prepared.expected}
         plan.write_text(json.dumps(data), encoding="utf-8")
         options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}

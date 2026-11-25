@@ -24,16 +24,13 @@ def missing_hydrogens(molecule):
     bonds = display_bonds(molecule)
     perceived = None
     if bonds and not (molecule.bonds or molecule.bonds_explicit):
-        from orcaview.io.babel_geometry import geometry_payload
+        from orcaview.io.babel_geometry import geometry_payload, with_perceived_orders
         from orcaview.io.babel_structure import run_babel_worker
 
-        payload = geometry_payload(molecule)
+        payload = geometry_payload(molecule, bonds=bonds)
         payload["infer_orders"] = True
         orders = run_babel_worker(json.dumps(payload, allow_nan=False).encode(), "perceive-orders").get("orders")
-        if (not isinstance(orders, list) or len(orders) != len(bonds)
-                or any(type(order) is not int or order not in (1, 2, 3) for order in orders)):
-            raise ValueError("Open Babel could not construct this bond graph.")
-        perceived = bonds = tuple(replace(bond, order=order) for bond, order in zip(bonds, orders))
+        perceived = bonds = with_perceived_orders(bonds, orders)
     occupied = occupied_valences(molecule, bonds)
     # A neutral total can hide opposite local charges, for example in a nitro
     # group. No atom-local charge information distinguishes an O- from an OH.

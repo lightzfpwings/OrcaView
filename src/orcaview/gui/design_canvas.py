@@ -12,6 +12,8 @@ from orcaview.i18n import tr
 
 
 _PAPER = QColor("#FFFDF9")
+_LABEL_COLORS = {"O": "#B84138", "N": "#3265A7", "S": "#856224", "Cl": "#237B54",
+                 "F": "#237B54", "Br": "#8F5141", "I": "#79559B", "P": "#AA5729"}
 
 
 class DesignCanvas(QWidget):
@@ -32,12 +34,17 @@ class DesignCanvas(QWidget):
         self.setMinimumSize(210, 220)
         self.molecule = None
         self.selected = []
+        self._label_colors = _LABEL_COLORS
         self.tool = "select"
         self.bond_order = 1
         self.bond_style = "plain"
         self._center = (0., 0.)
         self._extent = (1., 1.)
         self.cancel_gesture()
+
+    def set_element_colors(self, overrides):
+        self._label_colors = {**_LABEL_COLORS, **overrides}
+        self.update()
 
     def cancel_gesture(self):
         self._start = self._pressed = self._drag = self._bond_tip = None
@@ -70,8 +77,10 @@ class DesignCanvas(QWidget):
         self.update()
 
     def _scale(self):
-        return min(72., (self.width() - 68) / self._extent[0],
-                   (self.height() - 80) / self._extent[1])
+        # Thumbnail exports can be smaller than the sketch editor's margins.
+        w, h = self.width(), self.height()
+        return min(72., (w - min(68., .4 * w)) / self._extent[0],
+                   (h - min(80., .4 * h)) / self._extent[1])
 
     def atom_position(self, index):
         atom = self.molecule.atoms[index]
@@ -243,8 +252,6 @@ class DesignCanvas(QWidget):
         if interactive and self._bond_tip is not None:
             draw_bond(painter, positions[self._pressed], self._bond_tip, self.bond_order, self.bond_style,
                       QColor("#9F5970"), 1.6, 4.2, clearance=(masks[self._pressed], 0))
-        colors = {"O": "#B84138", "N": "#3265A7", "S": "#856224", "Cl": "#237B54",
-                  "F": "#237B54", "Br": "#8F5141", "I": "#79559B", "P": "#AA5729"}
         selected_indices = set(self.selected)
         for i in self._paint_order:
             el = self.molecule.atoms[i].element
@@ -254,7 +261,7 @@ class DesignCanvas(QWidget):
                 painter.setPen(QPen(QColor("#9F5970"), 1.5) if selected else Qt.PenStyle.NoPen)
                 painter.setBrush(QColor("#F6E7EC") if selected else _PAPER)
                 painter.drawRoundedRect(box, 6, 6)
-            painter.setPen(QColor(colors.get(el, "#394445")))
+            painter.setPen(QColor(self._label_colors.get(el, "#394445")))
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter, el)
 
     def paintEvent(self, event):

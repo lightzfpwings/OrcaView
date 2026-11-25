@@ -10,13 +10,14 @@ import sys
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QCompleter, QDockWidget, QDoubleSpinBox, QFileDialog, QFrame,
+    QApplication, QComboBox, QCompleter, QDialog, QDockWidget, QDoubleSpinBox, QFileDialog, QFrame,
     QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPlainTextEdit,
     QPushButton, QSizePolicy, QSpinBox, QTabWidget, QToolBar,
     QVBoxLayout, QWidget,
 )
 
 from orcaview import __version__
+from orcaview.appearance import AppearanceStore
 from orcaview.gui import typography
 from orcaview.i18n import diagnostic_text, tr
 from orcaview.application.project import load_project, save_project
@@ -31,12 +32,15 @@ from orcaview.core.methods import (
     pno_options, reference_options,
 )
 from orcaview.core.models import Atom, CalculationSpec, Molecule
+from orcaview.core.resource_defaults import detect_resources
 from orcaview.core.solvation import SOLVENTS, solvation_options, uses_numerical_frequencies
+from orcaview.gui.appearance_dialog import AppearanceDialog
 from orcaview.gui.block_options import BlockOptionsPanel
 from orcaview.gui.design_panel import DesignPanel
+from orcaview.gui.file_dialogs import document_directory, set_document_directory, suggested_file
 from orcaview.gui.foundation_demo import build_foundation_demo
 from orcaview.gui.foundation_panel import FoundationPanel
-from orcaview.gui.inspector_form import InspectorForm, InspectorScrollArea, wrap_parameter_text
+from orcaview.gui.inspector_form import InspectorForm, InspectorScrollArea, InspectorStatusLabel
 from orcaview.gui.language_settings import LanguageDialog, load_interface_language
 from orcaview.gui.manual import ManualDialog
 from orcaview.gui.native_input import edit_native_input
@@ -124,9 +128,12 @@ def demo_benzene():
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, *, appearance_store=None):
         super().__init__()
-        self.session = Session(molecule=demo_benzene(), calculation=CalculationSpec(job_type="OPT"))
+        self.appearance_store = AppearanceStore() if appearance_store is None else appearance_store
+        self.resources = detect_resources()
+        self.default_calculation = CalculationSpec()
+        self.session = Session(molecule=demo_benzene(), calculation=replace(self.default_calculation, job_type="OPT"))
         self.dirty = False
         self._loading = True
         self._workspace_version = 0
@@ -167,6 +174,8 @@ class MainWindow(QMainWindow):
         self.design_panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.workspace_tabs.addTab(self.design_panel, tr("Design"))
         self.foundation_panel = FoundationPanel()
+        self._viewports = (self.viewport, self.design_panel.viewport, self.foundation_panel.viewport)
+        self._apply_appearance(self.appearance_store.load())
         # Let the splitters inside the results page adapt to each animation frame.
         self.foundation_panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.workspace_tabs.addTab(self.foundation_panel, tr("Result"))
@@ -182,11 +191,12 @@ class MainWindow(QMainWindow):
         self.design_panel.new_requested.connect(self._new_design)
         self.foundation_panel.design_requested.connect(self._design_result)
         self.viewport.selection_changed.connect(self._selection_changed)
-        for viewport in (self.viewport, self.design_panel.viewport, self.foundation_panel.viewport):
+        for viewport in self._viewports:
             viewport.selection_changed.connect(self._update_structure_image_action)
         self.workspace_tabs.currentChanged.connect(self._update_structure_image_action)
         self._create_status_bar(versions)
         self._load_controls()
+        self.statusBar().showMessage(self.resource_hint.text(), 8000)
         self._update_structure_image_action()
         self.columns = WorkspaceColumns(self, self.tree_dock, self.inspector_dock)
         self.workspace_transition = WorkspaceTransition(self, self.workspace_tabs, self.design_panel,
@@ -224,6 +234,8 @@ class MainWindow(QMainWindow):
         labels.toggled.connect(self._toggle_labels)
         view.addAction(labels)
         self.labels_action = labels
+        self.appearance_action = self._action(tr("Molecular appearance…"), self.show_appearance_dialog)
+        view.addAction(self.appearance_action)
         view.addAction(self._action(tr("Interface language…"), lambda: LanguageDialog(self).exec()))
         calculation = self.menuBar().addMenu(tr("Calculation"))
         self.find_method_action = self._action(tr("Find method…"), self.find_method, "Ctrl+K")
@@ -240,6 +252,26 @@ class MainWindow(QMainWindow):
         help_menu.addAction(self.update_action)
         help_menu.addAction(self._action(tr("About OrcaView"), lambda: QMessageBox.information(
             self, "OrcaView", tr("OrcaView {}\nORCA desktop pre- and postprocessor\n\nSupports XYZ, input templates, calculation logs and spectra.", __version__))))
+
+    def show_appearance_dialog(self):
+        dialog = AppearanceDialog(self.appearance, self.appearance_store, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            settings = dialog.settings()
+            try:
+                self.appearance_store.save(settings)
+            except (OSError, ValueError) as exc:
+                QMessageBox.warning(self, tr("Molecular appearance"),
+                                    tr("Could not save molecular appearance: {error}", error=diagnostic_text(exc)))
+            else:
+                self._apply_appearance(settings)
+        dialog.deleteLater()
+
+    def _apply_appearance(self, settings):
+        self.appearance = settings
+        colors = self.appearance_store.overrides(settings.palette_id)
+        for viewport in self._viewports:
+            viewport.set_appearance(settings, colors)
+        self.design_panel.canvas.set_element_colors(colors)
 
     def show_update_dialog(self):
         if self._update_dialog is None:
@@ -444,8 +476,8 @@ class MainWindow(QMainWindow):
             control.currentIndexChanged.connect(self._settings_changed)
         self.charge = self._spin(-100, 100, 0)
         self.multiplicity = self._spin(1, 101, 1)
-        self.cores = self._spin(1, 256, 4)
-        self.maxcore = self._spin(1, 1048576, 1000)
+        self.cores = self._spin(1, 256, self.default_calculation.cores)
+        self.maxcore = self._spin(1, 1048576, self.default_calculation.maxcore_mb)
         for label, control in [(tr("Method family"), self.method_group), (tr("Computational method"), self.method), (tr("Orbital basis set"), self.basis),
                                (tr("Job type"), self.job)]:
             form.addRow(label, control)
@@ -464,18 +496,28 @@ class MainWindow(QMainWindow):
             form.addRow(label, self.auxiliary_bases[name])
         for label, control in [(tr("Dispersion correction"), self.dispersion), (tr("Numerical integration grid"), self.integration_grid),
                                (tr("Freeze core orbitals"), self.frozen_core), (tr("PNO accuracy"), self.pno_preset),
-                               (tr("CPU cores"), self.cores), (tr("Memory per core / MB"), self.maxcore)]:
+                               (tr("ORCA processes"), self.cores), (tr("Memory per process / MB"), self.maxcore)]:
             form.addRow(label, control)
+        cores, memory = self.resources.recommend()
+        self.resource_hint = QLabel(tr("Startup recommendation: {cores} × {memory:,} MB per process",
+                                       cores=cores, memory=memory))
+        unknown = tr("Unknown")
+        memory_mb = self.resources.memory_mb
+        self.resource_hint.setToolTip(tr("CPU limit at startup: {cpus}\nAvailable memory at startup (MB): {memory}\n"
+                                         "The recommendation targets up to 75% of detected available memory.",
+                                         cpus=self.resources.cpu_limit or unknown,
+                                         memory=f"{memory_mb:,}" if memory_mb is not None else unknown))
+        self.memory_hint = QLabel()
+        self.memory_hint.setToolTip(tr("ORCA may use more memory than the configured total."))
+        for hint in (self.resource_hint, self.memory_hint):
+            hint.setWordWrap(True)
+            hint.setObjectName("muted")
+            form.addRow(hint)
         layout.addWidget(form)
         self.block_options = BlockOptionsPanel()
         self.block_options.changed.connect(self._settings_changed)
         layout.addWidget(self.block_options)
-        self.memory_hint = QLabel()
-        self.memory_hint.setWordWrap(True)
-        self.memory_hint.setObjectName("muted")
-        layout.addWidget(self.memory_hint)
-        self.validation = QLabel()
-        self.validation.setWordWrap(True)
+        self.validation = InspectorStatusLabel()
         layout.addWidget(self.validation)
         self.export_button = QPushButton(tr("Export .inp"))
         self.export_button.setObjectName("primary")
@@ -517,15 +559,18 @@ class MainWindow(QMainWindow):
             if index >= 0:
                 control.setCurrentIndex(index)
 
+    def _set_auto_option(self, name, choices, spec):
+        control = getattr(self, name)
+        selected = control.currentData() if spec is None else getattr(spec, name)
+        self._fill_options(control, choices, selected or "Auto")
+        self.method_form.setRowVisible(control, len(choices) > 1)
+
     def _refresh_basis_options(self, spec=None):
         method = self.method.currentText()
         basis = self.basis.currentData()
         approximation = self.integral_approximation.currentData()
-        for name, control, options in (("relativity", self.relativity, scalar_options(method, basis)),
-                                       ("integration_grid", self.integration_grid, grid_options(method, approximation))):
-            selected = getattr(spec, name) if spec is not None else control.currentData()
-            self._fill_options(control, options, selected or "Auto")
-            self.method_form.setRowVisible(control, len(options) > 1)
+        self._set_auto_option("relativity", scalar_options(method, basis), spec)
+        self._set_auto_option("integration_grid", grid_options(method, approximation), spec)
         if spec is not None:
             self._refresh_auxiliary_controls(spec)
 
@@ -556,10 +601,7 @@ class MainWindow(QMainWindow):
     def _set_integral_options(self, spec=None):
         method = self.method.currentText()
         job = self.job.currentData()
-        references = reference_options(method, job)
-        selected = spec.wavefunction if spec else self.wavefunction.currentData()
-        self._fill_options(self.wavefunction, references, selected or "Auto")
-        self.method_form.setRowVisible(self.wavefunction, len(references) > 1)
+        self._set_auto_option("wavefunction", reference_options(method, job), spec)
         models = solvation_options(method, job)
         selected = spec.solvation_model if spec else self.solvation_model.currentData()
         custom = ((spec.solvation_model == "DDCOSMO" and spec.solvent is None) if spec else
@@ -568,10 +610,7 @@ class MainWindow(QMainWindow):
         self.solvation_model.setItemText(0, tr("Gas phase"))
         self.method_form.setRowVisible(self.solvation_model, len(models) > 1)
         self._fill_solvents(spec.solvent if spec else self.solvent.currentData(), custom=custom)
-        approximations = integral_options(self.method.currentText(), self.job.currentData())
-        selected = spec.integral_approximation if spec is not None else self.integral_approximation.currentData()
-        self._fill_options(self.integral_approximation, approximations, selected or "Auto")
-        self.method_form.setRowVisible(self.integral_approximation, len(approximations) > 1)
+        self._set_auto_option("integral_approximation", integral_options(method, job), spec)
         self._refresh_basis_options(spec)
 
     def _job_changed(self):
@@ -597,12 +636,9 @@ class MainWindow(QMainWindow):
                 self.basis.clear()
                 self.basis.addItem(tr("Built in / fixed by method"), basis)
         self.basis.setEnabled(preset.uses_orbital_basis)
-        for name, control, choices in (("frozen_core", self.frozen_core, frozen_core_options(method)),
-                                       ("pno_preset", self.pno_preset, pno_options(method)),
-                                       ("dispersion", self.dispersion, dispersion_options(method))):
-            selected = getattr(spec, name) if spec is not None else control.currentData()
-            self._fill_options(control, choices, selected or "Auto")
-            self.method_form.setRowVisible(control, len(choices) > 1)
+        self._set_auto_option("frozen_core", frozen_core_options(method), spec)
+        self._set_auto_option("pno_preset", pno_options(method), spec)
+        self._set_auto_option("dispersion", dispersion_options(method), spec)
         job_labels = {"SP": tr("Single-point energy  ·  SP"), "OPT": tr("Geometry optimization  ·  Opt"), "FREQ": tr("Frequencies"), "OPT_FREQ": tr("Optimization + frequencies"),
                       "OPT_TS": tr("Transition state optimization · OptTS"), "IRC": tr("Intrinsic reaction coordinate · IRC")}
         with QSignalBlocker(self.job):
@@ -681,6 +717,8 @@ class MainWindow(QMainWindow):
         self.tabs.setTabBar(PreviewTabBar(self.tabs, self.workspace_tabs, self.tree_dock, self.inspector_dock))
         self.tabs.setDocumentMode(True)
         self.input_preview = self._text_panel()
+        # A short validation message and a full input deck share this viewport.
+        self.input_preview.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.output_summary = self._text_panel()
         self.output_summary.setPlainText(tr("To view a single-job log, choose File → Read ORCA output summary.\nImport results to open single-point energies and atomic charges."))
         self.log = self._text_panel()
@@ -694,7 +732,7 @@ class MainWindow(QMainWindow):
         title_bar.setFixedHeight(0)
         self.bottom_dock.setTitleBarWidget(title_bar)
 
-    def _load_controls(self, *, project_path=None):
+    def _load_controls(self, *, project_path=None, opened_path=None):
         self._workspace_version += 1
         self._loading = True
         molecule, spec = self.session.molecule, self.session.calculation
@@ -726,6 +764,9 @@ class MainWindow(QMainWindow):
                                            project_path=project_path)
         self.foundation_panel.set_log_report(self.session.log_report)
         self._update_title()
+        source = project_path or opened_path or self.session.source_path
+        if source:
+            set_document_directory(self, source)
 
     def _refresh_input_geometry(self, molecule, *, keep_view=False):
         has_atoms = bool(molecule.atoms)
@@ -760,7 +801,7 @@ class MainWindow(QMainWindow):
         if not self._guard_discard():
             return
         seed = Molecule(tr("New molecule"), (Atom("C", 0., 0., 0.),), bonds_explicit=True)
-        self.session = Session(molecule=seed, calculation=CalculationSpec(job_type="OPT"))
+        self.session = Session(molecule=seed, calculation=replace(self.default_calculation, job_type="OPT"))
         self._load_controls()
         self.workspace_tabs.setCurrentWidget(self.design_panel)
         self.dirty = True
@@ -826,6 +867,9 @@ class MainWindow(QMainWindow):
         self.columns.set_results(showing_results)
         if not self.session.molecule.atoms:
             self.statusBar().clearMessage()
+            if not self.isVisible():
+                # Command-line startup and offscreen captures can choose an empty page explicitly.
+                return
             choices = QMessageBox.StandardButton
             dialog = QMessageBox(QMessageBox.Icon.Question, tr("Empty molecule"),
                                  tr("The current design has no atoms. Return to Design to draw a molecule?"),
@@ -887,7 +931,7 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(tr("Structure image saved to {path}", path=dialog.output_path), 8000)
             dialog.deleteLater()
 
-    def open_result_session(self, session, dataset_id=None, *, mark_dirty=True, project_path=None,
+    def open_result_session(self, session, dataset_id=None, *, mark_dirty=True, project_path=None, opened_path=None,
                             message=None, timeout_ms=8000):
         """Display a validated session after its caller has handled unsaved edits."""
         document = session.document
@@ -901,7 +945,7 @@ class MainWindow(QMainWindow):
         if selected is not None:
             selected.validate_geometry(document.resolve(selected.geometry))
         self.session = session
-        self._load_controls(project_path=project_path)
+        self._load_controls(project_path=project_path, opened_path=opened_path)
         if session.molecule.atoms:
             self.workspace_tabs.setCurrentWidget(self.foundation_panel)
             if selected is not None:
@@ -916,12 +960,14 @@ class MainWindow(QMainWindow):
     def load_analysis_demo(self):
         if self._guard_discard():
             session, dataset_id = build_result_demo()
+            session.calculation = self.default_calculation
             self.open_result_session(session, dataset_id, message=tr("Loaded M6 synthetic charge example"))
 
     def load_foundation_demo(self):
         if not self._guard_discard():
             return
         session = build_foundation_demo()
+        session.calculation = self.default_calculation
         charge = next(data for data in session.document.records()[1] if data.kind == "atomic_charge")
         self.open_result_session(session, charge.dataset_id, message=tr("M1 synthetic atomic charge example loaded"))
         self.log.appendPlainText(tr("Loaded M1 synthetic atomic charges with one missing value."))
@@ -938,16 +984,16 @@ class MainWindow(QMainWindow):
                 self.job.setItemText(index, label)
         self.method_form.setRowVisible(self.method_hint, numerical and spec.job_type in ("FREQ", "OPT_FREQ"))
 
-    def _update_preview(self, *, commit_settings=True):
+    def _update_preview(self, *, commit_settings=True) -> str:
+        """Return the validated input shown in the preview, or an empty string on failure."""
+        cores, memory = self.cores.value(), self.maxcore.value()
+        self.memory_hint.setText(tr("Configured total: {total:,} MB", total=cores * memory))
         if not self.session.molecule.atoms:
             self.input_preview.clear()
             self.validation.clear()
             self.validation.setToolTip("")
             self.export_button.setEnabled(False)
-            return False
-        cores, memory = self.cores.value(), self.maxcore.value()
-        self.memory_hint.setText(tr("Estimated memory: {} MB × {} = {:,} MB\nEstimate based on memory per core. The process may use more.",
-                                    memory, cores, memory * cores))
+            return ""
         method = self.method.currentText()
         job_type = self.job.currentData()
         has_channel = method in ELECTRON_CHANNEL_METHODS and self.multiplicity.value() > 1
@@ -974,6 +1020,9 @@ class MainWindow(QMainWindow):
                 active_orbitals=(self.active_orbitals.value() or None) if active else None,
                 nroots=self.nroots.value() if excited else None,
                 reference_functional=self.reference_functional.currentText() if method in REFERENCE_FUNCTIONAL_METHODS else None,
+                block_options=tuple(item for item in self.session.calculation.block_options
+                                    if self.session.calculation.method == method and item.block == "freq"
+                                    and (item.block, item.key) in self.block_options.drafts),
                 **{name: control.currentData() for name, control in self.auxiliary_bases.items()},
             )
             self._update_frequency_labels(spec)
@@ -999,21 +1048,22 @@ class MainWindow(QMainWindow):
                 text = render_input(molecule, spec)
             if spec.peak_maxcore_per_process != spec.maxcore_mb:
                 peak = spec.peak_maxcore_per_process
-                self.memory_hint.setText(tr("Estimated memory: {peak:,} MB × {spec.cores} = {total:,} MB\nUses the highest per-core estimate among modules. Peak usage depends on the calculation stage.", peak=peak, spec=spec, total=peak * spec.cores))
+                self.memory_hint.setText(tr("Highest configured module budget: {peak:,} MB per process, {total:,} MB total",
+                                            peak=peak, total=peak * cores))
             self.input_preview.setPlainText(text)
             self.validation.setText(tr("● Geometry and electron count validated"))
-            self.validation.setToolTip("")
+            self.validation.setToolTip(self.validation.text())
             self.validation.setStyleSheet("color: #466446; padding: 8px 0;")
             self.export_button.setEnabled(True)
-            return True
+            return text
         except ValueError as exc:
             message = diagnostic_text(exc)
             self.input_preview.setPlainText(tr("Input cannot be exported yet:\n{}", message))
-            self.validation.setText("● " + wrap_parameter_text(message))
+            self.validation.setText("● " + " ".join(message.splitlines()))
             self.validation.setToolTip(message)
             self.validation.setStyleSheet("color: #944A25; padding: 8px 0;")
             self.export_button.setEnabled(False)
-            return False
+            return ""
 
     def _selection_changed(self, selected):
         atoms = self.session.molecule.atoms
@@ -1027,7 +1077,7 @@ class MainWindow(QMainWindow):
         self.selection.setText("\n".join(lines))
 
     def _toggle_labels(self, enabled):
-        for viewport in (self.viewport, self.design_panel.viewport, self.foundation_panel.viewport):
+        for viewport in self._viewports:
             viewport.labels = enabled
             viewport.update()
 
@@ -1047,7 +1097,7 @@ class MainWindow(QMainWindow):
     def open_file(self):
         if not self.open_file_action.isEnabled():
             return
-        filename, _ = QFileDialog.getOpenFileName(self, tr("Open file"), "", open_file_filters(tr))
+        filename, _ = QFileDialog.getOpenFileName(self, tr("Open file"), str(document_directory(self)), open_file_filters(tr))
         if not filename:
             return
         path = Path(filename)
@@ -1069,7 +1119,8 @@ class MainWindow(QMainWindow):
     open_xyz = open_file
 
     def open_project(self):
-        path, _ = QFileDialog.getOpenFileName(self, tr("Open project"), "", "OrcaView (*.oview.json);;JSON (*.json)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Open project"), str(document_directory(self)),
+                                              "OrcaView (*.oview.json);;JSON (*.json)")
         self._open_project_path(path)
 
     def _open_project_path(self, path):
@@ -1091,7 +1142,8 @@ class MainWindow(QMainWindow):
         if self.session.molecule.atoms and not self._update_preview():
             self._error(ValueError(tr("Correct the calculation settings before saving the project.")))
             return False
-        path, _ = QFileDialog.getSaveFileName(self, tr("Save project"), self.session.molecule.name + ".oview.json", "OrcaView (*.oview.json)")
+        suggested = suggested_file(self, self.session.molecule.name, ".oview.json")
+        path, _ = QFileDialog.getSaveFileName(self, tr("Save project"), suggested, "OrcaView (*.oview.json)")
         if not path:
             return False
         try:
@@ -1109,13 +1161,15 @@ class MainWindow(QMainWindow):
     def export_input(self):
         if not self.session.molecule.atoms:
             return
-        if not self._update_preview():
+        text = self._update_preview()
+        if not text:
             self._error(ValueError(tr("Correct the calculation settings before exporting input.")))
             return
-        path, _ = QFileDialog.getSaveFileName(self, tr("Export ORCA input"), self.session.molecule.name + ".inp", tr("ORCA input") + " (*.inp)")
+        suggested = suggested_file(self, self.session.molecule.name, ".inp")
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export ORCA input"), suggested, tr("ORCA input") + " (*.inp)")
         if path:
             try:
-                Path(path).write_text(self.session.input_text(), encoding="utf-8")
+                Path(path).write_text(text, encoding="utf-8")
                 self.log.appendPlainText(tr("ORCA input exported: {}", path))
                 self.statusBar().showMessage(tr("Input exported: {}", path), 8000)
             except (ValueError, OSError) as exc:
@@ -1124,25 +1178,26 @@ class MainWindow(QMainWindow):
     def open_native_input_editor(self):
         if not self.session.molecule.atoms:
             return
-        initial = self.session.input_text() if self._update_preview() else ""
-        edit_native_input(self, initial)
+        edit_native_input(self, self._update_preview())
 
     def import_native_output(self):
         if not self.import_action.isEnabled():
             return
-        path, _ = QFileDialog.getOpenFileName(self, tr("Import ORCA results"), "",
+        path, _ = QFileDialog.getOpenFileName(self, tr("Import ORCA results"), str(document_directory(self)),
                                               tr("ORCA output") + " (*.out *.log);;" + tr("All files") + " (*)")
         if path:
             self._start_read(Path(path), read_native_session)
 
     def _show_native_result(self, path, session):
-        self.open_result_session(session, message=tr("Imported structure and results from {path.name}. The project can now be saved.", path=path))
+        session.calculation = self.default_calculation
+        self.open_result_session(session, opened_path=path, message=tr("Imported structure and results from {path.name}. The project can now be saved.", path=path))
         self.log.appendPlainText(tr("Imported results from {path} into a separate project.", path=path))
 
     def open_output(self):
         if not self.summary_action.isEnabled():
             return
-        path, _ = QFileDialog.getOpenFileName(self, tr("Read single-job output"), "", tr("ORCA output") + " (*.out *.log);;" + tr("All files") + " (*)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Read single-job output"), str(document_directory(self)),
+                                              tr("ORCA output") + " (*.out *.log);;" + tr("All files") + " (*)")
         if not path:
             return
         job, accepted = QInputDialog.getItem(self, tr("Output job type"), tr("Select the original job type to assess convergence"), list(ALL_JOBS), 0, False)
@@ -1168,7 +1223,7 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.setCurrentWidget(self.foundation_panel)
         if not self.session.molecule.atoms:
             return
-        self.foundation_panel.set_log_report(report, standalone=True)
+        self.foundation_panel.set_log_report(report, standalone=True, opened_path=path)
         self.statusBar().showMessage(tr("Viewing separate log {path.name}. The current project is retained.", path=path), 8000)
 
     def _read_context(self):
@@ -1243,7 +1298,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, tr("Periodic structure"), tr("Periodic structures are unsupported."))
         elif isinstance(result, OpenedStructure):
             self.session = result.session(self.session.calculation)
-            self._load_controls()
+            self._load_controls(opened_path=path)
             self.workspace_tabs.setCurrentWidget(self.input_page)
             if result.record.generated_3d:
                 message = tr("Generated a 3D conformer for {path.name} with Open Babel.", path=path)
@@ -1293,18 +1348,30 @@ class MainWindow(QMainWindow):
             event.ignore()
 
 
-def launch(screenshot=None):
+def launch(screenshot=None, *, configure=None):
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("OrcaView")
     locale = load_interface_language(app)
     app.setWindowIcon(QIcon(str(APP_ICON)))
     app.setFont(typography.interface_font(locale))
     window = MainWindow()
-    window.show()
+    if configure is not None:
+        configure(window)
     if screenshot is not None:
-        # Use the real window paint path for screenshots, including offscreen runs.
-        def capture():
-            success = window.grab().save(str(screenshot))
-            app.exit(0 if success else 2)
-        QTimer.singleShot(600, capture)
+        from PySide6.QtCore import QIODevice, QSaveFile
+
+        # A hidden widget can be laid out and painted without mapping a desktop window.
+        window.ensurePolished()
+        image = window.grab()
+        output = QSaveFile(str(screenshot))
+        image_format = Path(screenshot).suffix.lstrip(".").upper()
+        if not output.open(QIODevice.OpenModeFlag.WriteOnly):
+            raise OSError(output.errorString())
+        if not image_format or not image.save(output, image_format):
+            output.cancelWriting()
+            raise ValueError("Could not encode the desktop screenshot using the filename extension")
+        if not output.commit():
+            raise OSError(output.errorString())
+        return 0
+    window.show()
     return app.exec()

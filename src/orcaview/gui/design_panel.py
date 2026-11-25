@@ -40,7 +40,6 @@ class DesignPanel(QWidget):
         self.editor = None
         self._structure_job = None
         self._bond_start = None
-        self._order = 1
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(8)
@@ -313,7 +312,7 @@ class DesignPanel(QWidget):
             self.status.setText(tr("3D structure pre-optimized with {method}.", method=command.operation.method))
 
     def _element_picked(self):
-        if self.canvas.tool != "bond" or self._order == 0:
+        if self.canvas.tool != "bond" or self.canvas.bond_order == 0:
             self.atom_tool.click()
 
     def _activate_bond(self, order, style):
@@ -324,7 +323,6 @@ class DesignPanel(QWidget):
         self.canvas.tool = mode
         self.canvas.bond_order = order
         self.canvas.bond_style = style
-        self._order = order
         self._bond_start = None
         targeting = mode == "hydrogen"
         self._leave_hydrogens.setEnabled(targeting)
@@ -356,7 +354,7 @@ class DesignPanel(QWidget):
             text = tr("Click the starting carbon to build a ring through it, another atom to attach a ring, or empty space to place a separate ring.")
         elif self._bond_start is not None:
             text = tr("Click the second atom.")
-        elif self._order:
+        elif self.canvas.bond_order:
             text = tr("Click two atoms to bond them. Drag from an atom into empty space to extend the molecule.")
         else:
             text = tr("Click two atoms in order, or click an existing bond.")
@@ -420,7 +418,7 @@ class DesignPanel(QWidget):
         self.hydrogens.setEnabled(has_atoms)
         self.clean_2d.setEnabled(ready and len(head.atom_ids) > 1)
         self.optimize_3d.setEnabled(ready and len(head.atom_ids) > 1)
-        self.bond_length.set_selection(head, selected)
+        self.bond_length.set_selection(head, selected, bonds=self.viewport.bonds)
 
     def _shift_select(self, index):
         selected = self.canvas.selected
@@ -502,7 +500,7 @@ class DesignPanel(QWidget):
         self._bond_start = None
         self._select([first, second])
         if self.canvas.tool == "bond":
-            self._execute(SetBond(head.atom_ids[first], head.atom_ids[second], self._order, self.canvas.bond_style))
+            self._execute(SetBond(head.atom_ids[first], head.atom_ids[second], self.canvas.bond_order, self.canvas.bond_style))
 
     def _extend_bond(self, index, x, y, z):
         head = self.editor.document.head
@@ -512,7 +510,7 @@ class DesignPanel(QWidget):
             x, y = anchor.x + (x - sx), anchor.y + (y - sy)
         atom = Atom(self.element.currentText(), x, y, z)
         self._select([index])
-        result = self._execute(AttachAtom(head.atom_ids[index], atom, self._order, self.canvas.bond_style))
+        result = self._execute(AttachAtom(head.atom_ids[index], atom, self.canvas.bond_order, self.canvas.bond_style))
         if result is not None:
             self._select([len(result.snapshot.atom_ids) - 1])
 

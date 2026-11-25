@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout,
 )
 
+from orcaview.gui.file_dialogs import document_directory, suggested_file
 from orcaview.gui.typography import fixed_font
 from orcaview.i18n import tr
 
@@ -85,7 +86,8 @@ class NativeInputDialog(QDialog):
         return ("\ufeff" if self._bom else "") + content
 
     def open_input(self):
-        name, _ = QFileDialog.getOpenFileName(self, tr("Open ORCA input"), "", tr("ORCA input") + " (*.inp)")
+        directory = self._path.parent if self._path else document_directory(self)
+        name, _ = QFileDialog.getOpenFileName(self, tr("Open ORCA input"), str(directory), tr("ORCA input") + " (*.inp)")
         if not name:
             return False
         path = Path(name)
@@ -108,7 +110,7 @@ class NativeInputDialog(QDialog):
         return True
 
     def save_as(self):
-        suggested = str(self._path) if self._path else "calculation.inp"
+        suggested = str(self._path) if self._path else suggested_file(self, "calculation", ".inp")
         name, _ = QFileDialog.getSaveFileName(self, tr("Save ORCA input as"), suggested, tr("ORCA input") + " (*.inp)")
         if not name:
             return False

@@ -2,32 +2,23 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QLocale, QSettings, QStandardPaths, QTranslator, Qt, QUrl
+from PySide6.QtCore import QLocale, QTranslator, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
     QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
 )
 
+from orcaview.preferences import language_preferences, write_preferences
 from orcaview.i18n import BASE_LOCALE, activate_language, discover_languages, tr
-
-
-def _settings():
-    return QSettings("OrcaView", "OrcaView")
-
-
-def _directory(settings):
-    default = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)) / "languages"
-    return Path(settings.value("interface/languageDirectory", str(default), type=str)).expanduser()
 
 
 def load_interface_language(app, settings=None):
     """Called before constructing the first window, including after an upgrade."""
-    if settings is None:
-        settings = _settings()
-    directory = _directory(settings)
+    prefs = language_preferences(settings)
+    directory = Path(prefs["languageDirectory"]).expanduser()
     packs, _ = discover_languages(directory)
-    pack = packs.get(settings.value("interface/language", BASE_LOCALE, type=str), packs[BASE_LOCALE])
+    pack = packs.get(prefs["language"], packs[BASE_LOCALE])
     activate_language(pack)
     previous = getattr(app, "_orcaview_qt_translator", None)
     if previous is not None:
@@ -48,14 +39,15 @@ def load_interface_language(app, settings=None):
 class LanguageDialog(QDialog):
     def __init__(self, parent=None, *, settings=None):
         super().__init__(parent)
-        self.settings = _settings() if settings is None else settings
+        self.settings = settings
+        prefs = language_preferences(settings)
         self.setWindowTitle(tr("Interface language"))
         self.resize(580, 200)
         layout = QVBoxLayout(self)
         form = QFormLayout()
         layout.addLayout(form)
         path_row = QHBoxLayout()
-        self.directory = QLineEdit(str(_directory(self.settings)))
+        self.directory = QLineEdit(prefs["languageDirectory"])
         self.directory.setReadOnly(True)
         path_row.addWidget(self.directory, 1)
         choose = QPushButton(tr("Choose folder…"))
@@ -83,7 +75,7 @@ class LanguageDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        self._refresh(self.settings.value("interface/language", BASE_LOCALE, type=str))
+        self._refresh(prefs["language"])
 
     def _choose_directory(self):
         selected = QFileDialog.getExistingDirectory(self, tr("Choose a language pack folder"), self.directory.text())
@@ -116,10 +108,9 @@ class LanguageDialog(QDialog):
         if self.languages.currentData() != selected:
             QMessageBox.warning(self, tr("Interface language"), tr("The selected language pack is no longer available."))
             return
-        self.settings.setValue("interface/languageDirectory", self.directory.text())
-        self.settings.setValue("interface/language", selected)
-        self.settings.sync()
-        if self.settings.status() != QSettings.Status.NoError:
+        try:
+            write_preferences("language", {"languageDirectory": self.directory.text(), "language": selected}, self.settings)
+        except OSError:
             QMessageBox.warning(self, tr("Interface language"), tr("Could not save the language settings."))
             return
         super().accept()

@@ -11,8 +11,8 @@ from typing import Optional, Tuple
 from ._advanced_methods import CBS_PROTOCOLS
 from ._dft_methods import DFT_METHOD_GROUPS, DLPNO_DOUBLE_HYBRIDS, EXTRA_DFT_GROUPS
 from ._state_catalog import CASDFT_METHODS, DOUBLE_HYBRID_RESPONSE
+from .block_options import BlockOverride
 from .methods import DISPERSION_RECIPES, METHODS, frozen_core_options
-from .solvation import uses_numerical_frequencies
 
 
 @dataclass(frozen=True)
@@ -196,6 +196,18 @@ _NUMFREQ = (
     _positive("freq", "Increment", "Numerical displacement (bohr)"),
     BlockOption("freq", "NumHessTransInvar", "Use translation invariance for displaced gradients", "bool"),
 )
+_NUMFREQ_KEYS = tuple(option.key for option in _NUMFREQ)
+
+
+def uses_numerical_frequencies(spec):
+    if METHODS[spec.method].uses_numerical_frequencies:
+        return True
+    # A project that explicitly configures displaced gradients requests NumFreq.
+    # Common %freq settings such as ProjectTR apply to either Hessian.
+    return spec.job_type in ("FREQ", "OPT_FREQ") and any(
+        isinstance(item, BlockOverride) and item.block == "freq" and item.key in _NUMFREQ_KEYS
+        for item in spec.block_options
+    )
 
 
 def catalog_options(spec):

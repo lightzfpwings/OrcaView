@@ -85,8 +85,8 @@ def scalar_options(method_name, basis):
 
 
 def uses_numerical_scalar_frequencies(spec):
-    return (_preset(spec.method).uses_orbital_basis and spec.basis in SCALAR_BASES
-            and SCALAR_BASES[spec.basis][0] in ("DKH2", "ZORA"))
+    """ORCA 6.1.1 §2.12 uses the one-center Hessian for DKH/ZORA and supports X2C."""
+    return False
 
 
 def _scf_kind(method):

@@ -1,6 +1,6 @@
 # OrcaView
 
-OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a46 adds a resolution multiplier and BMP output for structure images. English is built in on every platform. [Download 0.1.0a46](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a46)
+OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a53 supports external interface languages and element color schemes across macOS, Windows and Linux. English is built in on every platform. [Download 0.1.0a53](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a53)
 
 ## Install and try OrcaView
 
@@ -34,11 +34,13 @@ Open an ORCA `.log` or `.out` containing IR intensities, Raman activities, oscil
 
 Try `Examples/water-raman.out` for IR and Raman or `Examples/peroxide-uv-cd.out` for UV/Vis and signed CD. The source log and printed peak data are preserved. [ORCA vibrational-spectrum documentation](https://www.faccts.de/docs/orca/6.1/manual/contents/spectroscopyproperties/vibrations.html)
 
-### Optional interface languages
+### Language and element color packs
 
 English is built in. Simplified and Traditional Chinese are provided together in the separate Chinese language extension. German and Japanese also have optional extensions. Extract the desired language ZIP to a directory of your choice. In **View → Interface language…**, choose that directory, refresh the list, select the language, save and restart. Each extension includes OrcaView messages and the corresponding Qt translations. [Extension sources](language-packs/)
 
-All three desktop builds check OrcaView's own packaged text, example contents and filenames for Chinese characters. Installations with a previously selected language start in English if that extension is unavailable.
+Download the Contrast color pack, then open **View → Molecular appearance… → Import color pack…**, choose the JSON and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Contrast palette](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a53/OrcaView-0.1.0a53-Contrast-color-pack.json)
+
+The extension kit contains an editable message catalog, a working palette and JSON schemas for both formats. [Author guide](docs/extensions/README.md) · [Download the extension kit](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a53/OrcaView-0.1.0a53-extension-kit.zip)
 
 ### Updating
 
@@ -50,8 +52,15 @@ Windows 0.1.0a42 and earlier require a one-time manual upgrade to the single-fil
 
 - Import XYZ, MOL/SDF, MOL2, PDB, CML, CDXML, SMILES, InChI and other formats through Open Babel. OrcaView can generate a starting 3D structure from a 2D file and offers a finite-cell representation for periodic inputs. It also reads coordinates from Gaussian, ORCA, Q-Chem, NWChem, Molden, FCHK, WFN and MWFN files. Binary GBW conversion requires a matching `orca_2mkl`.
 - Rotate the central viewport with the left mouse button, pan with the right button and zoom with the wheel. The initial view looks down +z with x to the right and y up. Choose two atoms to measure their distance. Axis controls also support numerical rotation angles.
+- Open **View → Molecular appearance…** to choose ball-and-stick, space-filling, stick or wireframe. Adjust atom size, bond thickness and the distance cutoff for inferred display bonds. The settings apply across all three workspaces and to exported structure images. [Color pack format and example](color-packs/README.md)
 - Configure methods, basis sets, job types, charge and multiplicity. Adjust advanced input blocks or edit and export a native `.inp`. Inline coordinates are written to eight decimal places. [Method reference](docs/ORCA_METHODS.md)
 - Read energies, orbitals, charges, dipoles, vibrations, electronic spectra and NMR properties from ORCA output. The read-only result tables support copying and retain the source filename and line. The Input workspace includes the input preview, result summary and messages.
+
+Project settings, design, results, spectra and image export are available from the terminal. Use `orcaview render molecule.xyz molecule.png` to draw a structure offscreen. Setting `ORCAVIEW_HEADLESS=1` skips interactive display commands in unattended jobs. [Batch CLI guide](docs/CLI.md)
+
+New jobs default to 16 ORCA processes and 4096 MB per process in both the desktop app and the CLI. Set either value independently with `--cores` or `--maxcore`. Use `orcaview resources` to see a recommendation for the current machine.
+
+Document dialogs start on the Desktop and exports default to the opened document’s folder. The mouse wheel scrolls the calculation settings panel. Ordinary HF and DFT frequency jobs use `Freq`, including supported solvent and dispersion settings. [Calculation methods](docs/ORCA_METHODS.md)
 
 ## Molecule design
 
@@ -76,6 +85,7 @@ python -m orcaview preview examples/water.xyz --job OPT_FREQ
 python tools/run_tests.py -q
 python packaging/desktop/build.py both
 python packaging/build_language_packs.py
+python packaging/build_extension_kit.py
 ```
 
 For macOS, install `PyInstaller==6.22.3` in the build environment and run `python packaging/macos/build.py`. Package outputs appear under `dist/<platform>/<version>/`. The test command includes both archived verification cases and tests in the checkout. [Portable build details](packaging/desktop/README.md) · [Validation history](docs/PUBLIC_VALIDATION.md)

@@ -23,7 +23,7 @@
 
 ## 哪些计算可以直接设置
 
-选定方法、允许的作业和基组后，GUI、CLI、项目读写和输入导出共用规则。计算子块默认折叠。CPCM、SMD、ALPB、DDCOSMO、CPCMX 按方法和作业筛选溶剂。SMD 频率选用数值 Hessian。外部 GFN2-xTB 的 CPCMX 限单点；ddCOSMO 可选具名溶剂或用 `%xtb EPSILON` 指定介电常数。[隐式溶剂](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/solvationmodels.html) · [ORCA xTB](https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/semiempirical.html) · [xTB 溶剂支持](https://xtb-docs.readthedocs.io/en/latest/gbsa.html)
+选定方法、允许的作业和基组后，GUI、CLI、项目读写和输入导出共用规则。计算子块默认折叠。CPCM、SMD、ALPB、DDCOSMO、CPCMX 按方法和作业筛选溶剂。0.1.0a52 起，HF/DFT 的 SMD 频率沿用气相方法的 Hessian 类型。外部 GFN2-xTB 的 CPCMX 限单点；ddCOSMO 可选具名溶剂或用 `%xtb EPSILON` 指定介电常数。[隐式溶剂](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/solvationmodels.html) · [ORCA xTB](https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/semiempirical.html) · [xTB 溶剂支持](https://xtb-docs.readthedocs.io/en/latest/gbsa.html)
 
 标准 HF 和具有对应导数的原生 DFT 预设增加 OptTS 与 IRC。单点不能带优化器 `%geom`。OptTS 可以设置 P-RFO 的 Hessian 参数。IRC 通过独立的 `%irc` 设置方向、初始位移和校正步。使用 down 方向时，后端会拦截依赖 Hessian 初始位移的设置。两项任务应从适当的过渡态猜测或已定位的过渡态构型开始。[过渡态搜索](https://orca-manual.mpi-muelheim.mpg.de/contents/structurereactivity/optimizations_TS.html) · [IRC](https://orca-manual.mpi-muelheim.mpg.de/contents/structurereactivity/irc.html)
 

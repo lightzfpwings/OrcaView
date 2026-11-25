@@ -10,7 +10,7 @@ import sys
 from tempfile import TemporaryDirectory, mkdtemp
 from weakref import finalize
 
-from .update_download import UpdateDownloadError, _check_asset, _check_cancelled, _read_verified
+from .update_download import UpdateDownloadError, _check_asset, _check_cancelled, _publish_directory, _read_verified
 
 
 def _bundle_version(app):
@@ -74,7 +74,7 @@ class PreparedMacUpdate:
         # the private staging directory even after the new app has launched.
         self._cleanup()
 
-    def install_on_exit(self):
+    def install_on_exit(self, *, relaunch=True):
         import fcntl
 
         staged = self.workspace / "OrcaView.app"
@@ -87,7 +87,8 @@ class PreparedMacUpdate:
                 raise UpdateDownloadError("The installation has changed. Check for updates again.")
             _exchange(staged, self.target)
             try:
-                _system("/usr/bin/open", "-n", str(self.target))
+                if relaunch:
+                    _system("/usr/bin/open", "-n", str(self.target))
             except (OSError, UpdateDownloadError):
                 try:
                     _exchange(staged, self.target)
@@ -100,35 +101,60 @@ class PreparedMacUpdate:
         self.discard()
 
 
-def prepare_macos_update(asset, archive, target, *, cancelled=None):
+def _stage_app(asset, archive, staged, *, cancelled=None):
     _check_asset(asset)
     suffix = "-macOS-arm64.dmg"
-    target = Path(target)
-    if not asset.name.endswith(suffix) or not _bundle_version(target):
-        raise UpdateDownloadError("Could not identify the OrcaView app to replace.")
+    if not asset.name.endswith(suffix):
+        raise UpdateDownloadError("Choose a macOS arm64 disk image.")
     expected = asset.name[len("OrcaView-"):-len(suffix)]
+    with TemporaryDirectory(prefix="orcaview-image-") as temp:
+        image = Path(temp) / "verified.dmg"
+        mount = Path(temp) / "mount"
+        mount.mkdir()
+        with Path(archive).open("rb") as src, image.open("xb") as dest:
+            _read_verified(asset, src, sink=dest, cancelled=cancelled)
+        _system("/usr/bin/hdiutil", "attach", "-readonly", "-nobrowse", "-noautoopen",
+                "-mountpoint", str(mount), str(image))
+        try:
+            _check_cancelled(cancelled)
+            source = mount / "OrcaView.app"
+            if _bundle_version(source) != expected:
+                raise UpdateDownloadError("The app version in the disk image does not match the release.")
+            _system("/usr/bin/ditto", str(source), str(staged))
+        finally:
+            _system("/usr/bin/hdiutil", "detach", str(mount))
+        _system("/usr/bin/codesign", "--verify", "--deep", "--strict", str(staged))
+        _check_cancelled(cancelled)
+
+
+def prepare_macos_update(asset, archive, target, *, cancelled=None):
+    target = Path(target)
+    if not _bundle_version(target):
+        raise UpdateDownloadError("Could not identify the OrcaView app to replace.")
     old = target.stat()
     workspace = Path(mkdtemp(prefix=".orcaview-update-", dir=target.parent))
     try:
-        with TemporaryDirectory(prefix="orcaview-image-") as temp:
-            image = Path(temp) / "verified.dmg"
-            mount = Path(temp) / "mount"
-            mount.mkdir()
-            with Path(archive).open("rb") as src, image.open("xb") as dest:
-                _read_verified(asset, src, sink=dest, cancelled=cancelled)
-            _system("/usr/bin/hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint", str(mount), str(image))
-            staged = workspace / "OrcaView.app"
-            try:
-                _check_cancelled(cancelled)
-                source = mount / "OrcaView.app"
-                if _bundle_version(source) != expected:
-                    raise UpdateDownloadError("The app version in the disk image does not match the release.")
-                _system("/usr/bin/ditto", str(source), str(staged))
-            finally:
-                _system("/usr/bin/hdiutil", "detach", str(mount))
-            _system("/usr/bin/codesign", "--verify", "--deep", "--strict", str(staged))
-            _check_cancelled(cancelled)
+        _stage_app(asset, archive, workspace / "OrcaView.app", cancelled=cancelled)
         return PreparedMacUpdate(workspace, target, (old.st_dev, old.st_ino))
     except BaseException:
         shutil.rmtree(workspace, ignore_errors=True)
         raise
+
+
+def install_macos(asset, archive, directory):
+    """Install the verified bundle into the specified directory without opening Finder."""
+    directory = Path(directory)
+    target = directory if directory.suffix.lower() == ".app" else directory / "OrcaView.app"
+    if os.path.lexists(target):
+        prepared = prepare_macos_update(asset, archive, target)
+        try:
+            prepared.install_on_exit(relaunch=False)
+        finally:
+            prepared.discard()
+    else:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix=".orcaview-install-", dir=target.parent) as temp:
+            staged = Path(temp) / "OrcaView.app"
+            _stage_app(asset, archive, staged)
+            _publish_directory(staged, target)
+    return target

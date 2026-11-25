@@ -1,7 +1,6 @@
 """Preview and export the molecule shown in the current workspace."""
 
 from pathlib import Path
-import re
 
 from PySide6.QtCore import QRectF, QSignalBlocker, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
@@ -10,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QMessageBox, QPushButton, QSpinBox, QToolButton, QVBoxLayout, QWidget,
 )
 
+from orcaview.gui.file_dialogs import suggested_file
 from orcaview.gui.structure_export import (
     MAX_CANVAS_DIMENSION, MAX_EXPORT_SCALE, capture_structure, paint_structure_canvas, save_structure_image,
     validate_structure_size,
@@ -67,7 +67,7 @@ class StructureImageDialog(QDialog):
         self.resize(460, 460)
         self.output_path = None
         self._snapshots = [capture_structure(view) for _, view in views]
-        self._name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip(" .") or "molecule"
+        self._name = name
         self._transparent_preference = False
         layout = QVBoxLayout(self)
         self.preview = _CanvasPreview(self)
@@ -218,7 +218,9 @@ class StructureImageDialog(QDialog):
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         dialog.setNameFilter(f"{label} ({patterns})")
         dialog.setDefaultSuffix(fmt)
-        dialog.selectFile(f"{self._name}.{fmt}")
+        suggested = Path(suggested_file(self, self._name, "." + fmt))
+        dialog.setDirectory(str(suggested.parent))
+        dialog.selectFile(suggested.name)
         if not dialog.exec():
             return
         path = Path(dialog.selectedFiles()[0])

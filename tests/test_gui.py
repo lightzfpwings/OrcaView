@@ -46,6 +46,91 @@ class GuiTests(unittest.TestCase):
         self.window.close()
         self.app.processEvents()
 
+    def test_open_and_save_directories_follow_the_open_document_for_this_launch(self):
+        from PySide6.QtCore import QStandardPaths
+        from orcaview.gui.native_input import NativeInputDialog
+
+        w = self.window
+        with TemporaryDirectory() as folder:
+            desktop, inputs, exports = (Path(folder) / name for name in ("Desktop", "inputs", "exports"))
+            for directory in (desktop, inputs, exports):
+                directory.mkdir()
+            source = inputs / "water.xyz"
+            source.write_bytes(Path("examples/water.xyz").read_bytes())
+            project = exports / "saved.oview.json"
+            with patch.object(QStandardPaths, "writableLocation", return_value=str(desktop)):
+                with patch.object(QFileDialog, "getOpenFileName", return_value=(str(source), "")) as opened:
+                    w.open_file()
+                self.assertEqual(Path(opened.call_args.args[2]), desktop)
+                w.cores.setValue(8)
+                with patch.object(QFileDialog, "getSaveFileName", return_value=(str(project), "")) as save:
+                    self.assertTrue(w.save_project_dialog())
+                    self.assertEqual(Path(save.call_args.args[2]).parent, inputs)
+                with patch.object(QFileDialog, "getSaveFileName", return_value=(str(exports / "job.inp"), "")) as save:
+                    w.export_input()
+                    self.assertEqual(Path(save.call_args.args[2]).parent, inputs)
+                    self.assertIn("  nprocs 8", (exports / "job.inp").read_text().splitlines())
+                with patch.object(QFileDialog, "getOpenFileName", return_value=("", "")) as opened:
+                    w.open_file()
+                    self.assertEqual(Path(opened.call_args.args[2]), inputs)
+                w._open_project_path(str(project))
+                with patch.object(QFileDialog, "getSaveFileName", return_value=("", "")) as save:
+                    editor = NativeInputDialog(w, w.session.input_text())
+                    editor.save_as()
+                    editor.close()
+                    self.assertEqual(Path(save.call_args.args[2]), exports / "calculation.inp")
+                w.close()
+                restarted = MainWindow()
+                self.addCleanup(restarted.close)
+                with patch.object(QFileDialog, "getOpenFileName", return_value=("", "")) as opened:
+                    restarted.open_project()
+                    self.assertEqual(Path(opened.call_args.args[2]), desktop)
+
+    def test_wheel_scrolls_past_focused_spinners_and_combo_boxes_including_advanced_blocks(self):
+        w = self.window
+        scroll = w.inspector_dock.widget()
+        bar = scroll.verticalScrollBar()
+        w.basis.setCurrentText("def2-TZVP")
+        w.block_options.toggle.click()
+        scf = w.block_options.groups["scf"]
+        scf.toggle.click()
+        for field in (w.basis, w.cores, scf.fields["Convergence"]):
+            field.setFocus()
+            scroll.ensureWidgetVisible(field)
+            self.app.processEvents()
+            before = bar.value()
+            direction = 120 if before > 0 else -120
+            value = field.currentIndex if isinstance(field, QComboBox) else field.value
+            original = value()
+            point = field.mapTo(w, field.rect().center())
+            QTest.wheelEvent(w.windowHandle(), point, QPoint(0, direction))
+            self.app.processEvents()
+            self.assertEqual(value(), original)
+            self.assertNotEqual(bar.value(), before)
+        cores = w.cores.value()
+        QTest.keyClick(w.cores, Qt.Key.Key_Up)
+        self.assertEqual(w.cores.value(), cores + 1)
+
+    def test_saved_numerical_displacements_survive_until_reset(self):
+        from dataclasses import replace
+        from orcaview.application.project import save_project
+        from orcaview.core.block_options import BlockOverride
+
+        w = self.window
+        spec = replace(w.session.calculation, job_type="FREQ", solvation_model="SMD", solvent="water",
+                       block_options=(BlockOverride("freq", "Increment", 0.003),))
+        with TemporaryDirectory() as folder:
+            project = Path(folder) / "displacements.oview.json"
+            save_project(replace(w.session, calculation=spec), project)
+            w._open_project_path(str(project))
+            self.assertIn("NumFreq", w.job.currentText())
+            self.assertIn("Increment 0.003", w.input_preview.toPlainText())
+            w.block_options.toggle.click()
+            w.block_options.groups["freq"].toggle.click()
+            w.block_options.reset_block("freq")
+            self.assertIn("Analytical frequencies", w.job.currentText())
+            self.assertIn("Freq", w.input_preview.toPlainText().splitlines()[1].split())
+
     def test_version_corners_remain_visible_with_status_messages_on_all_pages(self):
         from orcaview.gui.version_info import desktop_version_info
 
@@ -105,6 +190,43 @@ class GuiTests(unittest.TestCase):
         self.assertIn("cannot be exported", self.window.input_preview.toPlainText())
         self.window.multiplicity.setValue(1)
         self.assertTrue(self.window.export_button.isEnabled())
+
+    def test_negative_charge_keeps_window_and_inspector_geometry(self):
+        w = self.window
+        inspector = w.inspector_dock.widget()
+
+        def geometry():
+            for _ in range(4):
+                self.app.processEvents()
+            widgets = (w.tree_dock, w.workspace_tabs, w.inspector_dock, inspector.viewport(),
+                       inspector.widget(), w.charge, w.multiplicity, w.validation,
+                       w.export_button, w.bottom_dock, w.input_preview.viewport())
+            return (w.frameGeometry(), *(widget.geometry() for widget in widgets),
+                    inspector.horizontalScrollBar().maximum(), inspector.verticalScrollBar().maximum())
+
+        for width in (1440, 1120):
+            with self.subTest(width=width):
+                w.resize(width, 780)
+                w.charge.setFocus()
+                initial = geometry()
+                w.charge.selectAll()
+                QTest.keyClicks(w.charge, "-1")
+                self.assertEqual(w.charge.value(), -1)
+                self.assertEqual(geometry(), initial)
+                self.assertFalse(w.export_button.isEnabled())
+                self.assertIn(w.validation.toolTip(), w.input_preview.toPlainText())
+                self.assertIn("multiplicity", w.validation.toolTip())
+                w.multiplicity.stepUp()
+                self.assertEqual(geometry(), initial)
+                self.assertTrue(w.export_button.isEnabled())
+                self.assertIn("* xyz -1 2", w.input_preview.toPlainText().splitlines())
+                w.charge.stepDown()
+                self.assertEqual(geometry(), initial)
+                w.multiplicity.stepDown()
+                self.assertEqual(geometry(), initial)
+                self.assertIn("* xyz -2 1", w.input_preview.toPlainText().splitlines())
+                w.charge.setValue(0)
+                self.assertEqual(geometry(), initial)
 
     def test_rotation_and_selection_preserve_geometry(self):
         before = self.window.session.molecule
@@ -266,6 +388,21 @@ class GuiTests(unittest.TestCase):
             self.assertEqual(frozen.input_bytes, preview.encode("utf-8"))
             self.assertEqual(self.window.session.document.head.molecule.atoms[0].x, 1.234567894)
             self.assertEqual(xyz.read_bytes(), source)
+
+    def test_export_uses_input_validated_before_the_file_dialog(self):
+        window = self.window
+        expected = window.session.input_text()
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "original.inp"
+
+            def choose_file(*args):
+                window.cores.setValue(window.cores.value() + 1)
+                return str(path), ""
+
+            with patch.object(QFileDialog, "getSaveFileName", side_effect=choose_file):
+                window.export_input()
+            self.assertNotEqual(window.session.input_text(), expected)
+            self.assertEqual(path.read_text(encoding="utf-8"), expected)
 
     def test_global_method_search_selects_across_families_and_accepts_cli_aliases(self):
         window = self.window
@@ -602,9 +739,9 @@ class GuiTests(unittest.TestCase):
         dkh_basis = next(name for name in basis_options(method) if "DKH2" in scalar_options(method, name))
         window.basis.setCurrentText(dkh_basis)
         window.job.setCurrentIndex(window.job.findData("FREQ"))
-        self.assertIn("NumFreq", window.job.currentText())
-        self.assertIn("NumFreq", window.input_preview.toPlainText())
-        self.assertTrue(window.method_hint.isVisible())
+        self.assertIn("Analytical frequencies", window.job.currentText())
+        self.assertIn("Freq", window.input_preview.toPlainText().splitlines()[1].split())
+        self.assertFalse(window.method_hint.isVisible())
         window.basis.setCurrentText("def2-SVP")
         self.assertIn("Analytical frequencies", window.job.currentText())
         self.assertFalse(window.method_hint.isVisible())

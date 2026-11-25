@@ -487,17 +487,21 @@ def run_helper(plan, pid):
     data = json.loads(plan.read_text(encoding="utf-8"))
     target, backup = Path(data["target"]), Path(data["backup"])
     package = data["package"]
+    relaunch = data.get("relaunch", True)
     if not (plan.name == "update.json" and valid_workdir(work, target)
+            and isinstance(relaunch, bool)
             and package.startswith("OrcaView-") and Path(package).name == package
             and backup == target.with_name(target.name + ".previous")
             and installation(work / package, data["windows"])):
         raise ValueError("The portable package contents are invalid.")
     try:
         _wait_parent(pid, work / "ready")
-        activate(work / data["package"], target, backup, data["windows"], data["expected"], relaunch=True)
+        activate(work / package, target, backup, data["windows"], data["expected"], relaunch=relaunch)
     except Exception as exc:
         message = f"OrcaView update failed.\n{exc}\nInstallation: {target}\nBackup: {backup}\nUpdate log: {work}"
         (work / "update-error.txt").write_text(message, encoding="utf-8")
+        if not relaunch:
+            return 1
         if os.name == "nt":
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, message, "OrcaView", 0x10)

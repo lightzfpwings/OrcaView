@@ -132,8 +132,8 @@ class CalculationSpec:
     method: str = "B3LYP"
     basis: str = "def2-SVP"
     job_type: str = "SP"
-    cores: int = 4
-    maxcore_mb: int = 1000
+    cores: int = 16
+    maxcore_mb: int = 4096
     active_electrons: Optional[int] = None
     active_orbitals: Optional[int] = None
     nroots: Optional[int] = None
