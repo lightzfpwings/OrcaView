@@ -1,4 +1,4 @@
-"""Preview and export the molecule shown in the current workspace."""
+"""Shared image export controls and the structure image dialog."""
 
 from pathlib import Path
 
@@ -59,15 +59,18 @@ class _CanvasPreview(QWidget):
             painter.end()
 
 
-class StructureImageDialog(QDialog):
-    def __init__(self, views, name, parent=None):
+class ImageExportDialog(QDialog):
+    """Choose a format, resolution and output canvas for a vector snapshot."""
+
+    def __init__(self, name, parent, *, prefix, title, save_title):
         super().__init__(parent)
-        self.setWindowTitle(tr("Export structure image"))
-        self.setObjectName("structureImageDialog")
+        self.setWindowTitle(title)
+        self.setObjectName(prefix + "Dialog")
         self.resize(460, 460)
         self.output_path = None
-        self._snapshots = [capture_structure(view) for _, view in views]
+        self.snapshot = None
         self._name = name
+        self._save_title = save_title
         self._transparent_preference = False
         layout = QVBoxLayout(self)
         self.preview = _CanvasPreview(self)
@@ -75,21 +78,16 @@ class StructureImageDialog(QDialog):
         self.dimensions = QLabel()
         self.dimensions.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.dimensions)
-        form = QFormLayout()
+        self.form = form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         layout.addLayout(form)
-        self.source = QComboBox()
-        self.source.setObjectName("structureImageSource")
-        self.source.addItems([label for label, _ in views])
-        form.addRow(tr("Structure view"), self.source)
-        form.setRowVisible(self.source, len(views) > 1)
         self.format_choice = QComboBox()
-        self.format_choice.setObjectName("structureImageFormat")
+        self.format_choice.setObjectName(prefix + "Format")
         for key, (label, _) in _FORMATS.items():
             self.format_choice.addItem(label, key)
         form.addRow(tr("File format"), self.format_choice)
         self.scale_box = QComboBox()
-        self.scale_box.setObjectName("structureImageScale")
+        self.scale_box.setObjectName(prefix + "Scale")
         self.scale_box.setAccessibleName(tr("Resolution scale"))
         self.scale_box.setToolTip(tr("At 4×, a 400 × 400 view is drawn at 1600 × 1600 pixels."))
         for scale in range(1, MAX_EXPORT_SCALE + 1):
@@ -98,7 +96,7 @@ class StructureImageDialog(QDialog):
         self._previous_scale = self.scale_box.currentData()
         form.addRow(tr("Resolution scale"), self.scale_box)
         self.transparent = QCheckBox(tr("Transparent background"))
-        self.transparent.setObjectName("structureImageTransparent")
+        self.transparent.setObjectName(prefix + "Transparent")
         form.addRow(self.transparent)
         self.background_note = QLabel(tr("JPEG and BMP use a white background."))
         form.addRow(self.background_note)
@@ -107,15 +105,15 @@ class StructureImageDialog(QDialog):
         self.advanced.setCheckable(True)
         self.advanced.setAutoRaise(True)
         self.advanced.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.advanced.setObjectName("structureImageAdvanced")
+        self.advanced.setObjectName(prefix + "Advanced")
         form.addRow(self.advanced)
         self.size_fields = QWidget()
         row = QHBoxLayout(self.size_fields)
         row.setContentsMargins(0, 0, 0, 0)
         self.width_box, self.height_box = QSpinBox(), QSpinBox()
-        for box, label, obj_name in ((self.width_box, tr("Width"), "structureImageWidth"),
-                                     (self.height_box, tr("Height"), "structureImageHeight")):
-            box.setObjectName(obj_name)
+        for box, label, suffix in ((self.width_box, tr("Width"), "Width"),
+                                   (self.height_box, tr("Height"), "Height")):
+            box.setObjectName(prefix + suffix)
             box.setRange(1, MAX_CANVAS_DIMENSION)
             box.setSuffix(" px")
             box.setKeyboardTracking(False)
@@ -134,27 +132,18 @@ class StructureImageDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("Cancel"))
         self.save_button = QPushButton(tr("Export…"))
-        self.save_button.setObjectName("structureImageSave")
+        self.save_button.setObjectName(prefix + "Save")
         buttons.addButton(self.save_button, QDialogButtonBox.ButtonRole.AcceptRole)
         self.save_button.setDefault(True)
         buttons.accepted.connect(self._choose_file)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        self.source.currentIndexChanged.connect(self._source_changed)
         self.format_choice.currentIndexChanged.connect(self._format_changed)
         self.scale_box.currentIndexChanged.connect(self._scale_changed)
         self.transparent.toggled.connect(self._background_changed)
         self.advanced.toggled.connect(self._refresh)
         self.width_box.valueChanged.connect(self._refresh)
         self.height_box.valueChanged.connect(self._refresh)
-        self._source_changed()
-        self._format_changed()
-
-    def _source_changed(self):
-        self.snapshot = self._snapshots[self.source.currentIndex()]
-        if not self.advanced.isChecked():
-            self._set_canvas_fields(*self._scaled_size())
-        self._refresh()
 
     def _scaled_size(self):
         size = self.snapshot.size()
@@ -214,16 +203,18 @@ class StructureImageDialog(QDialog):
     def _choose_file(self):
         fmt = self.format_choice.currentData()
         label, patterns = _FORMATS[fmt]
-        dialog = QFileDialog(self, tr("Save structure image"))
+        dialog = QFileDialog(self, self._save_title)
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         dialog.setNameFilter(f"{label} ({patterns})")
         dialog.setDefaultSuffix(fmt)
         suggested = Path(suggested_file(self, self._name, "." + fmt))
         dialog.setDirectory(str(suggested.parent))
         dialog.selectFile(suggested.name)
-        if not dialog.exec():
+        files = dialog.selectedFiles() if dialog.exec() else []
+        dialog.deleteLater()
+        if not files:
             return
-        path = Path(dialog.selectedFiles()[0])
+        path = Path(files[0])
         if "*" + path.suffix.lower() not in patterns.split():
             QMessageBox.warning(self, self.windowTitle(), tr("Use a filename ending in {extensions}.", extensions=patterns))
             return
@@ -235,3 +226,25 @@ class StructureImageDialog(QDialog):
             return
         self.output_path = path
         self.accept()
+
+
+class StructureImageDialog(ImageExportDialog):
+    def __init__(self, views, name, parent=None):
+        super().__init__(name, parent, prefix="structureImage", title=tr("Export structure image"),
+                         save_title=tr("Save structure image"))
+        self._snapshots = [capture_structure(view) for _, view in views]
+        self.source = QComboBox()
+        self.source.setObjectName("structureImageSource")
+        self.source.addItems([label for label, _ in views])
+        self.form.insertRow(0, tr("Structure view"), self.source)
+        self.form.setRowVisible(self.source, len(views) > 1)
+        self.setTabOrder(self.source, self.format_choice)
+        self.source.currentIndexChanged.connect(self._source_changed)
+        self._source_changed()
+        self._format_changed()
+
+    def _source_changed(self):
+        self.snapshot = self._snapshots[self.source.currentIndex()]
+        if not self.advanced.isChecked():
+            self._set_canvas_fields(*self._scaled_size())
+        self._refresh()

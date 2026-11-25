@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from functools import partial
 import math
 
 from PySide6.QtCore import QIODevice, QObject, QPointF, QRectF, QRunnable, QSaveFile, Qt, QThreadPool, Signal, Slot
-from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
     QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QMenu, QMessageBox,
@@ -14,6 +15,8 @@ from PySide6.QtWidgets import (
 
 from orcaview.gui.file_dialogs import suggested_file
 from orcaview.gui.result_display import report_text
+from orcaview.gui.spectrum_image_dialog import SpectrumImageDialog
+from orcaview.gui.spectrum_preview_export import capture_spectrum_figure, save_spectrum_png
 from orcaview.i18n import tr
 from orcaview.results.broadening import stick_spectrum
 from orcaview.results.spectrum_profile import PlotProfile, PlotStyle, spectrum_csv
@@ -109,7 +112,7 @@ def _axis_ticks(low, high, count):
     return ticks or [low, high]
 
 
-def draw_traces(painter, rect, profile, style, *, compact=False):
+def draw_traces(painter, rect, profile, style, *, compact=False, grid=None):
     """Draw the same sampled envelope and source sticks on every output device."""
     xmin, xmax = profile.limits
     scale = profile.scale(style)
@@ -137,8 +140,9 @@ def draw_traces(painter, rect, profile, style, *, compact=False):
 
     baseline = py(0)
     painter.save()
-    painter.setClipRect(rect.adjusted(-2, -2, 2, 2))
-    if style.grid and not compact:
+    painter.setClipRect(rect.adjusted(-2, -2, 2, 2), Qt.ClipOperation.IntersectClip)
+    show_grid = style.grid if grid is None else grid
+    if show_grid and not compact:
         painter.setPen(_pen(_GRID, .8))
         for value in _axis_ticks(ymin / scale, ymax / scale, 4):
             y = py(value * scale)
@@ -182,6 +186,9 @@ class SpectrumFigure(QWidget):
         self.profile = self.style = None
         self.title = self.error = ""
 
+    def export_image(self, parent):
+        choose_spectrum_image(parent, self.title, partial(capture_spectrum_figure, self), self.style.grid)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         try:
@@ -189,9 +196,10 @@ class SpectrumFigure(QWidget):
         finally:
             painter.end()
 
-    def draw(self, painter, bounds):
+    def draw(self, painter, bounds, *, grid=None, background=True):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(bounds, Qt.GlobalColor.white)
+        if background:
+            painter.fillRect(bounds, Qt.GlobalColor.white)
         if self.error or not self.profile:
             painter.setPen(_MUTED)
             painter.drawText(bounds.adjusted(14, 0, -14, 0), _CENTER | Qt.TextFlag.TextWordWrap, self.error)
@@ -212,7 +220,7 @@ class SpectrumFigure(QWidget):
         painter.setPen(_MUTED)
         y_label = tr("Relative height") if style.normalized else tr(profile.source.y_label)
         painter.drawText(QRectF(left, rect.top() - 25, rect.width(), 19), _LEFT, y_label)
-        ymin, ymax = draw_traces(painter, rect, profile, style)
+        ymin, ymax = draw_traces(painter, rect, profile, style, grid=grid)
         painter.setPen(_pen(_AXIS, 1))
         painter.drawLine(rect.bottomLeft(), rect.bottomRight())
         painter.drawLine(rect.topLeft(), rect.bottomLeft())
@@ -283,7 +291,7 @@ def _spin(low, high, decimals, step, value):
 
 
 class SpectrumPlotDialog(QDialog):
-    changed = Signal(object, object)
+    changed = Signal(object, object, str)
 
     def __init__(self, table, profile, style, sampler, parent):
         super().__init__(parent)
@@ -382,7 +390,7 @@ class SpectrumPlotDialog(QDialog):
         actions.addStretch()
         self.export_button = QPushButton(tr("Export…"))
         export_menu = QMenu(self.export_button)
-        for label, kind in (("Plot image (PNG)…", "png"), ("Sampled curve (CSV)…", "curve"),
+        for label, kind in (("Export image…", "image"), ("Sampled curve (CSV)…", "curve"),
                             ("Printed sticks (CSV)…", "sticks")):
             action = export_menu.addAction(tr(label))
             action.triggered.connect(lambda checked=False, mode=kind: self.choose_export(mode))
@@ -421,8 +429,7 @@ class SpectrumPlotDialog(QDialog):
     def _paint(self):
         self.figure.update()
         self.export_button.setEnabled(not self.figure.error)
-        if not self.figure.error:
-            self.changed.emit(self.figure.profile, self.figure.style)
+        self.changed.emit(self.figure.profile, self.figure.style, self.figure.error)
 
     def update_style(self):
         if self._loading:
@@ -510,10 +517,11 @@ class SpectrumPlotDialog(QDialog):
         self.update_style()
 
     def choose_export(self, kind):
-        extension = "png" if kind == "png" else "csv"
-        name = suggested_file(self, f"{self.table.kind}-{kind}", "." + extension)
-        target, _ = QFileDialog.getSaveFileName(self, tr("Export spectrum"), name,
-                                                f"{extension.upper()} (*.{extension})")
+        if kind in ("image", "png"):
+            self.figure.export_image(self)
+            return
+        name = suggested_file(self, f"{self.table.kind}-{kind}", ".csv")
+        target, _ = QFileDialog.getSaveFileName(self, tr("Export spectrum"), name, "CSV (*.csv)")
         if target:
             try:
                 self.save_export(target, kind)
@@ -524,28 +532,29 @@ class SpectrumPlotDialog(QDialog):
         save_spectrum_figure(self.figure, filename, kind)
 
 
+def choose_spectrum_image(parent, title, capture, grid):
+    dialog = SpectrumImageDialog(title, capture, grid, parent)
+    try:
+        dialog.exec()
+    finally:
+        dialog.deleteLater()
+
+
 def save_spectrum_figure(figure, filename, kind):
     """Write the desktop figure using a paint device without showing a window."""
     if figure.error:
         raise ValueError(figure.error)
+    if kind == "png":
+        save_spectrum_png(filename, figure)
+        return
     profile, style = figure.profile, figure.style
     output = QSaveFile(str(filename))
     if not output.open(QIODevice.OpenModeFlag.WriteOnly):
         raise OSError(output.errorString())
-    if kind == "png":
-        image = QImage(1800, 1100, QImage.Format.Format_ARGB32_Premultiplied)
-        painter = QPainter(image)
-        try:
-            painter.scale(2, 2)
-            figure.draw(painter, QRectF(0, 0, 900, 550))
-        finally:
-            painter.end()
-        success = image.save(output, "PNG")
-    else:
-        curve = None if kind == "sticks" else profile.curve
-        data = spectrum_csv(profile.source, curve, scale=profile.scale(style),
-                            normalized=style.normalized).encode("utf-8")
-        success = output.write(data) == len(data)
+    curve = None if kind == "sticks" else profile.curve
+    data = spectrum_csv(profile.source, curve, scale=profile.scale(style),
+                        normalized=style.normalized).encode("utf-8")
+    success = output.write(data) == len(data)
     if not success or not output.commit():
         output.cancelWriting()
         raise OSError(output.errorString())

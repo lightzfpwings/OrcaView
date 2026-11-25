@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a57 alpha测试版
+
+All 665 regression tests passed. The spectrum export tests exercise both desktop entry points, independent grid settings, PNG transparency, JPEG and BMP backgrounds, vector PDF output, aspect ratios and centered cropping. Exporting the peroxide CD example at 16:9 and 2× produced a 1920 × 1080 transparent PNG. [Spectrum export tests](../tests/test_spectrum_plot.py)
+
+All 145 OrcaView Python modules matched the release source in each desktop package. Each package contains 20 examples. The macOS disk image mounted read-only and passed strict signature verification. Its executable exported the peroxide CD spectrum and produced distinct water IR spectra with and without grid lines. Under Wine, the Windows launcher reported 0.1.0a57 and its packaged runtime exported the peroxide CD example in all four formats. Both extension ZIPs rebuilt byte for byte. The mounted app loaded the four interface languages and rendered all three external palettes. [Packaged application checks](../packaging/check_release_extensions.py)
+
 ## 0.1.0a56 alpha测试版
 
 All 658 regression tests passed. The editable input tests cover mouse leave and keyboard commits, invalid text recovery, atom identity and precision, and applying the same input through the command line. All 568 method templates passed a render–read–render check. [Editable input tests](../tests/test_edit_input_preview.py)

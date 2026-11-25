@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 import math
 import unicodedata
 
@@ -11,7 +12,11 @@ from PySide6.QtWidgets import QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from orcaview.gui import typography
 from orcaview.gui.result_display import report_text
-from orcaview.gui.spectrum_plot import PlotProfile, PlotStyle, ProfileSampler, SpectrumPlotDialog, draw_traces
+from orcaview.gui.spectrum_plot import (
+    PlotProfile, PlotStyle, ProfileSampler, SpectrumFigure, SpectrumPlotDialog,
+    choose_spectrum_image, draw_traces,
+)
+from orcaview.gui.spectrum_preview_export import capture_preview
 from orcaview.i18n import tr
 from orcaview.orca.log_spectra import SpectrumTable
 from orcaview.results.broadening import stick_spectrum
@@ -41,11 +46,15 @@ class SpectrumPreview(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 104, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(2)
         self.plot_button = QPushButton(tr("Plot settings…"))
         self.plot_button.setObjectName("openSpectrumPlot")
         self.plot_button.clicked.connect(self.open_plot)
         layout.addWidget(self.plot_button)
+        self.export_image_button = QPushButton(tr("Export image…"))
+        self.export_image_button.setObjectName("exportSpectrumImage")
+        self.export_image_button.clicked.connect(self.export_image)
+        layout.addWidget(self.export_image_button)
         self._sampler = ProfileSampler(self)
         self._sampler.ready.connect(self._profile_ready)
         self._table = self._profile = self._style = self._dialog = None
@@ -54,7 +63,7 @@ class SpectrumPreview(QWidget):
         self.hide()
 
     def sizeHint(self):
-        return QSize(200, 104 + self.plot_button.sizeHint().height() if self._profile else 102)
+        return QSize(200, max(102, self.layout().sizeHint().height()))
 
     def set_spectrum(self, table: SpectrumTable | None):
         if table is self._table and table is not None:
@@ -69,6 +78,8 @@ class SpectrumPreview(QWidget):
         self._samples = self._values = ()
         self._y_caption = self._x_unit = self._error = ""
         self.plot_button.hide()
+        self.export_image_button.hide()
+        self.export_image_button.setEnabled(False)
         if table is None:
             self.setAccessibleName("")
             self.setAccessibleDescription("")
@@ -105,6 +116,8 @@ class SpectrumPreview(QWidget):
                 value = f"{_format(row[2])} {self._x_unit}" if _number(row[2]) else "—"
                 rows.append((nucleus, value))
             self._values = tuple(rows)
+        self.export_image_button.setVisible(bool(self._profile or self._samples or self._values))
+        self.export_image_button.setEnabled(not self._error and bool(self._samples or self._values))
         self.setAccessibleName(report_text(table.title))
         self._describe()
         self.setFixedHeight(self.sizeHint().height())
@@ -133,20 +146,35 @@ class SpectrumPreview(QWidget):
         self._dialog.activateWindow()
 
     def _profile_ready(self, profile, error):
-        self._profile, self._error = profile, error
-        self._samples, self._x_unit = profile.source.peaks, profile.source.unit
-        self._y_caption = tr("Relative height") if self._style.normalized else tr(profile.source.y_label)
-        self._describe()
         if self._dialog is not None:
             self._dialog.set_profile(profile, error)
-        self.update()
+        else:
+            self._plot_changed(profile, self._style, error)
 
-    def _plot_changed(self, profile, style):
-        self._profile, self._style = profile, style
+    def _plot_changed(self, profile, style, error):
+        self._profile, self._style, self._error = profile, style, error
         self._x_unit, self._samples = profile.source.unit, profile.source.peaks
         self._y_caption = tr("Relative height") if style.normalized else tr(profile.source.y_label)
+        self.export_image_button.setEnabled(not error)
         self._describe()
         self.update()
+
+    def export_image(self):
+        if self._table is None or not self.export_image_button.isEnabled():
+            return
+        if self._profile is None:
+            capture = partial(capture_preview, self._table, self._samples, self._values,
+                              self._y_caption, self._x_unit, self.font())
+            choose_spectrum_image(self, self.accessibleName(), capture, False if self._samples else None)
+            return
+        if self._dialog is None:
+            figure = SpectrumFigure()
+            figure.setFont(self.font())
+            figure.title = self.accessibleName()
+            figure.profile, figure.style = self._profile, self._style
+        else:
+            figure = self._dialog.figure
+        figure.export_image(self)
 
     def paintEvent(self, event):
         if self._table is None:

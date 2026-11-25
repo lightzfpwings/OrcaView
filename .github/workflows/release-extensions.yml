@@ -74,3 +74,8 @@ jobs:
           python -m pip install ".[gui]"
           python -c "import os, orcaview; from PySide6.QtTest import QTest; assert orcaview.__version__ == os.environ['RELEASE_TAG'].removeprefix('v')"
           python -m unittest discover -s "$TEST_DIR" -p test_design_targets.py -v
+      - name: Test spectrum image export options
+        if: hashFiles('src/orcaview/gui/spectrum_image_dialog.py') != ''
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -p test_spectrum_plot.py -v

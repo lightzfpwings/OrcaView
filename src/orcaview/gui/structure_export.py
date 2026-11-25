@@ -1,4 +1,4 @@
-"""Export the structure painted in a viewport's logical coordinates."""
+"""Capture vector drawings and export centered, scaled image canvases."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def validate_structure_size(width, height, image_format, *, scale=1):
 
 
 @dataclass(frozen=True)
-class _StructureSnapshot:
+class _DrawingSnapshot:
     _width: int
     _height: int
     _picture: QPicture
@@ -63,25 +63,33 @@ class _StructureSnapshot:
             painter.restore()
 
 
-def capture_structure(view):
-    """Freeze a viewport's current vector drawing and size without retaining the widget."""
-    if isinstance(view, _StructureSnapshot):
-        return view
-    size = view.size()
+def capture_drawing(size, draw):
+    """Record a vector drawing in its source's logical pixel coordinates."""
     if size.isEmpty():
         raise ValueError("The source viewport is empty.")
     picture = QPicture()
     painter = QPainter(picture)
     try:
+        draw(painter)
+    finally:
+        painter.end()
+    return _DrawingSnapshot(size.width(), size.height(), picture)
+
+
+def capture_structure(view):
+    """Freeze a viewport's current vector drawing and size without retaining the widget."""
+    if isinstance(view, _DrawingSnapshot):
+        return view
+
+    def draw(painter):
         if hasattr(view, "font"):
             font = QFont(view.font())
             if font.pointSizeF() > 0 and hasattr(view, "logicalDpiY"):
-                font.setPointSizeF(font.pointSizeF() * view.logicalDpiY() / picture.logicalDpiY())
+                font.setPointSizeF(font.pointSizeF() * view.logicalDpiY() / painter.device().logicalDpiY())
             painter.setFont(font)
         view.paint_structure(painter)
-    finally:
-        painter.end()
-    return _StructureSnapshot(size.width(), size.height(), picture)
+
+    return capture_drawing(view.size(), draw)
 
 
 def paint_structure_canvas(painter, view, width, height, *, scale=1):
@@ -104,7 +112,7 @@ def paint_structure_canvas(painter, view, width, height, *, scale=1):
 def _paint(device, snapshot, width, height, *, scale, white, offset_y=0.0):
     painter = QPainter()
     if not painter.begin(device):
-        raise OSError("Could not initialize the structure drawing.")
+        raise OSError("Could not initialize the drawing.")
     try:
         painter.translate(0, offset_y)
         painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
@@ -125,7 +133,7 @@ def _write_pdf(output, snapshot, width, height, transparent, scale):
     buffer.open(QIODevice.OpenModeFlag.ReadWrite)
     pdf = QPdfWriter(buffer)
     pdf.setResolution(_DPI * scale)
-    page = QPageSize(QSizeF(*extent), QPageSize.Unit.Point, "Structure", QPageSize.SizeMatchPolicy.ExactMatch)
+    page = QPageSize(QSizeF(*extent), QPageSize.Unit.Point, "Figure", QPageSize.SizeMatchPolicy.ExactMatch)
     if not pdf.setPageSize(page) or not pdf.setPageMargins(QMarginsF()):
         raise OSError("Could not set the PDF page size.")
     _paint(pdf, snapshot, width, height, scale=scale, white=not transparent,
@@ -177,7 +185,7 @@ def save_structure_image(view, filename, image_format, width, height, transparen
             pixel_format = QImage.Format.Format_ARGB32_Premultiplied if alpha else QImage.Format.Format_RGB32
             image = QImage(width, height, pixel_format)
             if image.isNull():
-                raise OSError("Could not allocate the structure image.")
+                raise OSError("Could not allocate the image.")
             if alpha:
                 image.fill(Qt.GlobalColor.transparent)
             dots_per_meter = round(_DPI * scale / .0254)

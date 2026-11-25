@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import tarfile
@@ -72,6 +73,13 @@ def check(assets, version):
                 return result.stdout
 
             assert run("--version").strip() == version
+            spectrum = ("spectrum", examples / "water-raman.out", "--table", "ir", "--format", "png")
+            run(*spectrum, "-o", "ir-grid.png")
+            run(*spectrum, "--no-grid", "-o", "ir-no-grid.png")
+            with_grid, without_grid = ((work / name).read_bytes() for name in ("ir-grid.png", "ir-no-grid.png"))
+            for image in (with_grid, without_grid):
+                assert image[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", image[16:24]) == (1800, 1100)
+            assert with_grid != without_grid
             water = examples / "water.xyz"
             assert "* xyz -1 2" in run("preview", water, "--charge", "-1", "--multiplicity", "2").splitlines()
             edited = work / "edited.inp"
@@ -101,7 +109,7 @@ def check(assets, version):
                 run("render", water, "one-off.bmp", *render, "--color-pack", palette)
                 recolored, once = ((work / name).read_bytes() for name in ("installed.bmp", "one-off.bmp"))
                 assert original[:2] == recolored[:2] == once[:2] == b"BM" and original != recolored == once
-    print(f"Verified OrcaView {version} on {sys.platform}: editable input, four locales and three color palettes.")
+    print(f"Verified OrcaView {version} on {sys.platform}: spectrum PNGs, editable input, four locales and three color palettes.")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # OrcaView
 
-OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a56 supports editing the ORCA input preview and syncing changes with the calculation panel. English is built in. Optional extensions provide four interface languages and three element color palettes. [Download OrcaView 0.1.0a56 alpha测试版](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a56)
+OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a57 adds a spectrum image export dialog with grid and background controls, aspect ratios, and custom canvas dimensions. English is built in. Optional extensions provide four interface languages and three element color palettes. [Download OrcaView 0.1.0a57 alpha测试版](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a57)
 
 ## Install and try OrcaView
 
@@ -30,7 +30,9 @@ Open an ORCA `.log` or `.out` containing IR intensities, Raman activities, oscil
 
 - Choose Gaussian, Lorentzian or pseudo-Voigt broadening, set the full width at half maximum (FWHM), and adjust the Lorentzian fraction for a mixed profile. The width uses the selected horizontal-axis unit.
 - Set the x limits and direction, select the curve, sticks or both, and customize normalization, grid, line width and color. Electronic spectra support wavelength, wavenumber and energy axes.
-- Export a PNG, the sampled curve as CSV, or the original transitions as CSV. NMR shieldings and coupling constants remain numerical results. Standalone vibrational frequencies show mode positions.
+- Choose **Export image…** under the preview or in the plot window’s export menu. The export preview starts with the current plot settings. Choose whether to include grid lines, and select PNG, JPEG, BMP or vector PDF. PNG and PDF support a transparent background.
+- Choose the original aspect ratio, 1:1, 4:3 or 16:9. The axes and legend adapt to the chosen shape. The default 2× scale produces 1800 × 1100 pixels at the original ratio or 1920 × 1080 at 16:9. Use **Advanced options** to add margins or crop the scaled drawing to an exact canvas size.
+- Standalone vibrational frequencies export as mode positions. NMR images contain the shielding or coupling values shown in the preview (up to three rows). The plot settings window also exports the sampled curve and original transitions as CSV.
 
 ![CD spectrum and line profile controls](artifacts/public/spectrum-plot.png)
 
@@ -38,9 +40,9 @@ Try `Examples/water-raman.out` for IR and Raman or `Examples/peroxide-uv-cd.out`
 
 ### Language and element color packs
 
-The language extension includes Simplified Chinese, Traditional Chinese, German and Japanese, together with matching Qt translations. Extract the ZIP, open **View → Interface language…**, choose the extracted **languages** folder, select a language, save and restart. The ZIP includes installation instructions and an editable template. [Language extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a56/OrcaView-Extensions-01-Language-0.1.0a56.zip)
+The language extension includes Simplified Chinese, Traditional Chinese, German and Japanese, together with matching Qt translations. Extract the ZIP, open **View → Interface language…**, choose the extracted **languages** folder, select a language, save and restart. The ZIP includes installation instructions and an editable template. [Language extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a57/OrcaView-Extensions-01-Language-0.1.0a57.zip)
 
-The color extension includes Contrast, Pastel and Grayscale palettes. Extract the ZIP, open **View → Molecular appearance… → Import color pack…**, choose a JSON file from **colors** and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Color extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a56/OrcaView-Extensions-02-Color-0.1.0a56.zip)
+The color extension includes Contrast, Pastel and Grayscale palettes. Extract the ZIP, open **View → Molecular appearance… → Import color pack…**, choose a JSON file from **colors** and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Color extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a57/OrcaView-Extensions-02-Color-0.1.0a57.zip)
 
 Both ZIPs include their own installation guide and JSON schema. [Extension author guide](docs/extensions/README.md)
 
@@ -48,7 +50,7 @@ Both ZIPs include their own installation guide and JSON schema. [Extension autho
 
 Use **Help → Check for Updates…** to discover a release for your platform and verify its SHA-256 checksum. Save your project before choosing the option to quit and update. The installed app restarts from the same location. Windows and Linux keep a sibling `.previous` backup and preserve personal projects and edited examples. Stable versions follow stable releases. Preview versions also discover prereleases.
 
-On Apple Silicon, versions through 0.1.0a55 recognize the new release but look for the previous DMG filename. To upgrade once, quit OrcaView, open the 0.1.0a56 DMG, and drag the app into Applications to replace the old copy. Version 0.1.0a56 recognizes both filename formats.
+On Apple Silicon, versions through 0.1.0a55 recognize the new release but look for the previous DMG filename. To upgrade once, quit OrcaView, open the 0.1.0a57 DMG, and drag the app into Applications to replace the old copy. Versions 0.1.0a56 and later recognize both filename formats and can update in the app.
 
 Windows 0.1.0a42 and earlier require a one-time manual upgrade to the single-file layout. Download and extract the Windows ZIP into a dedicated folder, then open your existing project in the new app. To retain an existing shortcut, quit the old app, rename its folder as a backup, and extract the new version at the original path.
 
