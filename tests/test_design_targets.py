@@ -94,15 +94,18 @@ class DesignTargetTests(unittest.TestCase):
     def test_hover_changes_only_the_interactive_view_and_follows_the_active_tool(self):
         head = self.doc.head
         for widget in (self.canvas, self.view):
-            atom = self.atom(widget, 0)
-            middle = (atom + self.atom(widget, 1)) / 2
-            for name, point, wanted in (("designAddHydrogens", atom, (0,)), ("designAtom", atom, (0,)),
-                                        ("designBond2", middle, (0, 1)), ("designBond0", middle, (0, 1))):
+            for name, wanted in (("designAddHydrogens", (0,)), ("designAtom", (0,)),
+                                 ("designBond2", (0, 1)), ("designBond0", (0, 1))):
                 with self.subTest(view=widget.objectName(), tool=name):
                     self.tool(name)
                     self.hover(widget, QPointF(8, 8))
                     screen = widget.grab().toImage()
                     export = self.export_image(widget)
+                    # Tool hints can wrap differently and resize the canvas.
+                    point = self.atom(widget, wanted[0])
+                    if len(wanted) == 2:
+                        point = (point + self.atom(widget, wanted[1])) / 2
+                    self.assertEqual(widget._target_at(point), wanted)
                     self.hover(widget, point)
                     self.assertEqual(widget._hover_target, wanted)
                     self.assertNotEqual(widget.grab().toImage(), screen)
@@ -112,7 +115,7 @@ class DesignTargetTests(unittest.TestCase):
                     self.app.sendEvent(widget, QEvent(QEvent.Type.Leave))
                     self.assertEqual(widget._hover_target, ())
             self.tool("designAddHydrogens")
-            self.hover(widget, middle)
+            self.hover(widget, (self.atom(widget, 0) + self.atom(widget, 1)) / 2)
             self.assertEqual(widget._hover_target, ())
 
     def test_three_dimensional_bond_clicks_edit_the_highlighted_edge(self):
