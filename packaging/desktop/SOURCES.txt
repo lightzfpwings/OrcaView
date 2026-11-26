@@ -2,8 +2,11 @@ OrcaView @VERSION@
 OrcaView's MIT license is in OrcaView-LICENSE.txt next to this file.
 Bundled dependencies are distributed under their own licenses.
 
-Corresponding sources for these dependency versions:
+Qt, Python and Open Babel sources:
 https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a43/OrcaView-0.1.0a43-third-party-sources.zip
 
-Third-party notices and source locations:
+FFmpeg build and source records for the distributed encoder:
+https://github.com/imageio/imageio-ffmpeg/blob/v0.8.1/tools/ffmpeg-sources.json
+
+Third-party notices and other source locations:
 See THIRD_PARTY_NOTICES.md next to this file.

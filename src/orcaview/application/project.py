@@ -10,7 +10,7 @@ from orcaview import (
     ADVANCED_PROJECT_SCHEMA_VERSION, DOCUMENT_PROJECT_SCHEMA_VERSION, LEGACY_PROJECT_SCHEMA_VERSION,
     BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION,
     HYDROGEN_BOND_PROJECT_SCHEMA_VERSION, INPUT_TEXT_PROJECT_SCHEMA_VERSION, LOG_REPORT_PROJECT_SCHEMA_VERSION,
-    SKETCH_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION, __version__,
+    NORMAL_MODES_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION, __version__,
     SOLVATION_PROJECT_SCHEMA_VERSION, STATE_PROJECT_SCHEMA_VERSION,
 )
 from orcaview.core.methods import PATH_JOBS
@@ -43,7 +43,9 @@ def _payload(session, target):
     document = session.tracked_document
     records = document.records() if document is not None else None
     molecules = [s.molecule for s in records[0]] if records is not None else [session.molecule]
-    if any(not bond.is_covalent for molecule in molecules for bond in molecule.bonds):
+    if session.log_report is not None and session.log_report.normal_modes:
+        version = NORMAL_MODES_PROJECT_SCHEMA_VERSION
+    elif any(not bond.is_covalent for molecule in molecules for bond in molecule.bonds):
         version = HYDROGEN_BOND_PROJECT_SCHEMA_VERSION
     elif spec.input_comments or spec.scf_convergence != "Auto":
         version = INPUT_TEXT_PROJECT_SCHEMA_VERSION
@@ -103,6 +105,8 @@ def _payload(session, target):
             if session.document.artifact(session.log_report.source.artifact_id) != session.log_report.source:
                 raise ValueError("The log and structure sources do not match")
             payload["log_report"] = asdict(session.log_report)
+            if version < NORMAL_MODES_PROJECT_SCHEMA_VERSION:
+                del payload["log_report"]["normal_modes"]
     return payload
 
 
@@ -160,7 +164,7 @@ def load_project(path: Path) -> Session:
             STATE_PROJECT_SCHEMA_VERSION, ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION,
             SOLVATION_PROJECT_SCHEMA_VERSION, LOG_REPORT_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION,
             BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION,
-            INPUT_TEXT_PROJECT_SCHEMA_VERSION, HYDROGEN_BOND_PROJECT_SCHEMA_VERSION):
+            INPUT_TEXT_PROJECT_SCHEMA_VERSION, HYDROGEN_BOND_PROJECT_SCHEMA_VERSION, NORMAL_MODES_PROJECT_SCHEMA_VERSION):
         raise ValueError("Unsupported project version. Migrate the project explicitly")
     common = {"schema_version", "software_version", "calculation", "source_path"}
     extra = {"molecule"} if version == LEGACY_PROJECT_SCHEMA_VERSION else {"contract_version", "document"}
@@ -181,7 +185,7 @@ def load_project(path: Path) -> Session:
     _validate_project_head(document.head.molecule, spec, version)
     session = Session.from_document(document, spec, data["source_path"])
     if version == LOG_REPORT_PROJECT_SCHEMA_VERSION or data.get("log_report") is not None:
-        report = read_log_report(data["log_report"])
+        report = read_log_report(data["log_report"], version)
         if document.artifact(report.source.artifact_id) != report.source:
             raise ValueError("The log and structure sources do not match")
         session.log_report = report

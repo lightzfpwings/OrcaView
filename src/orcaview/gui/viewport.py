@@ -262,18 +262,20 @@ class MoleculeViewport(MoleculeEditView):
     def _projection_scale(self):
         return min(self.width(), self.height()) * 0.32 / self._fit_radius * self.zoom
 
-    def _project_atoms(self, fixed_target=None):
+    def _project_atoms(self, fixed_target=None, *, positions=None):
+        if positions is None:
+            positions = self._local_positions
         scale = self._projection_scale()
         if fixed_target is not None:
             # Adding a peripheral H changes the centre and extent. Keep the
             # clicked nucleus under the cursor for the next click.
             index, screen_x, screen_y = fixed_target
-            x, y, _ = self.camera_transform(*self._local_positions[index])
+            x, y, _ = self.camera_transform(*positions[index])
             self._pan = QPointF(screen_x - self.width() / 2 - x * scale, screen_y - self.height() / 2 + y * scale)
         origin_x = self.width() / 2 + self._pan.x()
         origin_y = self.height() / 2 + self._pan.y()
         projected = []
-        for radius, point in zip(self._atom_radii, self._local_positions):
+        for radius, point in zip(self._atom_radii, positions):
             x, y, z = self.camera_transform(*point)
             size = max(self._min_atom_pixels, radius * scale)
             projected.append((origin_x + x * scale, origin_y - y * scale, z, size))
@@ -292,11 +294,11 @@ class MoleculeViewport(MoleculeEditView):
     def has_exportable_structure(self):
         return self.molecule is not None and bool(self.molecule.atoms)
 
-    def paint_structure(self, painter):
+    def paint_structure(self, painter, *, positions=None):
         """Paint the current molecular projection in widget coordinates."""
         if not self.has_exportable_structure():
             return
-        scale, projected = self._project_atoms()
+        scale, projected = self._project_atoms(positions=positions)
         painter.save()
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -705,3 +707,42 @@ class MoleculeViewport(MoleculeEditView):
         self.zoom = min(4.0, max(0.3, self.zoom * (1.12 if event.angleDelta().y() > 0 else 1 / 1.12)))
         self.update()
 
+
+class NormalModeViewport(MoleculeViewport):
+    """Draw a displacement around a fixed geometry using the equilibrium camera frame."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, result_view=True)
+        self._equilibrium_positions = ()
+        self._mode_directions = ()
+
+    def set_equilibrium(self, molecule):
+        self.set_molecule(molecule)
+        self._equilibrium_positions = self._local_positions
+        self._mode_directions = ()
+        self._point_group_label = tr("Equilibrium geometry · {symmetry}", symmetry=self._point_group_label)
+
+    def set_mode(self, displacements):
+        if len(displacements) != len(self._equilibrium_positions):
+            raise ValueError("Normal-mode vectors must match the equilibrium atoms.")
+        largest = max((math.hypot(*v) for v in displacements), default=0.)
+        # The printed Cartesian vectors already include atomic-mass factors.
+        # Scale the entire vector by one constant to preserve relative atomic motion.
+        self._mode_directions = tuple(_in_frame(self._frame, *(v / largest for v in row))
+                                      for row in displacements) if largest else ()
+        self.set_displacement(0.)
+
+    def set_displacement(self, distance):
+        """Set the signed displacement of the most mobile atom in angstroms."""
+        self._local_positions = self._positions_at(distance)
+        self.update()
+
+    def paint_displacement(self, painter, distance):
+        """Paint one animation frame in the current camera without changing the live pose."""
+        self.paint_structure(painter, positions=self._positions_at(distance))
+
+    def _positions_at(self, distance):
+        if not distance or not self._mode_directions:
+            return self._equilibrium_positions
+        return tuple((x + distance * dx, y + distance * dy, z + distance * dz)
+                     for (x, y, z), (dx, dy, dz) in zip(self._equilibrium_positions, self._mode_directions))

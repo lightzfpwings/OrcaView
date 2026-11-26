@@ -97,6 +97,29 @@ class ResultsCommandsTest(unittest.TestCase):
         self.assertEqual(int.from_bytes(header[16:20], "big"), 1800)
         self.assertEqual(int.from_bytes(header[20:24], "big"), 1100)
 
+    def test_optimization_and_normal_mode_data_without_qt(self):
+        root = Path(orcaview.__file__).resolve().parents[2]
+        water = root / "artifacts/public/validation/ORCA-6.1.1-macOS-arm64/optfreq/job.out"
+        energy = self.invoke("results", water, "--optimization", "--format", "csv")
+        self.assertEqual(energy.returncode, 0, energy.stderr)
+        points = list(csv.DictReader(StringIO(energy.stdout)))
+        self.assertEqual([p["step"] for p in points], ["1", "2", "3", "4", "final"])
+        self.assertEqual(float(points[-1]["energy_Eh"]), -76.321268537024)
+        result = self.invoke("results", water, "--normal-modes")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        group, = json.loads(result.stdout)["groups"]
+        self.assertEqual([mode["index"] for mode in group["modes"]], [6, 7, 8])
+        tsv = self.invoke("results", water, "--normal-modes", "--format", "tsv")
+        self.assertEqual(tsv.returncode, 0, tsv.stderr)
+        rows = list(csv.DictReader(StringIO(tsv.stdout), delimiter="\t"))
+        self.assertEqual(len(rows), 9)
+        self.assertEqual([float(rows[0][k]) for k in ("dx", "dy", "dz")], group["modes"][0]["displacements"][0])
+        self.assertEqual(float(rows[-1]["frequency_cm-1"]), 3882.)
+        for flag in ("--normal-modes", "--optimization"):
+            missing = self.invoke("results", self.raw, flag)
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertEqual(missing.stdout, "")
+
     def test_nmr_positions_raw_tables_and_coupling_plot(self):
         nmr = Path(orcaview.__file__).resolve().parents[2] / "artifacts/public/validation/results-0.1.0a12/nmr/water-shield.out"
         sticks = self.invoke("spectrum", nmr, "--table", 1, "--format", "sticks", "--element", "H",

@@ -10,6 +10,7 @@ import re
 
 from orcaview.gui.result_display import log_property_series, source_label
 from orcaview.results.nmr import coupling_pairs, default_shape, plot_source
+from orcaview.results.optimization import optimization_runs
 from orcaview.results.spectrum_profile import PlotProfile, PlotStyle, spectrum_csv
 
 
@@ -21,6 +22,8 @@ def register(sub):
     select.add_argument("--dataset", metavar="SELECTOR", help="Dataset number, ID or unique kind")
     select.add_argument("--properties", action="store_true", help="All printed calculation properties")
     select.add_argument("--property", metavar="SERIES", help="Property series number or unique label")
+    select.add_argument("--optimization", action="store_true", help="Printed geometry optimization steps and energies")
+    select.add_argument("--normal-modes", action="store_true", help="Vibrational frequencies, reference atoms and displacement vectors")
     select.add_argument("--evidence", action="store_true", help="Recorded sources, paths and checksums")
     select.add_argument("--all", action="store_true", help="Full JSON with all snapshots, datasets and log tables")
     results.add_argument("--format", choices=("json", "csv", "tsv"), default="json")
@@ -127,6 +130,11 @@ def _inventory(snapshots, datasets, report, series):
         "properties": [{"number": n, **asdict(group[0]), "observations": len(group)}
                        for n, group in enumerate(series, 1)],
         "spectra": _spectrum_entries(report),
+        "optimizations": [{"number": n, "job": run.job, "points": len(run.points)}
+                          for n, run in enumerate(optimization_runs(report), 1)],
+        "normal_mode_groups": [{"number": n, "title": group.title, "source_line": group.source_line,
+                                "modes": len(group.modes), "atoms": len(group.atoms)}
+                               for n, group in enumerate(report.normal_modes, 1)] if report else [],
     }
 
 
@@ -186,6 +194,29 @@ def _results(args):
         columns = ("group", "label", "context", "value", "unit", "line")
         table = (columns, (tuple(getattr(p, field) for field in columns) for p in props))
         payload = {"source": asdict(report.source) if report else None, "properties": [asdict(p) for p in props]}
+    elif args.optimization:
+        runs = optimization_runs(report)
+        if not runs:
+            raise ValueError("This report contains no geometry optimization cycle energies.")
+        if args.format == "json":
+            payload = {"source": asdict(report.source), "energy_unit": "Eh", "runs": [asdict(run) for run in runs]}
+        else:
+            columns = ("run", "job", "step", "energy_Eh", "source_line", "scf_warning")
+            table = columns, ((n, run.job, "final" if p.step is None else p.step, p.energy, p.line, p.scf_warning)
+                              for n, run in enumerate(runs, 1) for p in run.points)
+    elif args.normal_modes:
+        if not report or not report.normal_modes:
+            raise ValueError("No complete normal-mode displacement vectors with matching coordinates were found.")
+        if args.format == "json":
+            payload = {"source": asdict(report.source), "coordinate_unit": "angstrom", "frequency_unit": "cm-1",
+                       "groups": [asdict(group) for group in report.normal_modes]}
+        else:
+            columns = ("group", "mode", "frequency_cm-1", "atom", "element", "x_angstrom", "y_angstrom", "z_angstrom",
+                       "dx", "dy", "dz", "geometry_line", "frequency_line", "vector_line")
+            table = columns, ((n, mode.index, mode.frequency, atom_no, atom.element, atom.x, atom.y, atom.z, *vector,
+                               group.geometry_line, group.frequency_line, mode.source_line)
+                              for n, group in enumerate(report.normal_modes, 1) for mode in group.modes
+                              for atom_no, (atom, vector) in enumerate(zip(group.atoms, mode.displacements), 1))
     elif args.evidence:
         payload = _evidence(report, snapshots, datasets)
         columns = ("artifact_id", "format", "path_hint", "sha256")
@@ -201,7 +232,7 @@ def _results(args):
     elif table is not None:
         text = _delimited(*table, delimiter="," if args.format == "csv" else "\t")
     else:
-        raise ValueError("Select a geometry, dataset, property table or source evidence for CSV/TSV output.")
+        raise ValueError("Select a geometry, dataset, property table, optimization, normal modes or source evidence for CSV/TSV output.")
     write_text(args.output, text)
     return 0
 

@@ -160,6 +160,7 @@ def assemble(target, bundle, cache, version):
     third_party.mkdir(parents=True)
     shutil.copyfile(ROOT / "LICENSE", third_party / "OrcaView-LICENSE.txt")
     shutil.copyfile(ROOT / "THIRD_PARTY_NOTICES.md", third_party / "THIRD_PARTY_NOTICES.md")
+    shutil.copyfile(ROOT / "packaging/licenses/GPL-3.0.txt", third_party / "GPL-3.0.txt")
     sources = (HERE / "SOURCES.txt").read_text(encoding="utf-8").replace("@VERSION@", version)
     (third_party / "SOURCES.txt").write_bytes(sources.encode("utf-8"))
     install_examples(ROOT, bundle / "Examples")

@@ -22,8 +22,11 @@ from orcaview.gui.result_display import (
 )
 from orcaview.gui.result_table import CalculationResultTable, enable_table_copy
 from orcaview.gui.file_dialogs import set_document_directory
+from orcaview.gui.normal_mode_dialog import NormalModeDialog
+from orcaview.gui.optimization_curve import OptimizationCurveDialog
 from orcaview.gui.spectrum_preview import SpectrumPreview
 from orcaview.gui.viewport import MoleculeViewport
+from orcaview.results.optimization import optimization_runs
 
 
 STYLE = """
@@ -109,6 +112,9 @@ class FoundationPanel(QWidget):
         self._standalone = False
         self._log_selection = None
         self._preview_index = 0
+        self._opt_runs = ()
+        self._curve_dialog = self._mode_dialog = None
+        self._mode_appearance = None
         self._series = ()
         self._merged_series = {}
         self._population_id = None
@@ -122,7 +128,18 @@ class FoundationPanel(QWidget):
         layout.setSpacing(10)
         self.title = _label(tr("Result"), "foundationTitle")
         self.title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        layout.addWidget(self.title)
+        header = QHBoxLayout()
+        header.addWidget(self.title, 1)
+        self.curve_button = QPushButton(tr("Optimization curve…"))
+        self.curve_button.setObjectName("optimizationCurve")
+        self.curve_button.clicked.connect(self._open_curve)
+        self.modes_button = QPushButton(tr("Vibrational modes…"))
+        self.modes_button.setObjectName("vibrationalModes")
+        self.modes_button.clicked.connect(lambda: self._open_modes())
+        for button in (self.curve_button, self.modes_button):
+            header.addWidget(button)
+            button.hide()
+        layout.addLayout(header)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(column_gap)
@@ -239,6 +256,7 @@ class FoundationPanel(QWidget):
         layout.addWidget(self.result_contents, 1)
         self.datasets.currentItemChanged.connect(self._dataset_changed)
         self.spectra.currentItemChanged.connect(self._spectrum_changed)
+        self.log_table.doubleClicked.connect(self._open_frequency_row)
         self.atoms.itemSelectionChanged.connect(self._table_selected)
         self.viewport.selection_changed.connect(self._viewport_selected)
 
@@ -248,6 +266,7 @@ class FoundationPanel(QWidget):
             self._input_path = self._project_path = ""
             self._population_id = None
             self._populations = ()
+            self._reset_log_plots()
             self._report = None
             self._standalone = False
             self._log_selection = None
@@ -266,11 +285,11 @@ class FoundationPanel(QWidget):
         self.document = document
         head = next(snapshot for snapshot in reversed(snapshots) if snapshot.ref.frame_id is None)
         has_atoms = bool(head.molecule.atoms)
-        self.result_contents.setVisible(has_atoms)
-        self.result_contents.setEnabled(has_atoms)
-        if not has_atoms:
+        if not has_atoms and not self._standalone:
             self._clear_empty_design()
             return
+        self.result_contents.show()
+        self.result_contents.setEnabled(True)
         self.title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._rebuild_results(snapshots, datasets)
         if self._log_selection is not None:
@@ -286,6 +305,9 @@ class FoundationPanel(QWidget):
             self._show_snapshot(head, retain_selection=True)
 
     def _clear_empty_design(self):
+        self._reset_log_plots()
+        self.result_contents.hide()
+        self.result_contents.setEnabled(False)
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title.setText(tr("The current design has no atoms."))
         self.title.setToolTip("")
@@ -312,17 +334,79 @@ class FoundationPanel(QWidget):
         if self.document is not None:
             self.set_document(self.document)
 
+    @property
+    def showing_independent_log(self):
+        return self._standalone
+
+    def set_mode_appearance(self, settings, colors):
+        self._mode_appearance = settings, colors
+        if self._mode_dialog is not None:
+            self._mode_dialog.viewport.set_appearance(settings, colors)
+
+    def _reset_log_plots(self):
+        for dialog in (self._curve_dialog, self._mode_dialog):
+            if dialog is not None:
+                dialog.close()
+                dialog.deleteLater()
+        self._curve_dialog = self._mode_dialog = None
+        self._opt_runs = ()
+        self.curve_button.hide()
+        self.modes_button.hide()
+
+    def _open_curve(self):
+        if not self._opt_runs:
+            return
+        if self._curve_dialog is None:
+            self._curve_dialog = OptimizationCurveDialog(self._opt_runs, self)
+        self._curve_dialog.show()
+        self._curve_dialog.raise_()
+        self._curve_dialog.activateWindow()
+
+    def _open_modes(self, frequency_line=None, mode_index=None):
+        if not self._report or not self._report.normal_modes:
+            return
+        if frequency_line is None and self._log_selection and self._log_selection[0] == "spectrum":
+            table = self._report.spectra[self._log_selection[1]]
+            if table.kind == "vibrations":
+                frequency_line = table.source_line
+        if self._mode_dialog is None:
+            self._mode_dialog = NormalModeDialog(self._report.normal_modes, parent=self,
+                                                 frequency_line=frequency_line, mode_index=mode_index)
+            self._mode_dialog.setProperty("documentDirectory", self.spectrum_preview.property("documentDirectory"))
+            if self._mode_appearance is not None:
+                self._mode_dialog.viewport.set_appearance(*self._mode_appearance)
+        elif frequency_line is not None:
+            self._mode_dialog.select_mode(frequency_line, mode_index)
+        self._mode_dialog.show()
+        self._mode_dialog.raise_()
+        self._mode_dialog.activateWindow()
+
+    def _open_frequency_row(self, index):
+        if self._log_selection is None or self._log_selection[0] != "spectrum" or not index.isValid():
+            return
+        table = self._report.spectra[self._log_selection[1]]
+        if table.kind == "vibrations":
+            number = table.rows[index.row()][0]
+            if any(group.frequency_line == table.source_line and any(mode.index == number for mode in group.modes)
+                   for group in self._report.normal_modes):
+                self._open_modes(table.source_line, number)
+
     def set_log_report(self, report, *, standalone=False, opened_path=None):
         """Show the output file's own results, optionally without any molecular context."""
         if report is not self._report:
             self._preview_index = 0
+            self._reset_log_plots()
         self._report = report
         self._standalone = report is not None and standalone
         source = (opened_path or report.source.path_hint) if self._standalone else None
         set_document_directory(self.spectrum_preview, source)
         self._log_selection = None
-        if self.document is not None and not self.document.head.molecule.atoms:
+        if self.document is not None and not self.document.head.molecule.atoms and not self._standalone:
+            self._clear_empty_design()
             return
+        self.result_contents.setVisible(True)
+        self.result_contents.setEnabled(True)
+        self.title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         records = self.document.records() if self.document is not None and not self._standalone else ((), ())
         self._rebuild_results(*records)
         if self._dataset_id in self._dataset_items:
@@ -339,6 +423,14 @@ class FoundationPanel(QWidget):
 
     def _rebuild_results(self, snapshots, datasets):
         report = self._report
+        self._opt_runs = optimization_runs(report)
+        self.curve_button.setVisible(bool(self._opt_runs))
+        modes = report.normal_modes if report else ()
+        has_frequencies = bool(report and any(t.kind in ("vibrations", "ir", "raman") for t in report.spectra))
+        self.modes_button.setVisible(bool(modes) or has_frequencies)
+        self.modes_button.setEnabled(bool(modes))
+        self.modes_button.setToolTip(tr("Animate the printed normal-mode displacements.") if modes else
+                                     tr("This report has frequencies but no complete displacement vectors and matching geometry."))
         if self._standalone:
             datasets = ()
         self.geometry_pane.setVisible(not self._standalone)

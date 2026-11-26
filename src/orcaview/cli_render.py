@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from orcaview.appearance import MODEL_LABELS, AppearanceStore, read_palette
+from orcaview.results.vibration_playback import AMPLITUDE_RANGE, DEFAULT_AMPLITUDE, DEFAULT_SPEED, SPEED_RANGE
 
 
 def _rotation(value):
@@ -83,11 +84,36 @@ def register(sub):
     _view_options(parser)
     parser.set_defaults(handler=render)
 
+    motion = sub.add_parser("vibration", help="Export a printed ORCA vibrational mode to animated GIF or MP4")
+    motion.add_argument("input", type=Path, help="ORCA output or OrcaView project with normal-mode vectors")
+    motion.add_argument("output", type=Path, help="Animation filename ending in .gif or .mp4")
+    motion.add_argument("--mode", type=int, required=True, help="Mode number printed by ORCA")
+    motion.add_argument("--group", type=int, help="One-based normal-mode group from the results inventory")
+    motion.add_argument("--amplitude", type=float, default=DEFAULT_AMPLITUDE,
+                        help="Peak atomic displacement in angstroms (default: %(default)g)")
+    motion.add_argument("--speed", type=float, default=DEFAULT_SPEED,
+                        help="Playback cycles per second (default: %(default)g)")
+    _view_options(motion)
+    motion.set_defaults(handler=vibration)
+
 
 def render(args):
     from orcaview.cli_io import check_output
     check_output(args.input, args.output)
     return run_offscreen("structure", args)
+
+
+def vibration(args):
+    from orcaview.cli_io import check_output
+
+    check_output(args.input, args.output)
+    if args.output.suffix.lower() not in (".gif", ".mp4"):
+        raise ValueError("Choose a .gif or .mp4 animation filename")
+    if not AMPLITUDE_RANGE[0] <= args.amplitude <= AMPLITUDE_RANGE[1]:
+        raise ValueError(f"Amplitude must be from {AMPLITUDE_RANGE[0]:g} to {AMPLITUDE_RANGE[1]:g} angstroms")
+    if not SPEED_RANGE[0] <= args.speed <= SPEED_RANGE[1]:
+        raise ValueError(f"Playback speed must be from {SPEED_RANGE[0]:g} to {SPEED_RANGE[1]:g} cycles per second")
+    return run_offscreen("vibration", args)
 
 
 def _worker_command():
@@ -350,6 +376,35 @@ def _render_structure(args):
     save_structure_image(view, args.output, fmt, width, height, transparent=args.transparent, scale=args.scale)
 
 
+def _render_vibration(args):
+    from orcaview.cli_io import load_session
+    from orcaview.core.models import Molecule
+    from orcaview.gui.normal_mode_export import save_mode_animation
+    from orcaview.gui.viewport import NormalModeViewport
+
+    report = load_session(Path(args.input), finite=args.finite).log_report
+    if not report or not report.normal_modes:
+        raise ValueError("No complete normal modes with matching coordinates were found")
+    groups = report.normal_modes
+    if args.group is None and len(groups) > 1:
+        raise ValueError(f"This report contains {len(groups)} normal-mode groups. Select one with --group")
+    number = 1 if args.group is None else args.group
+    if not 1 <= number <= len(groups):
+        raise ValueError(f"Normal-mode group must be from 1 to {len(groups)}")
+    group = groups[number - 1]
+    mode = next((mode for mode in group.modes if mode.index == args.mode), None)
+    if mode is None:
+        raise ValueError(f"Group {number} has no printable displacement vectors for mode {args.mode}. "
+                         "Use results --normal-modes to inspect the available mode numbers")
+    view = NormalModeViewport()
+    view.resize(800, 600)
+    view.set_appearance(*_appearance(args, AppearanceStore()))
+    view.set_equilibrium(Molecule(group.title, group.atoms))
+    view.set_mode(mode.displacements)
+    _camera(view, args)
+    save_mode_animation(view, Path(args.output), amplitude=args.amplitude, speed=args.speed)
+
+
 def worker_main(argv):
     try:
         operation, = argv
@@ -383,6 +438,8 @@ def worker_main(argv):
         app.setFont(interface_font(load_interface_language(app)))
         if operation == "structure":
             _render_structure(args)
+        elif operation == "vibration":
+            _render_vibration(args)
         elif operation == "spectrum":
             from orcaview.cli_results import render_spectrum_image
             render_spectrum_image(args)

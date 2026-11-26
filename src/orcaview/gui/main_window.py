@@ -10,7 +10,7 @@ import sys
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QCompleter, QDialog, QDockWidget, QDoubleSpinBox, QFileDialog, QFrame,
+    QApplication, QComboBox, QCompleter, QDialog, QDockWidget, QFileDialog, QFrame,
     QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPlainTextEdit,
     QPushButton, QSizePolicy, QSpinBox, QTabWidget, QToolBar,
     QVBoxLayout, QWidget,
@@ -53,7 +53,7 @@ from orcaview.gui.result_import import SummaryView, read_native_session, read_su
 from orcaview.gui.structure_image_dialog import StructureImageDialog
 from orcaview.gui.update_dialog import UpdateDialog
 from orcaview.gui.version_info import desktop_version_info
-from orcaview.gui.view_icons import rotation_icon
+from orcaview.gui.view_controls import ViewControls
 from orcaview.gui.viewport import MoleculeViewport
 from orcaview.gui.workspace_columns import WorkspaceColumns
 from orcaview.gui.workspace_transition import WorkspaceTabs, WorkspaceTransition
@@ -274,6 +274,7 @@ class MainWindow(QMainWindow):
         colors = self.appearance_store.overrides(settings.palette_id)
         for viewport in self._viewports:
             viewport.set_appearance(settings, colors)
+        self.foundation_panel.set_mode_appearance(settings, colors)
         self.design_panel.canvas.set_element_colors(colors)
 
     def show_update_dialog(self):
@@ -311,11 +312,9 @@ class MainWindow(QMainWindow):
         self.view_toolbar = toolbar = QToolBar()
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
-        fit_button = QPushButton(tr("Reset view"))
-        fit_button.setObjectName("resetView")
-        fit_button.clicked.connect(self._fit_active_view)
-        toolbar.addWidget(fit_button)
-        toolbar.addWidget(self._rotation_controls())
+        controls = ViewControls(self._active_viewport)
+        self.rotation_angle = controls.rotation_angle
+        toolbar.addWidget(controls)
         spacer = QWidget()
         spacer.setSizePolicy(spacer.sizePolicy().Policy.Expanding, spacer.sizePolicy().Policy.Preferred)
         toolbar.addWidget(spacer)
@@ -334,45 +333,6 @@ class MainWindow(QMainWindow):
                 self.insertToolBarBreak(self.view_toolbar)
             elif not needs_break and self.toolBarBreak(self.view_toolbar):
                 self.removeToolBarBreak(self.view_toolbar)
-
-    def _rotation_controls(self):
-        controls = QWidget()
-        controls.setObjectName("rotationControls")
-        layout = QHBoxLayout(controls)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-        self.rotation_angle = QDoubleSpinBox()
-        self.rotation_angle.setObjectName("rotationAngle")
-        self.rotation_angle.setRange(0, 360)
-        self.rotation_angle.setDecimals(2)
-        self.rotation_angle.setValue(15)
-        self.rotation_angle.setSuffix("°")
-        self.rotation_angle.setAccessibleName(tr("Rotation angle"))
-        self.rotation_angle.setToolTip(tr("Angle per click of a rotation button"))
-        for name, label, hint, axis, sign in (
-            ("rotateLeft", tr("Left"), tr("Turn left about the view’s y-axis"), "y", -1),
-            ("rotateRight", tr("Right"), tr("Turn right about the view’s y-axis"), "y", 1),
-            ("rotateForward", tr("Forward"), tr("Tilt the top edge toward you about the view’s x-axis"), "x", 1),
-            ("rotateBackward", tr("Back"), tr("Tilt the top edge away from you about the view’s x-axis"), "x", -1),
-            ("rotateUp", tr("Up ↺"), tr("Rotate counterclockwise about the view’s z-axis to raise the right edge"), "z", 1),
-            ("rotateDown", tr("Down ↻"), tr("Rotate clockwise about the view’s z-axis to lower the right edge"), "z", -1),
-        ):
-            if name in ("rotateForward", "rotateUp"):
-                layout.addSpacing(4)
-            button = QPushButton()
-            button.setObjectName(name)
-            button.setIcon(rotation_icon(axis, sign))
-            button.setIconSize(QSize(20, 20))
-            button.setAccessibleName(label)
-            button.setToolTip(hint)
-            button.clicked.connect(
-                lambda checked=False, axis=axis, sign=sign:
-                self._active_viewport().rotate_view(axis, sign * self.rotation_angle.value())
-            )
-            layout.addWidget(button)
-        layout.addSpacing(5)
-        layout.addWidget(self.rotation_angle)
-        return controls
 
     def _create_status_bar(self, versions):
         bar = self.statusBar()
@@ -783,7 +743,10 @@ class MainWindow(QMainWindow):
         self.design_panel.set_document(self.session.document)
         self.foundation_panel.set_document(self.session.document, input_path=self.session.source_path,
                                            project_path=project_path)
-        self.foundation_panel.set_log_report(self.session.log_report)
+        report_only = (self.session.log_report is not None and not molecule.atoms
+                       and self.session.document.head.parent is None)
+        self.foundation_panel.set_log_report(self.session.log_report, standalone=report_only,
+                                             opened_path=opened_path or project_path)
         self._update_title()
         source = project_path or opened_path or self.session.source_path
         if source:
@@ -844,6 +807,8 @@ class MainWindow(QMainWindow):
         # An edit can make previously rejected form values valid. Preview them
         # without publishing a second revision that would invalidate this undo.
         self._settings_changed(commit_settings=False)
+        if self.foundation_panel.showing_independent_log:
+            self.foundation_panel.set_log_report(self.session.log_report)
 
     def _design_result(self, ref):
         panel = self.foundation_panel
@@ -888,6 +853,8 @@ class MainWindow(QMainWindow):
         self.columns.set_results(showing_results)
         if not self.session.molecule.atoms:
             self.statusBar().clearMessage()
+            if showing_results and self.foundation_panel.showing_independent_log:
+                return
             if not self.isVisible():
                 # Command-line startup and offscreen captures can choose an empty page explicitly.
                 return
@@ -967,11 +934,14 @@ class MainWindow(QMainWindow):
             selected.validate_geometry(document.resolve(selected.geometry))
         self.session = session
         self._load_controls(project_path=project_path, opened_path=opened_path)
-        if session.molecule.atoms:
+        if session.molecule.atoms or self.foundation_panel.showing_independent_log:
             self.workspace_tabs.setCurrentWidget(self.foundation_panel)
             if selected is not None:
                 self.foundation_panel.view_dataset(selected.dataset_id)
-            self.statusBar().showMessage(message if message is not None else tr("Atoms are ordered by number. Select a row to locate its atom in the structure."), timeout_ms)
+            if self.foundation_panel.showing_independent_log and message is None:
+                self.statusBar().clearMessage()
+            else:
+                self.statusBar().showMessage(message if message is not None else tr("Atoms are ordered by number. Select a row to locate its atom in the structure."), timeout_ms)
         else:
             self.workspace_tabs.setCurrentWidget(self.design_panel)
             self.statusBar().clearMessage()
@@ -1297,8 +1267,10 @@ class MainWindow(QMainWindow):
 
     def _show_summary(self, path, result):
         if not self.session.molecule.atoms:
-            page = self.foundation_panel if result.report.properties or result.report.spectra else self.input_page
-            self.workspace_tabs.setCurrentWidget(page)
+            if result.report.properties or result.report.spectra:
+                self._show_log_only(path, result.report)
+            else:
+                self.workspace_tabs.setCurrentWidget(self.input_page)
             return
         self.output_summary.setPlainText(result.text)
         self.tabs.setCurrentWidget(self.output_summary)
@@ -1310,10 +1282,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(tr("Read summary from {path.name}", path=path), 8000)
 
     def _show_log_only(self, path, report):
+        self.foundation_panel.set_log_report(report, standalone=True, opened_path=path)
         self.workspace_tabs.setCurrentWidget(self.foundation_panel)
         if not self.session.molecule.atoms:
             return
-        self.foundation_panel.set_log_report(report, standalone=True, opened_path=path)
         self.statusBar().showMessage(tr("Viewing separate log {path.name}. The current project is retained.", path=path), 8000)
 
     def _read_context(self):

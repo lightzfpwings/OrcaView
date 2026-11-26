@@ -20,6 +20,13 @@ class LogProperty:
 
 _CYCLE = re.compile(r"\**\s*GEOMETRY OPTIMIZATION CYCLE\s+(\d+)\s*\**", re.I)
 _CYCLE_CONTEXT = re.compile("Optimization step \\d+|Final optimization energy evaluation")
+_STAGE_END = re.compile(
+    r"ORCA GEOMETRY RELAXATION STEP|(?:THE )?OPTIMIZATION (?:HAS (?:NOT )?CONVERGED|DID NOT CONVERGE)\b.*"
+    r"|MAXIMUM NUMBER OF OPTIMIZATION CYCLES REACHED\b.*"
+    r"|(?:ORCA )?(?:ANALYTICAL|NUMERICAL) FREQUENC(?:IES|Y CALCULATION)|SCF HESSIAN|VIBRATIONAL FREQUENCIES"
+    r"|SINGLE POINT CALCULATION|GEOMETRY OPTIMIZATION RUN|\$\s*NEW_JOB"
+    r"|ORCA (?:TERMINATED NORMALLY|TERMINATED ABNORMALLY|FINISHED BY ERROR TERMINATION\b.*)", re.I,
+)
 _JOIN = " · "
 _FINAL = re.compile(rf"FINAL SINGLE POINT ENERGY\s+({_NUMBER})(?:\s+Eh)?"
                     r"(?:\s+\((Wavefunction not fully converged)!?\))?", re.I)
@@ -264,6 +271,7 @@ def parse_log_properties(lines: Union[str, Sequence[str]]) -> Tuple[LogProperty,
     lines = [line.strip() for line in lines]
     items = []
     stage = ""
+    energy_stage = ""
     for i, line in enumerate(lines):
         if not line or line[0] in "|#-0123456789":
             continue
@@ -292,8 +300,11 @@ def parse_log_properties(lines: Union[str, Sequence[str]]) -> Tuple[LogProperty,
         elif m := _THERMO.fullmatch(line):
             items.extend(_thermochemistry(lines, i, m[1], stage))
         elif m := _FINAL.fullmatch(line):
-            context = _context(stage, "Wavefunction not fully converged" if m[2] else "")
+            context = _context(energy_stage, "Wavefunction not fully converged" if m[2] else "")
             items.append(_property("Electronic energy", "Final single-point energy", m[1], "Eh", i, context))
+            # One printed cycle or stationary-point header supplies one curve point.
+            # Other properties can still refer to that geometry after its energy.
+            energy_stage = ""
         elif m := _MP2.fullmatch(line):
             items.append(_property("Electronic energy", f"{m[1].upper()} correlation energy", m[2], "Eh", i, stage))
         elif m := _SOLVENT.fullmatch(line):
@@ -304,8 +315,10 @@ def parse_log_properties(lines: Union[str, Sequence[str]]) -> Tuple[LogProperty,
         elif m := _DISP.fullmatch(line):
             items.append(_property("Electronic energy", "Dispersion model", m[1], "Eh", i, stage))
         elif m := _CYCLE.fullmatch(line):
-            stage = f"Optimization step {m[1]}"
+            stage = energy_stage = f"Optimization step {m[1]}"
         elif line.strip("* ").upper() == "FINAL ENERGY EVALUATION AT THE STATIONARY POINT":
-            stage = "Final optimization energy evaluation"
+            stage = energy_stage = "Final optimization energy evaluation"
+        elif stage and _STAGE_END.fullmatch(line.strip("* ")):
+            stage = energy_stage = ""
 
     return ranked_properties(item for item in items if item is not None)

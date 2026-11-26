@@ -16,6 +16,27 @@ orcaview results work.oview.json --all -o full-results.json
 
 Select a geometry by its entry number, snapshot ID or frame ID. Select a dataset by number, persisted ID or unique kind. A per-atom CSV uses the coordinates and stable atom identities of the dataset's own frame. The status column distinguishes missing values, atoms outside its axis, and externally stored values. JSON retains shape, axis identities, units, quality notes, source records and the external array reference. The raw log remains separate from geometry-bound results. Use `--properties` for every parsed observation with its context, unit and original line, or select an individual series with `--property`.
 
+## Optimization and vibrational modes
+
+Open an ORCA output in the desktop application and select **Result → Optimization curve…** to inspect the energy at each geometry optimization step. The chart preserves the printed cycle numbers and energy increases. Switch between absolute energy in Eh and the change from the first point in mEh. Clicking a point selects its table row and original log line. A diamond marks the separate final energy evaluation when ORCA prints one. Compound outputs have a calculation selector.
+
+**Result → Vibrational modes…** plays the Cartesian displacements printed under `NORMAL MODES` on their reference geometry. Select a mode by its ORCA number and frequency in cm⁻¹. Imaginary frequencies retain their sign. The amplitude sets the peak excursion of the most mobile atom in Å, and playback speed controls the display tempo. Use **Equilibrium** to pause on the reference geometry. A frequency list or IR table alone can be inspected as a table. Playback also requires a complete displacement column and matching coordinates. Projects saved with vectors retain them when the original log moves. To add vectors to an older project, reopen the original output.
+
+The vibration viewer opens along the same local +z axis as the structure viewer. The six rotation buttons use a 15° increment. Left-drag to rotate, right-drag to pan and scroll to zoom. **Reset view** restores the orientation, zoom and centering. **Restore defaults** also resets the rotation increment, peak amplitude (0.35 Å) and speed (one cycle per second). Both controls keep the selected mode.
+
+Choose **Export animation…** and select **Animated GIF** or **MP4 video**. Both use the current camera, molecular appearance, amplitude and speed. The GIF loops one cycle indefinitely. The MP4 plays three cycles in H.264. The molecular drawing is rendered on white at 25 frames per second, with the current view's proportions and 1280 pixels on its longer side.
+
+The desktop packages include `Examples/water-opt-freq.out` for both views. To export an animation from a terminal, supply the printed ORCA mode number. For a file containing several frequency calculations, use `--group` with the one-based group number in the results inventory.
+
+```sh
+orcaview results Examples/water-opt-freq.out --optimization --format csv -o energies.csv
+orcaview results Examples/water-opt-freq.out --normal-modes --format tsv -o modes.tsv
+orcaview vibration Examples/water-opt-freq.out water-bend.gif --mode 6 --rotate y:30
+orcaview vibration Examples/water-opt-freq.out water-bend.mp4 --mode 6 --rotate y:30
+```
+
+The energy table uses one row per printed evaluation and labels the final evaluation `final`. The mode table uses one row per atom and mode, with the equilibrium coordinates in Å, the original ORCA vector components and their source lines. JSON preserves the grouping by calculation.
+
 ## Spectra
 
 Running `orcaview spectrum FILE` lists the available tables, including their kind, title, row count and source line. Use their entry numbers if a log contains multiple tables of the same kind. The table number is optional for a file with a single spectrum when an explicit format is selected.

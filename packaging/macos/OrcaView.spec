@@ -20,6 +20,8 @@ if not babel_plugins.is_dir():
 babel_data = babel / "share" / "openbabel"
 pyinstaller = distribution("PyInstaller")
 bootloader_license = next(pyinstaller.locate_file(p) for p in pyinstaller.files if p.name == "COPYING.txt")
+ffmpeg = distribution("imageio-ffmpeg")
+ffmpeg_license = next(ffmpeg.locate_file(p) for p in ffmpeg.files if p.name == "LICENSE")
 repo = source.parent
 notices = [
     (str(repo / "LICENSE"), "ThirdParty/OrcaView"),
@@ -27,6 +29,7 @@ notices = [
     (str(packaging_dir / "DEPENDENCY_LICENSES.txt"), "ThirdParty"),
     (str(Path(sysconfig.get_path("stdlib")) / "LICENSE.txt"), "ThirdParty/CPython"),
     (str(bootloader_license), "ThirdParty/PyInstaller"),
+    (str(ffmpeg_license), "ThirdParty/imageio-ffmpeg"),
 ]
 
 analysis = Analysis(

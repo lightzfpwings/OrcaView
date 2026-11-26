@@ -8,6 +8,7 @@ from orcaview.core._validation import finite_number, integer, nonempty
 from orcaview.core.provenance import ArtifactRef
 from .log_properties import LogProperty, parse_log_properties, ranked_properties
 from .log_spectra import SpectrumTable, parse_log_spectra
+from .normal_modes import NormalModeGroup, parse_normal_modes
 
 
 @dataclass(frozen=True)
@@ -16,11 +17,14 @@ class LogReport:
     properties: Tuple[LogProperty, ...]
     spectra: Tuple[SpectrumTable, ...]
     status: str
+    normal_modes: Tuple[NormalModeGroup, ...] = ()
 
     def __post_init__(self):
         if not isinstance(self.source, ArtifactRef) or self.source.format != "orca-out" or not self.source.sha256:
             raise ValueError("A log report requires an ORCA source file with a digest")
         nonempty(self.status, "Log status")
+        if any(not isinstance(group, NormalModeGroup) for group in self.normal_modes):
+            raise ValueError("Invalid normal mode group in log report")
         for prop in self.properties:
             for label in (prop.group, prop.label):
                 nonempty(label, "Result label")
@@ -71,13 +75,14 @@ def parse_log_report(lines, artifact):
         lines = lines.splitlines()
     lines = ["" if re.match(r"\s*\|\s*\d+>", line) else line for line in lines]
     sections = job_sections(lines)
-    properties, tables = [], []
+    properties, tables, normal_modes = [], [], []
     for n, (start, end) in enumerate(sections, 1):
         section = lines[start:end]
         props = parse_log_properties(section)
         spectra = parse_log_spectra(section)
         printed = _SUBJOB.fullmatch(lines[start])
         step = f"Job {(printed[1] if printed else n)}" if len(sections) > 1 else ""
+        normal_modes.extend(parse_normal_modes(section, start, step))
         properties.extend(replace(p, line=p.line + start, context=" · ".join(filter(None, (step, p.context))))
                           for p in props)
         tables.extend(replace(t, source_line=t.source_line + start, title=" · ".join(filter(None, (step, t.title))))
@@ -95,4 +100,4 @@ def parse_log_report(lines, artifact):
         status = "Normal termination not recorded"
     if len(sections) > 1:
         status += " · multiple-job log"
-    return LogReport(artifact, ranked_properties(properties), tuple(tables), status)
+    return LogReport(artifact, ranked_properties(properties), tuple(tables), status, tuple(normal_modes))

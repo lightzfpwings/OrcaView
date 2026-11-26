@@ -13,6 +13,7 @@ def install_examples(root: Path, destination: Path):
         "water.xyz": examples / "water.xyz",
         "benzene.xyz": examples / "benzene.xyz",
         "water-sp.out": examples / "m5_orca/water-sp.out",
+        "water-opt-freq.out": root / "artifacts/public/validation/ORCA-6.1.1-macOS-arm64/optfreq/job.out",
         "water-raman.out": logs / "raman/water.out",
         "water-nmr.out": logs / "nmr/water-shield.out",
         "peroxide-uv-cd.out": logs / "tdcd/peroxide.out",

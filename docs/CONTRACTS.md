@@ -1,6 +1,6 @@
 # OrcaView 当前公开契约
 
-软件版本为 `0.1.0a42`。写入时按计算设置、文档历史与日志报告选择能完整表示它们的最早项目格式。基本设置使用 schema 1/2，原有的五个参数化方法使用 schema 3，扩展目录、基组或近似设置使用 schema 4，手动输入块使用 schema 5，溶剂或反应路径设置使用 schema 6，日志报告自 schema 7 起保存，含显式连接标记的项目至少使用 schema 8，带特殊键型的几何至少使用 schema 9，含零原子草稿的修订历史使用 schema 10，带独立二维草图的修订使用 schema 11。[原始架构基线](DESIGN.md)
+OrcaView `0.1.0a65` 可读写 schema 1–14。写入时按计算设置、文档历史与日志报告选择能完整表示它们的最早项目格式。各版本新增字段见下文。[原始架构基线](DESIGN.md)
 
 ## 核心对象
 
@@ -32,8 +32,8 @@ schema 5 在计算记录中增加 `block_options` 数组，按 `{"block":"scf","
 | `orca.input.render_input(molecule, spec)` | 结构化对象 → ORCA 输入字符串 | 完整基础校验未通过为 `ValueError`；不启动程序 |
 | `orca.output.parse_output(text, job_type='SP')` | 单作业文本 → `OutputSummary` | 未知任务类型为 `ValueError`；缺证据不猜测成功 |
 | `application.session.Session.open_xyz(path)` | 替换当前会话结构 | 先解析后提交；失败保留原分子 |
-| `application.project.save_project(session, path)` | 按文档、设置和报告写 schema 1–13 | 校验后原子替换，失败保留旧文件 |
-| `application.project.load_project(path)` | schema 1–13 JSON → `Session` | 拒绝未知版本、未知字段和失效的内部引用 |
+| `application.project.save_project(session, path)` | 按文档、设置和报告写 schema 1–14 | 校验后原子替换，失败保留旧文件 |
+| `application.project.load_project(path)` | schema 1–14 JSON → `Session` | 拒绝未知版本、未知字段和失效的内部引用 |
 | `application.project.migrate_project(source, destination)` | schema 1 → 新路径的 schema 2，并返回会话 | 目标已存在或写入失败时保留现场 |
 
 XYZ 的空注释行可以保留，但第二行必须存在；每原子仅四列，额外列与多帧输入明确拒绝。XYZ 未提供电子态时保留默认电荷 0、多重度 1，不以启发式替用户选择自旋。因此奇电子几何可以查看，但必须修正电子态后才能导出计算输入。
@@ -144,6 +144,8 @@ schema 11 在可编辑的快照上记录可选的 `sketch_xy`。每个坐标对�
 schema 12 保存输入预览里的自定义注释和显式 SCF 收敛预设。只有使用这些字段的项目需要此版本。其余编辑沿用能表示当前内容的最早 schema。格式化坐标时保留源几何中未编辑分量的原始精度。
 
 schema 13 保存显式氢键。只要任一几何修订含有氢键，项目就使用此版本。键记录采用 `order=1, style="hydrogen_bond"`，两端分别为显式氢原子与受体原子，端点顺序任意。该接触的价态贡献为零。`core.geometry.display_bonds` 返回全部可见连线，`core.geometry.covalent_bonds` 返回划分分子片段和构建力场所用的化学连接。旧版 OrcaView 会提示不支持此项目版本。
+
+schema 14 保存日志中可播放的振动模式。每组记录对应的平衡构型、频率表和位移矩阵的源行，以及各模式的 ORCA 编号、频率（cm⁻¹）和逐原子三维位移。重开项目可独立播放。仅含优化步能量或频率列表的项目继续沿用能够表示现有数据的最早格式。
 
 `OutputSummary` 字段：
 

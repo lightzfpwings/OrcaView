@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orcaview"
-version = "0.1.0a63"
+version = "0.1.0a65"
 description = "A modular desktop pre/post-processing workbench for ORCA"
 requires-python = ">=3.9"
 readme = "README.md"
@@ -15,6 +15,8 @@ dependencies = []
 # Pin the GUI dependency for reproducible desktop builds.
 gui = [
     "PySide6-Essentials==6.8.3",
+    "imageio-ffmpeg==0.8.1; python_version >= '3.10'",
+    "imageio-ffmpeg==0.6.0; python_version < '3.10'",
     "openbabel==3.2.0; python_version >= '3.10'",
     "openbabel-wheel==3.1.1.23; python_version < '3.10'",
 ]

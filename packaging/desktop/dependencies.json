@@ -19,6 +19,11 @@
       "name": "openbabel-3.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
       "url": "https://files.pythonhosted.org/packages/f6/a2/9ca362d4e6749c088acf7c6f6d537851be181cd0bd303b67a6365a9de1e2/openbabel-3.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
       "sha256": "7049c5d90b8941b75bf91d177d9b16cf19a52e72c75550184a7fbd5e5ea45660"
+    },
+    {
+      "name": "imageio_ffmpeg-0.8.1-py3-none-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/de/0f/49292fbef69ee10ebcf97bb741602521caafcc6966d5fa1a2b868cc15655/imageio_ffmpeg-0.8.1-py3-none-manylinux_2_28_x86_64.whl",
+      "sha256": "050d6850601c3b3890bd2b28306f3b842b3daea390a561101174375a1c460bda"
     }
   ],
   "windows": [
@@ -41,6 +46,11 @@
       "name": "openbabel-3.2.0-cp313-cp313-win_amd64.whl",
       "url": "https://files.pythonhosted.org/packages/4c/ce/7a4651eb32860bb3d47b056e508d69df600724899e79b0d57063aa14937c/openbabel-3.2.0-cp313-cp313-win_amd64.whl",
       "sha256": "c147a52d35aa566fe0c4f3481776678758028cd19a900250710f1d2eb6ae11b0"
+    },
+    {
+      "name": "imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/82/0c/a1d49f3dd2688bd750b4986f8e271ad11f8e729a896070ea25f587b44da8/imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl",
+      "sha256": "f27ca4cb85e2d4946deedbce1a81245dfd942a2bcf94b53676fb3956aa95bf1b"
     }
   ],
   "shared": [

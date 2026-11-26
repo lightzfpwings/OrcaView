@@ -4,7 +4,8 @@ from dataclasses import asdict, fields
 
 from orcaview import (ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION,
                       EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, HYDROGEN_BOND_PROJECT_SCHEMA_VERSION,
-                      INPUT_TEXT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
+                      INPUT_TEXT_PROJECT_SCHEMA_VERSION, NORMAL_MODES_PROJECT_SCHEMA_VERSION,
+                      SKETCH_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
                       STATE_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION)
 from orcaview.core.block_options import BlockOverride
 from orcaview.core._state_methods import EARLIER_RESPONSE_FUNCTIONALS
@@ -112,17 +113,30 @@ def _artifact(record):
     return ArtifactRef(**_fields_for(record, ArtifactRef))
 
 
-def read_log_report(record):
+def read_log_report(record, version):
     from orcaview.orca.log_report import LogProperty, LogReport, SpectrumTable
-    data = _fields_for(record, LogReport)
+    from orcaview.orca.normal_modes import NormalMode, NormalModeGroup
+    keys = [f.name for f in fields(LogReport) if f.name != "normal_modes" or version >= NORMAL_MODES_PROJECT_SCHEMA_VERSION]
+    data = check_fields(record, keys, "LogReport")
     props = tuple(LogProperty(**_fields_for(p, LogProperty)) for p in _array(data["properties"]))
     tables = []
     for table in _array(data["spectra"]):
-        fields = dict(_fields_for(table, SpectrumTable))
-        fields["columns"] = tuple(_array(fields["columns"]))
-        fields["rows"] = tuple(tuple(_array(row)) for row in _array(fields["rows"]))
-        tables.append(SpectrumTable(**fields))
-    return LogReport(_artifact(data["source"]), props, tuple(tables), data["status"])
+        entry = dict(_fields_for(table, SpectrumTable))
+        entry["columns"] = tuple(_array(entry["columns"]))
+        entry["rows"] = tuple(tuple(_array(row)) for row in _array(entry["rows"]))
+        tables.append(SpectrumTable(**entry))
+    groups = []
+    for raw_group in _array(data.get("normal_modes", [])):
+        group = dict(_fields_for(raw_group, NormalModeGroup))
+        group["atoms"] = tuple(Atom(**_fields_for(a, Atom)) for a in _array(group["atoms"]))
+        modes = []
+        for raw_mode in _array(group["modes"]):
+            mode = dict(_fields_for(raw_mode, NormalMode))
+            mode["displacements"] = tuple(tuple(_array(v)) for v in _array(mode["displacements"]))
+            modes.append(NormalMode(**mode))
+        group["modes"] = tuple(modes)
+        groups.append(NormalModeGroup(**group))
+    return LogReport(_artifact(data["source"]), props, tuple(tables), data["status"], tuple(groups))
 
 
 def _provenance(record):
