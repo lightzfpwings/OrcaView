@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from shutil import which
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -50,6 +51,17 @@ def main():
         image.rename(dmg)
     print(app)
     print(dmg)
+    git = which("git")
+    if git and (root / ".git").exists():
+        setting = subprocess.run([git, "-C", root, "config", "--local", "--path", "--get",
+                                  "orcaview.backupDirectory"], capture_output=True, text=True)
+        destination = setting.stdout.rstrip("\n")
+        if setting.returncode == 0 and destination:
+            result = subprocess.run([sys.executable, "-B", root / "tools/backup_workspace_macos.py",
+                                     "--destination", destination])
+            if result.returncode:
+                print("The app and disk image are ready. The workspace backup failed. "
+                      f"Retry the workspace backup to {destination}.", file=sys.stderr)
 
 
 if __name__ == "__main__":
