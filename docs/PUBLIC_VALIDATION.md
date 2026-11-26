@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a63
+
+All 706 regression tests passed. The macOS interaction tests exercised rotation and translation of one selected molecule in a mixture, copying between documents and undoing a paste. Hydrogen bonds between molecules leave their covalent components independently selectable. [Fragment gestures](../tests/test_design_fragment_drag.py) · [Molecular clipboard](../tests/test_design_fragment_clipboard.py)
+
+The Apple Silicon application ran from a read-only disk image and passed strict code-signature verification. With H···O and O–H···O targets of 1.90 Å and 170°, the packaged MMFF94 calculation gave 1.901 Å and 170.4° for a water dimer. Separate tests cover two simultaneous contacts in a water trimer and an intramolecular contact in 1,3-propanediol. [Hydrogen-bond optimization tests](../tests/test_hydrogen_bond_optimization.py)
+
 ## 0.1.0a61
 
 The regression suite passed all 685 tests. The hydroxyl doublet fixture exercises 13 per-atom datasets, including the printed Mulliken spin populations of +1.024339 on O and −0.024339 on H. The tests check that imported values survive a project save and reload with their atom identities, geometry and source records. The water NMR fixture gives one proton shielding line at 31.130 ppm with a count of two, and a signed H–H coupling of −15.538 Hz. [Population tests](../tests/test_population_display.py) · [Spectrum tests](../tests/test_spectral_broadening.py) · [ORCA output coverage and fixtures](ORCA_LOG_COVERAGE.md)

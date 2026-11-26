@@ -83,6 +83,14 @@ jobs:
           python -m pip install ".[gui]"
           python -c "import os, orcaview; from PySide6.QtTest import QTest; assert orcaview.__version__ == os.environ['RELEASE_TAG'].removeprefix('v')"
           python -m unittest discover -s "$TEST_DIR" -p test_design_targets.py -v
+      - name: Test fragment gestures, clipboard and hydrogen-bond optimization
+        if: hashFiles('tests/test_hydrogen_bond_optimization.py') != ''
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
+        run: |
+          python -m unittest discover -s tests -p "test_design_fragment*.py" -v
+          python -m unittest discover -s tests -p test_hydrogen_bond_optimization.py -v
       - name: Test spectrum image export options
         if: hashFiles('src/orcaview/gui/spectrum_image_dialog.py') != ''
         env:

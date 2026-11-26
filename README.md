@@ -2,19 +2,19 @@
 
 OrcaView is a desktop application and command-line interface for preparing ORCA inputs and examining calculation results. Draw a molecule, edit its input, then open an ORCA output to inspect the calculated geometry, plot spectra or map atomic populations. Each imported population is associated with its atoms, geometry and source lines.
 
-**Version 0.1.0a61** adds atomic population maps, element-resolved NMR plots and editable `MiniPrint` and `NoAutoStart` input settings. [Release notes and downloads](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a61)
+**Version 0.1.0a63** adds independent rotation, translation and copying of molecules in a complex. You can also mark hydrogen bonds and pre-optimize their geometry before exporting an ORCA input. [Release notes and downloads](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a63)
 
 ## Install
 
 | Platform | Package | Launch |
 | --- | --- | --- |
-| Windows x64 | [Portable ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-0.1.0a61-Windows-x64-portable.zip) | Extract into a dedicated folder and open `OrcaView.exe`. |
-| macOS on Apple Silicon | [Disk image](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-0.1.0a61.macOS-arm64.dmg) | Drag `OrcaView.app` into Applications. Copy `Examples/` to a writable folder. |
-| Linux x86-64 | [Portable tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-0.1.0a61-Linux-x86_64.tar.gz) | Extract and run `./OrcaView` from the extracted folder on a graphical desktop. |
+| Windows x64 | [Portable ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a63/OrcaView-0.1.0a63-Windows-x64-portable.zip) | Extract into a dedicated folder and open `OrcaView.exe`. |
+| macOS on Apple Silicon | [Disk image](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a63/OrcaView-0.1.0a63.macOS-arm64.dmg) | Drag `OrcaView.app` into Applications. Copy `Examples/` to a writable folder. |
+| Linux x86-64 | [Portable tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a63/OrcaView-0.1.0a63-Linux-x86_64.tar.gz) | Extract and run `./OrcaView` from the extracted folder on a graphical desktop. |
 
-All three packages include Python, Qt, Open Babel and 21 example files. Drawing structures, generating inputs and reading existing results work offline. Running a new calculation requires a separate ORCA installation. The local job runner supports macOS and Linux. The macOS app uses an ad hoc signature. [SHA-256 checksums](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/SHA256UMS.txt) · [macOS opening instructions](https://support.apple.com/en-us/102445)
+All three packages include Python, Qt, Open Babel and 21 example files. Drawing structures, generating inputs and reading existing results work offline. Running a new calculation requires a separate ORCA installation. The local job runner supports macOS and Linux. The macOS app uses an ad hoc signature. [SHA-256 checksums](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a63/SHA256UMS.txt) · [macOS opening instructions](https://support.apple.com/en-us/102445)
 
-English is built in. The language pack adds German, Japanese, Simplified Chinese and Traditional Chinese. The color pack provides Contrast, Pastel and Grayscale element palettes. [Language pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-Extensions-01-Language-0.1.0a61.zip) · [Color pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-Extensions-02-Color-0.1.0a61.zip) · [Installation and authoring](docs/extensions/README.md)
+English is built in. The language pack adds German, Japanese, Simplified Chinese and Traditional Chinese. The color pack provides Contrast, Pastel and Grayscale element palettes. [Language pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a63/OrcaView-Extensions-01-Language-0.1.0a63.zip) · [Color pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a63/OrcaView-Extensions-02-Color-0.1.0a63.zip) · [Installation and authoring](docs/extensions/README.md)
 
 ## Atomic populations in the hydroxyl radical
 
@@ -42,6 +42,10 @@ For IR and Raman, try `Examples/water-raman.out`. For UV/Vis absorption and sign
 ## Geometry and ORCA input
 
 The **Design** workspace pairs a 2D sketch with a 3D geometry. Add rings or hydrogens, edit bonds and coordinates, and optimize a starting geometry with Open Babel's MMFF94 or UFF force field. Import structures from XYZ, MOL/SDF, PDB and other formats. [Design commands](docs/CLI_DESIGN.md) · [Open Babel force fields](https://openbabel.org/docs/Forcefields/Overview.html)
+
+To position a molecule, select one of its atoms. Hold Alt (Option on macOS) and drag with the left button to rotate it or the right button to move it. Use Ctrl+C and Ctrl+V (⌘C and ⌘V on macOS) to place a separate copy.
+
+Choose **Hydrogen bond** from the single-bond menu and click an explicit hydrogen and its acceptor. **Optimize H-bonds…** applies H···A distance and D–H···A angle restraints to the marked contacts in a neutral singlet. Projects with hydrogen-bond annotations in their history require version 0.1.0a63 or later.
 
 In **Input**, choose a method, basis set, charge and multiplicity, or edit the ORCA input preview and press Tab to apply it. For example, `! MiniPrint NoAutoStart` requests minimal output and disables automatic reuse of a same-name orbital file for a single-point calculation. The corresponding panel controls are `%output → PrintLevel` and `%scf → AutoStart`. [Supported methods and input blocks](docs/ORCA_METHODS.md) · [Native ORCA input examples](examples/native_methods/)
 

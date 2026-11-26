@@ -13,6 +13,9 @@ import tarfile
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from orcaview.application.updates import _version_key
+
 
 @contextmanager
 def open_package(assets, prefix, work):
@@ -73,6 +76,21 @@ def check(assets, version):
                 return result.stdout
 
             assert run("--version").strip() == version
+            if _version_key(version) >= _version_key("0.1.0a63"):
+                dimer = work / "water-dimer.xyz"
+                dimer.write_text("6\nWater dimer\nO 0 0 0\nH .96 0 0\nH -.25 .92 0\n"
+                                 "O 4 .7 0\nH 4.65 1.4 0\nH 4.50 -.12 0\n", encoding="utf-8")
+                steps = [
+                    {"op": "set-bond", "atom_a": 2, "atom_b": 4, "order": 1, "style": "hydrogen_bond"},
+                    {"op": "optimize-hbonds", "distance": 1.90, "angle": 170},
+                    {"op": "measure", "atom_ids": [2, 4]},
+                ]
+                recipe = work / "hydrogen-bond.json"
+                recipe.write_text(json.dumps(steps), encoding="utf-8")
+                operations = json.loads(run("design", dimer, "--script", recipe))["operations"]
+                assert operations[1]["force_field"] in ("MMFF94", "UFF"), operations
+                assert abs(operations[2]["value"] - 1.90) < .05, operations
+                print(f"Water dimer H···O distance: {operations[2]['value']:.3f} angstrom.")
             spectrum = ("spectrum", examples / "water-raman.out", "--table", "ir", "--format", "png")
             run(*spectrum, "-o", "ir-grid.png")
             run(*spectrum, "--no-grid", "-o", "ir-no-grid.png")
