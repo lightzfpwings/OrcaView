@@ -105,7 +105,3 @@ def read_summary_view(path, job):
     summary = tr("Source: {path}\nJob type: {job}\nSeparate import, not linked to the current structure.", path=path, job=job) + "\n\n" + fields
     report = parse_log_report(text.splitlines(), ArtifactRef.from_bytes(raw, "orca-out", str(path.resolve())))
     return SummaryView(summary, report)
-
-
-def read_output_summary(path: Path, job: str) -> str:
-    return read_summary_view(path, job).text

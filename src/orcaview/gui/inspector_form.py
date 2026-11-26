@@ -125,9 +125,6 @@ class InspectorForm(QWidget):
             return True
         return super().eventFilter(watched, event)
 
-    def labelForField(self, field):
-        return self._labels[field]
-
     def setRowVisible(self, field, visible):
         label = self._labels[field]
         if label is not None:

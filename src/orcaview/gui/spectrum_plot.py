@@ -9,7 +9,7 @@ from PySide6.QtCore import QIODevice, QObject, QPointF, QRectF, QRunnable, QSave
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QMenu, QMessageBox,
+    QFormLayout, QFrame, QGroupBox, QHBoxLayout, QMenu, QMessageBox,
     QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 

@@ -16,7 +16,7 @@ from orcaview.core.methods import (ACTIVE_SPACE_METHODS, ALL_JOBS, ELECTRON_CHAN
                                    canonical_method, dispersion_options, frozen_core_options, pno_options,
                                    reference_options)
 from orcaview.core.models import CalculationSpec
-from orcaview.core.solvation import MODELS, SOLVENTS, solvation_options
+from orcaview.core.solvation import SOLVENTS, solvation_options
 from orcaview.orca.output import parse_output
 
 
