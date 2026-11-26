@@ -57,6 +57,7 @@ def build(output, cache=None):
         ready = work / "encoder-sources.zip"
         with ZipFile(ready, "w", ZIP_STORED) as archive:
             add_file(archive, "README.md", HERE / "encoder_sources.md")
+            add_file(archive, "THIRD_PARTY_NOTICES.md", ROOT / "THIRD_PARTY_NOTICES.md")
             add_file(archive, "manifest.json", manifest)
             for name, record in sorted(records.items()):
                 add_file(archive, f"sources/{name}", checked_source(name, record, cache, work))

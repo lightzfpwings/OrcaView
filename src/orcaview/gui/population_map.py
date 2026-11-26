@@ -5,7 +5,7 @@ import math
 import re
 from typing import Optional
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPen, QRegion
 
 from orcaview.gui.result_display import POPULATION_NAMES, dataset_name, report_text
@@ -19,6 +19,62 @@ PALETTES = {
     "Black–white": ("#000000", "#ffffff"),
 }
 MISSING_COLOR = QColor("#9a9a9a")
+
+
+def _nearest_open_box(x, y, width, height, margin, occupied):
+    """Find space for a crowded label, skipping entire runs of blocked positions."""
+    bounds = margin.toRect()
+    target_x, target_y = round(x - width / 2), round(y - height / 2)
+    first_x, last_x = bounds.left(), bounds.right() - width + 1
+    best_box, best_distance = None, math.inf
+    rows = range(bounds.top(), bounds.bottom() - height + 2)
+    for top in sorted(rows, key=lambda row: abs(row - target_y)):
+        dy2 = (top - target_y) ** 2
+        if dy2 >= best_distance:
+            break
+        for direction in (-1, 1):
+            left = max(first_x, min(target_x, last_x))
+            while first_x <= left <= last_x:
+                distance = (left - target_x) ** 2 + dy2
+                if distance >= best_distance:
+                    break
+                rect = QRect(left, top, width, height)
+                hit = occupied.intersected(rect).boundingRect()
+                if hit.isEmpty():
+                    best_box, best_distance = QRectF(rect), distance
+                    break
+                left = hit.left() - width if direction < 0 else hit.right() + 1
+    return best_box
+
+
+def _label_box(x, y, radius, width, height, margin, bonds, spheres, used):
+    """Choose a nearby badge position in the current screen projection."""
+    fallback = None
+    best_rank = None
+    for extra in (0, height * .6, height * 1.4, height * 2.5):
+        gap = radius + 4 + extra
+        diagonal = gap / math.sqrt(2)
+        offsets = ((gap, -height / 2), (-gap - width, -height / 2),
+                   (-width / 2, -gap - height), (-width / 2, gap),
+                   (diagonal, -diagonal - height), (-diagonal - width, -diagonal - height),
+                   (diagonal, diagonal), (-diagonal - width, diagonal))
+        for dx, dy in offsets:
+            left = max(margin.left(), min(x + dx, margin.right() - width))
+            top = max(margin.top(), min(y + dy, margin.bottom() - height))
+            box = QRectF(left, top, width, height)
+            rect = box.toAlignedRect()
+            rank = (bonds.intersects(rect), used.intersects(rect), spheres.intersects(rect))
+            if not any(rank):
+                return box
+            if best_rank is None or rank < best_rank:
+                fallback, best_rank = box, rank
+    if best_rank[0]:
+        # A crowded projection can cover every nearby candidate with a bond.
+        for occupied in (bonds | spheres | used, bonds | used, bonds):
+            clear = _nearest_open_box(x, y, width, height, margin, occupied)
+            if clear is not None:
+                return clear
+    return fallback
 
 
 @dataclass(frozen=True)
@@ -167,7 +223,7 @@ class PopulationMap:
                     painter.drawText(QPointF(x, ticks.top() + metrics.ascent()), tick)
         return rect
 
-    def draw_annotations(self, painter, view, projected, element_labels, selected):
+    def draw_annotations(self, painter, view, projected, element_labels, selected, bond_region):
         painter.save()
         try:
             margin = QRectF(view.rect()).adjusted(3, 3, -3, -3)
@@ -179,6 +235,7 @@ class PopulationMap:
                 return
             spheres = QRegion()
             for x, y, _, r in projected:
+                r += 2  # Reserve the sphere rim and its antialiased edge.
                 spheres |= QRegion(QRectF(x-r, y-r, 2*r, 2*r).toAlignedRect(), QRegion.RegionType.Ellipse)
             metrics = painter.fontMetrics()
             for i in sorted(range(len(projected)), key=lambda index: projected[index][2], reverse=True):
@@ -189,15 +246,8 @@ class PopulationMap:
                 if element_labels or i in selected:
                     text = f"{view.molecule.atoms[i].element}{i+1}  {text}"
                 width, height = metrics.horizontalAdvance(text) + 8, metrics.height() + 2
-                dx, dy = r + 4, height / 2
-                candidates = ((x+dx, y-dy), (x-dx-width, y-dy), (x-width/2, y-r-height-3),
-                              (x-width/2, y+r+3), (x+dx*.72, y-r*.72-height), (x-dx*.72-width, y+r*.72))
-                boxes = [QRectF(max(margin.left(), min(left, margin.right()-width)),
-                                max(margin.top(), min(top, margin.bottom()-height)), width, height)
-                         for left, top in candidates]
-                free = [b for b in boxes if not used.intersects(b.toAlignedRect())]
-                box = next((b for b in free if not spheres.intersects(b.toAlignedRect())), (free or boxes)[0])
-                used |= QRegion(box.toAlignedRect())
+                box = _label_box(x, y, r, width, height, margin, bond_region, spheres, used)
+                used |= QRegion(box.toAlignedRect().adjusted(-1, -1, 1, 1))
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(QColor(255, 255, 255, 222))
                 painter.drawRoundedRect(box, 3, 3)

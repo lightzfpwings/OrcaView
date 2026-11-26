@@ -15,4 +15,4 @@ The desktop application sends uncompressed frames to FFmpeg for GIF or H.264/MP4
 - The x264 archives match the revisions identified by the macOS and Windows encoder build strings and the Linux `scripts.d/50-x264.sh` recipe. [x264 upstream](https://code.videolan.org/videolan/x264) · [x264 source mirror](https://github.com/mirror/x264)
 - The BtbN archive includes the platform build scripts, patches, Dockerfiles and component source references. The macOS and Windows distributors provide their own build documentation and component lists. Additional libraries enabled by those distributors are identified in the build records. [BtbN recipes](https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-09-30-13-08) · [macOS build notes](https://www.osxexperts.net/) · [Windows build and library list](https://www.gyan.dev/ffmpeg/builds/#libraries)
 
-The desktop packages carry the binary distribution notices. [OrcaView third-party notices](https://github.com/lightzfpwings/OrcaView/blob/v0.1.0a65/THIRD_PARTY_NOTICES.md)
+The desktop packages and this source archive include the binary distribution notices in `THIRD_PARTY_NOTICES.md`.

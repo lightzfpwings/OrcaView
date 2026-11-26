@@ -2,19 +2,19 @@
 
 OrcaView is a desktop and command-line workbench for ORCA. It connects molecular design, input preparation and analysis of calculation outputs. An energy can be traced to its optimization step and log line, and an atomic property can be displayed on the geometry to which it belongs.
 
-**OrcaView 0.1.0a65** is an alpha release targeting ORCA 6.1.1. [Release notes and downloads](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a65)
+**OrcaView 0.1.0a66** is an alpha release targeting ORCA 6.1.1. [Release notes and downloads](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a66)
 
 ## Install
 
 | Platform | Package | Launch |
 | --- | --- | --- |
-| Windows x64 | [Portable ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a65/OrcaView-0.1.0a65-Windows-x64-portable.zip) | Extract into a dedicated folder and open `OrcaView.exe`. |
-| macOS on Apple Silicon | [Disk image](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a65/OrcaView-0.1.0a65.macOS-arm64.dmg) | Drag `OrcaView.app` into Applications. Copy `Examples/` to a writable folder. |
-| Linux x86-64 | [Portable tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a65/OrcaView-0.1.0a65-Linux-x86_64.tar.gz) | Extract and run `./OrcaView` from the extracted folder on a graphical desktop. |
+| Windows x64 | [Portable ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a66/OrcaView-0.1.0a66-Windows-x64-portable.zip) | Extract into a dedicated folder and open `OrcaView.exe`. |
+| macOS on Apple Silicon | [Disk image](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a66/OrcaView-0.1.0a66.macOS-arm64.dmg) | Drag `OrcaView.app` into Applications. Copy `Examples/` to a writable folder. |
+| Linux x86-64 | [Portable tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a66/OrcaView-0.1.0a66-Linux-x86_64.tar.gz) | Extract and run `./OrcaView` from the extracted folder on a graphical desktop. |
 
-All three packages include Python, Qt, Open Babel, FFmpeg and 22 example files. Drawing structures, generating inputs and reading existing results work offline. Running a new calculation requires a separate ORCA installation. The local job runner supports macOS and Linux. The macOS app uses an ad hoc signature. [SHA-256 checksums](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a65/SHA256UMS.txt) · [macOS opening instructions](https://support.apple.com/en-us/102445)
+All three packages include Python, Qt, Open Babel, FFmpeg and 22 example files. Drawing structures, generating inputs and reading existing results work offline. Running a new calculation requires a separate ORCA installation. The local job runner supports macOS and Linux. The macOS app uses an ad hoc signature. [SHA-256 checksums](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a66/SHA256UMS.txt) · [macOS opening instructions](https://support.apple.com/en-us/102445)
 
-English is built in. The language pack adds German, Japanese, Simplified Chinese and Traditional Chinese. The color pack provides Contrast, Pastel and Grayscale element palettes. [Language pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a65/OrcaView-Extensions-01-Language-0.1.0a65.zip) · [Color pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a65/OrcaView-Extensions-02-Color-0.1.0a65.zip) · [Installation and authoring](docs/extensions/README.md)
+English is built in. The language pack adds German, Japanese, Simplified Chinese and Traditional Chinese. The color pack provides Contrast, Pastel and Grayscale element palettes. [Language pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a66/OrcaView-Extensions-01-Language-0.1.0a66.zip) · [Color pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a66/OrcaView-Extensions-02-Color-0.1.0a66.zip) · [Installation and authoring](docs/extensions/README.md)
 
 ## Molecular structures and geometry
 
@@ -33,7 +33,7 @@ English is built in. The language pack adds German, Japanese, Simplified Chinese
 
 - **Output inspection.** Read ORCA logs and outputs to inspect job context, termination status, reported coordinates and scalar properties. Repeated observations retain their units, job or optimization step and source line. Recognized properties include SCF, final and selected correlation energies, the T1 diagnostic, frontier orbital energies and gaps, dipole moments, static polarizabilities, rotational constants, thermochemical quantities and selected solvation terms. A log can be inspected even when it has no usable molecular geometry. [ORCA output coverage](docs/ORCA_LOG_COVERAGE.md)
 - **Optimization history.** Plot the energy at each geometry optimization step in Eh or relative to the first step in mEh. Select a point to read its energy and source line. A separate marker identifies the final stationary-point evaluation.
-- **Atomic populations.** Display atom-resolved electron populations, spin populations and charges for the Mulliken, Löwdin, Hirshfeld and MBIS analyses available in the output, plus CHELPG fitted charges. Each dataset retains its atom identities, geometry and source records. Numeric labels and atom coloring can be enabled separately, with an optional scale legend.
+- **Atomic populations.** Display atom-resolved electron populations, spin populations and charges for the Mulliken, Löwdin, Hirshfeld and MBIS analyses available in the output, plus CHELPG fitted charges. Each dataset retains its atom identities, geometry and source records. Display values beside atoms, color atoms by value, or combine both with a scale legend. As you change the view, labels move into nearby gaps to keep bonds visible. Structure exports use the same placement.
 - **Color scales.** Choose red–white–blue, blue–white–red, rainbow or black–white. Edit or reverse colors, set decimal precision and choose automatic, zero-symmetric or manual limits with an adjustable midpoint. Reusable presets let several structures share the same scale. [Results and data export](docs/CLI_RESULTS.md)
 
 ## Vibrational, electronic and NMR spectra
@@ -65,4 +65,4 @@ Use **Help → Check for Updates…** for subsequent releases. On macOS, version
 
 For a paper using OrcaView, cite the software version used to prepare the inputs or figures and report the ORCA version and electronic-structure settings for the calculation. [Software citation](CITATION.cff)
 
-OrcaView is distributed under the MIT license. Bundled third-party libraries have their own licenses. [License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [FFmpeg and x264 sources and build records](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a65/OrcaView-ThirdParty-FFmpeg-0.1.0a65.zip)
+OrcaView is distributed under the MIT license. Bundled third-party libraries have their own licenses. [License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [FFmpeg and x264 sources and build records](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a66/OrcaView-ThirdParty-FFmpeg-0.1.0a66.zip)

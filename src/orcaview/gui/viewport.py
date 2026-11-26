@@ -3,7 +3,7 @@
 import math
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QRadialGradient
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QRadialGradient, QRegion
 from PySide6.QtWidgets import QApplication
 
 from orcaview.appearance import AppearanceSettings, MODEL_LABELS
@@ -366,19 +366,31 @@ class MoleculeViewport(MoleculeEditView):
         numeric_labels = population is not None and population.style.labels
         colors = population.colors if colored else [self._colors.get(atom.element, _FALLBACK_ATOM) for atom in atoms]
         model = self.appearance.model
+        bond_region = QRegion() if numeric_labels else None
         if model != "space-filling":
             points = [QPointF(x, y) for x, y, z, radius in projected]
             draw_as_ball_and_stick = model == "ball-and-stick"
             for bond in self.visual_bonds:
                 stick = self._stick_half_width(bond, scale)
-                if hover == (bond.a, bond.b):
-                    span = points[bond.b] - points[bond.a]
-                    width = 2 * bond_half_width(bond.order, bond.style, 2 * stick, 3.1 * stick,
-                                                math.hypot(span.x(), span.y()))
+                start, end = points[bond.a], points[bond.b]
+                highlighted = hover == (bond.a, bond.b)
+                if numeric_labels or highlighted:
+                    span = end - start
+                    length = math.hypot(span.x(), span.y())
+                    width = 2 * bond_half_width(bond.order, bond.style, 2 * stick, 3.1 * stick, length)
+                    if numeric_labels and length >= .01:
+                        # Include rounded caps, antialiased edges and any hover outline.
+                        pad = width / 2 + (7 if highlighted else 2)
+                        along = span * (pad / length)
+                        across = QPointF(-along.y(), along.x())
+                        hull = QPolygonF([start - along + across, end + along + across,
+                                          end + along - across, start - along - across])
+                        bond_region |= QRegion(hull.toPolygon())
+                if highlighted:
                     for extra, color in ((10, QColor(46, 161, 203, 75)), (5, QColor("#368FB2"))):
                         painter.setPen(QPen(color, width + extra, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-                        painter.drawLine(points[bond.a], points[bond.b])
-                draw_bond(painter, points[bond.a], points[bond.b], bond.order, bond.style,
+                        painter.drawLine(start, end)
+                draw_bond(painter, start, end, bond.order, bond.style,
                           _STICK if draw_as_ball_and_stick else colors[bond.a],
                           2 * stick, 3.1 * stick, shaded=draw_as_ball_and_stick,
                           end_ink=None if draw_as_ball_and_stick else colors[bond.b],
@@ -417,7 +429,7 @@ class MoleculeViewport(MoleculeEditView):
                 painter.setPen(_MUTED)
                 painter.drawText(QPointF(x + size + 5, y - size - 2), "{}{}".format(atoms[index].element, index + 1))
         if population is not None:
-            population.draw_annotations(painter, self, projected, self.labels, selection_labels)
+            population.draw_annotations(painter, self, projected, self.labels, selection_labels, bond_region)
 
     def paintEvent(self, event):
         painter = QPainter(self)

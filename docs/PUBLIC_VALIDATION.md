@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a66
+
+All 742 regression tests passed on Apple Silicon. Across 96 combinations of rotation and zoom for the ORCA water output, all three Mulliken charges remained visible and their labels covered no molecular pixels. Regression cases also cover double and triple bonds, bonds in a neighboring fragment and atoms near the edge of the view. [Water output](../artifacts/public/validation/results-0.1.0a12/raman/water.out) · [Label placement tests](../tests/test_population_label_placement.py)
+
+The macOS app passed strict code-signature verification on a read-only disk image and exported the annotated water structure as PNG and PDF. The packaged app and the checkout produced byte-identical PNGs.
+
 ## 0.1.0a65
 
 All 739 regression tests passed on Apple Silicon. The ORCA 6.1.1 water Opt+Freq example contains four optimization cycles, including a small energy increase in cycle 4, followed by a stationary-point evaluation at −76.321268537024 Eh. Its three vibrational modes have frequencies of 1637.65, 3787.02 and 3882.00 cm⁻¹. The tests compare the plotted energies with the printed log lines and check the on-screen atomic displacements against the ORCA vectors after rotation. [Water output](../artifacts/public/validation/ORCA-6.1.1-macOS-arm64/optfreq/job.out) · [Optimization tests](../tests/test_optimization_curve.py) · [Vibration playback tests](../tests/test_normal_mode_dialog.py)

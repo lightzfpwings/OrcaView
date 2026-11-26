@@ -6,7 +6,7 @@ Run this from the repository root with CPython 3.13. Windows builds require Go 1
 python3.13 packaging/desktop/build.py both
 ```
 
-Use `linux` or `windows` for a single target. Pass `--cache <directory>` to reuse verified downloads. Finished packages are in `dist/<platform>/<version>/`. Each a65 package includes an English interface and 22 files in `Examples/`. The bundled FFmpeg executable exports vibrational modes from `water-opt-freq.out` as animated GIF or H.264 MP4.
+Use `linux` or `windows` for a single target. Pass `--cache <directory>` to reuse verified downloads. Finished packages are in `dist/<platform>/<version>/`. Each package includes an English interface and 22 files in `Examples/`. The bundled FFmpeg executable exports vibrational modes from `water-opt-freq.out` as animated GIF or H.264 MP4.
 
 Build both optional extensions with `python packaging/build_extension_kit.py` from an environment with Qt 6.8.3. Run `python packaging/build_encoder_sources.py` to assemble the FFmpeg source materials in `dist/sources/<version>/`. Once all three platform builds, the extensions and the source archive are present, run `python packaging/stage_release.py` to collect the downloads and their SHA-256 manifest.
 

@@ -110,3 +110,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
         run: python -m unittest discover -s tests -p "test_inspector_*.py" -v
+      - name: Test atomic population label placement
+        if: hashFiles('tests/test_population_label_placement.py') != ''
+        env:
+          QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
+        run: python -m unittest discover -s tests -p test_population_label_placement.py -v

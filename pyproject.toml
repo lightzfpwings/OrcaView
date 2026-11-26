@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orcaview"
-version = "0.1.0a65"
+version = "0.1.0a66"
 description = "A modular desktop pre/post-processing workbench for ORCA"
 requires-python = ">=3.9"
 readme = "README.md"
