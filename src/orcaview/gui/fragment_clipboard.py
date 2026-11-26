@@ -13,7 +13,7 @@ from orcaview.editing.commands import InsertFragment
 FRAGMENT_MIME = "application/x-orcaview-molecule+json"
 
 
-def copy_fragment(snapshot, selected):
+def copy_fragment(snapshot, selected, polymer_roles="", backbone_links=None):
     if not selected:
         raise ValueError("Select atoms from one molecule to copy.")
     bonds = display_bonds(snapshot.molecule)
@@ -27,6 +27,9 @@ def copy_fragment(snapshot, selected):
         tuple(replace(bond, a=local[bond.a], b=local[bond.b]) for bond in bonds
               if bond.a in local and bond.b in local),
         tuple(snapshot.sketch_xy[i] for i in indices) if snapshot.sketch_xy is not None else None,
+        "".join(polymer_roles[i] for i in indices) if polymer_roles else "",
+        (tuple((local[a], local[b]) for a, b in backbone_links if a in local and b in local)
+         if backbone_links is not None else None),
     )
     data = QMimeData()
     data.setData(FRAGMENT_MIME, json.dumps({"version": 1, **asdict(fragment)}, allow_nan=False).encode("utf-8"))
@@ -49,6 +52,8 @@ def read_fragment(mime):
             tuple(Atom(**atom) for atom in data["atoms"]),
             tuple(Bond(**bond) for bond in data["bonds"]),
             tuple(tuple(point) for point in sketch_xy) if sketch_xy is not None else None,
+            data.get("polymer_roles", ""),
+            tuple(tuple(edge) for edge in data["backbone_links"]) if data.get("backbone_links") is not None else None,
         )
     except (KeyError, TypeError, ValueError, RecursionError) as exc:
         raise ValueError("The molecule on the clipboard could not be read.") from exc

@@ -119,6 +119,19 @@ def check(assets, version):
                 return result.stdout
 
             assert run("--version").strip() == version
+            if _version_key(version) >= _version_key("0.1.0a70"):
+                # Exercise the bundled native PDB reader and the two packaged renderers offline.
+                pdb = work / "glycine.pdb"
+                pdb.write_text(
+                    "ATOM      1  N   GLY A   1       0.000   0.000   0.000  1.00 20.00           N\n"
+                    "ATOM      2  CA  GLY A   1       1.460   0.000   0.000  1.00 20.00           C\n"
+                    "ATOM      3  C   GLY A   1       2.000   1.400   0.100  1.00 20.00           C\n"
+                    "ATOM      4  O   GLY A   1       1.320   2.420   0.100  1.00 20.00           O\nEND\n",
+                    encoding="ascii")
+                for view in ("2d", "3d"):
+                    run("render", pdb, f"glycine-{view}.png", "--view", view)
+                two, three = ((work / f"glycine-{view}.png").read_bytes() for view in ("2d", "3d"))
+                assert two.startswith(b"\x89PNG") and three.startswith(b"\x89PNG") and two != three
             if _version_key(version) >= _version_key("0.1.0a65"):
                 check_vibration_export(run, binary, examples, work, env)
             if _version_key(version) >= _version_key("0.1.0a63"):

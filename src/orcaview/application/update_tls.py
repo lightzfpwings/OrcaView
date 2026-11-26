@@ -1,4 +1,4 @@
-"""Use the target desktop's trusted certificates for GitHub HTTPS requests."""
+"""Use the target desktop's trusted certificates for HTTPS requests."""
 
 import os
 from pathlib import Path

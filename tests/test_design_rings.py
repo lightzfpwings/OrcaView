@@ -8,6 +8,8 @@ from orcaview.application.project import load_project, save_project
 from orcaview.application.session import Session
 from orcaview.core.models import Atom, Bond, Molecule
 from orcaview.editing import EditorService, GeometryEditCommand, InsertRing
+from orcaview.editing.hydrogens import missing_hydrogens
+from orcaview.editing.rings import HETEROCYCLES
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
@@ -25,7 +27,7 @@ def apply(editor, operation):
     return editor.commit(editor.preview(GeometryEditCommand(editor.expected, operation))).snapshot
 
 
-class CarbonRingTests(unittest.TestCase):
+class RingPlacementTests(unittest.TestCase):
     def test_benzene_from_seed_preserves_identity_through_history_and_save(self):
         seed = Atom("C", .4, -.6, 1.1)
         session = Session(Molecule("seed", (seed,), bonds_explicit=True))
@@ -76,6 +78,45 @@ class CarbonRingTests(unittest.TestCase):
         self.assertEqual(editor.expected, initial)
         self.assertFalse(editor.can_undo)
 
+    def test_named_rings_keep_seed_and_have_expected_neutral_valences(self):
+        # The nitrogen positions distinguish the isomers with the same formula.
+        expected = {"pyrrole": ("CCNCC", 5), "furan": ("CCOCC", 4),
+                    "thiophene": ("CCSCC", 4), "imidazole": ("CNCCN", 4),
+                    "pyrazole": ("CCNNC", 4), "pyridine": ("CNCCCC", 5),
+                    "pyrimidine": ("CNCNCC", 4), "pyrazine": ("CNCCNC", 4)}
+        seed = Atom("C", .4, -.6, 1.1)
+        editor = EditorService(Session(Molecule("seed", (seed,), bonds_explicit=True)).document)
+        initial = editor.document.head
+        self.assertEqual(set(HETEROCYCLES), set(expected))
+        for name, (symbols, hydrogen_count) in expected.items():
+            with self.subTest(template=name):
+                ring = apply(editor, InsertRing(len(symbols), False, "XY", anchor_id=initial.atom_ids[0],
+                                                heterocycle=name))
+                self.assertEqual(ring.atom_ids[0], initial.atom_ids[0])
+                self.assertEqual(ring.molecule.atoms[0], seed)
+                self.assertEqual("".join(a.element for a in ring.molecule.atoms), symbols)
+                self.assertEqual(len(ring.molecule.bonds), len(symbols))
+                self.assertEqual(sum(b.order == 2 for b in ring.molecule.bonds), len(symbols) // 2)
+                hydrogen_atoms, _ = missing_hydrogens(ring.molecule)
+                self.assertEqual(len(hydrogen_atoms), hydrogen_count)
+                self.assertEqual(editor.undo().snapshot.atom_ids, initial.atom_ids)
+
+    def test_heterocycle_attaches_at_carbon_without_changing_anchor(self):
+        seed = Atom("O", 1., 2., -1.)
+        editor = EditorService(Session(Molecule("oxygen", (seed,), bonds_explicit=True)).document)
+        initial = editor.document.head
+        ring = apply(editor, InsertRing(5, False, "YZ", anchor_id=initial.atom_ids[0], heterocycle="furan"))
+        self.assertEqual(ring.atom_ids[0], initial.atom_ids[0])
+        self.assertEqual(ring.molecule.atoms[0], seed)
+        self.assertEqual("".join(atom.element for atom in ring.molecule.atoms[1:]), "CCOCC")
+        self.assertIn(Bond(0, 1), ring.molecule.bonds)
+        self.assertEqual(editor.undo().snapshot.molecule, initial.molecule)
+        self.assertEqual(editor.redo().snapshot.molecule, ring.molecule)
+        for size, benzene, heterocycle in ((5, False, "pyridine"), (6, True, "pyridine"),
+                                         (7, False, "unknown"), (13, False, None)):
+            with self.assertRaises(ValueError):
+                InsertRing(size, benzene, "XY", center=(0., 0., 0.), heterocycle=heterocycle)
+
 
 @unittest.skipIf(QApplication is None, "requires Qt")
 class RingToolTests(unittest.TestCase):
@@ -96,9 +137,10 @@ class RingToolTests(unittest.TestCase):
         self.assertFalse(button.icon().isNull())
         self.assertTrue(button.accessibleName())
         self.assertLess(button.iconSize().height(), button.height())
-        self.assertCountEqual([tuple(a.data()) for a in menu.actions()],
-                              [(size, False) for size in range(3, 9)] + [(6, True)])
-        self.assertEqual([tuple(a.data()) for a in menu.actions() if a.isChecked()], [(6, False)])
+        expected = [(size, "") for size in range(3, 13)] + [(6, "benzene")]
+        expected.extend((len(elements), name) for name, (elements, _) in HETEROCYCLES.items())
+        self.assertCountEqual([tuple(a.data()) for a in menu.actions() if a.isCheckable()], expected)
+        self.assertEqual([tuple(a.data()) for a in menu.actions() if a.isChecked()], [(6, "")])
 
         visible_before_escape = []
 
@@ -121,9 +163,10 @@ class RingToolTests(unittest.TestCase):
         menu = panel.ring_menu
         face = button.icon().pixmap(button.iconSize()).toImage()
         size_before = button.size()
-        actions = {tuple(action.data()): action for action in menu.actions()}
+        actions = {tuple(action.data()): action for action in menu.actions() if action.isCheckable()}
 
-        for x, template in ((button.width() // 3, (8, False)), (button.width() - 6, (6, True))):
+        for x, template in ((button.width() // 3, (12, "")), (button.width() - 6, (6, "benzene")),
+                            (button.width() // 3, (5, "imidazole"))):
             with self.subTest(template=template):
                 QTest.mouseClick(button, Qt.MouseButton.LeftButton, pos=QPoint(x, button.height() // 2))
                 self.app.processEvents()
@@ -139,10 +182,12 @@ class RingToolTests(unittest.TestCase):
                 self.assertEqual(button.icon().pixmap(button.iconSize()).toImage(), face)
                 self.assertEqual(button.size(), size_before)
                 QTest.mouseClick(panel.canvas, Qt.MouseButton.LeftButton, pos=panel.canvas.atom_position(0).toPoint())
-                size, benzene = template
+                size, name = template
                 self.assertEqual(len(self.doc.head.molecule.atoms), size)
                 self.assertEqual(len(panel.viewport.bonds), size)
-                self.assertEqual(sum(b.order == 2 for b in panel.viewport.bonds), 3 if benzene else 0)
+                self.assertEqual(sum(b.order == 2 for b in panel.viewport.bonds), size // 2 if name else 0)
+                if name == "imidazole":
+                    self.assertEqual(sum(a.element == "N" for a in self.doc.head.molecule.atoms), 2)
                 QTest.mouseClick(panel.undo_button, Qt.MouseButton.LeftButton)
                 self.assertEqual(len(self.doc.head.molecule.atoms), 1)
                 QTest.mouseClick(panel.select_tool, Qt.MouseButton.LeftButton)

@@ -2,7 +2,7 @@
 
 from .commands import (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, GeometryEditCommand, InsertFragment, InsertRing, MoveAtom,
                        MoveSketchAtom, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength, SetDistance,
-                       SetElectronicState, RotateFragment, TranslateFragment, UseResultGeometry)
+                       SetElectronicState, RotateFragment, TranslateFragment, GenerateBiopolymer, UseResultGeometry)
 from .coordinates import CoordinateDefinition, edit_distance, measure
 from .service import (AtomMapping, EditHistoryEntry, EditPreview, EditResult,
                       EditStateError, EditorService)
@@ -10,6 +10,6 @@ from .service import (AtomMapping, EditHistoryEntry, EditPreview, EditResult,
 __all__ = [
     "AddHydrogen", "AddHydrogens", "OptimizeCoordinates", "MoveSketchAtom", "SetSketchLayout",
     "AddAtoms", "AttachAtom", "InsertFragment", "InsertRing", "DeleteAtoms", "ReplaceElement", "MoveAtom", "SetBond", "ReorderAtoms", "SetElectronicState",
-    "SetDistance", "SetBondLength", "RotateFragment", "TranslateFragment", "UseResultGeometry", "GeometryEditCommand", "CoordinateDefinition", "measure", "edit_distance",
+    "SetDistance", "SetBondLength", "RotateFragment", "TranslateFragment", "GenerateBiopolymer", "UseResultGeometry", "GeometryEditCommand", "CoordinateDefinition", "measure", "edit_distance",
     "AtomMapping", "EditHistoryEntry", "EditPreview", "EditResult", "EditStateError", "EditorService",
 ]

@@ -12,7 +12,7 @@ from orcaview.core.geometry import DEFAULT_BOND_DISTANCE_FACTOR, connected_compo
 from orcaview.core.point_group import geometric_symmetry
 from orcaview.core.symmetry import DEFAULT_TOLERANCE, rotation_axis_angle
 from orcaview.gui.bond_drawing import aromatic_ring_paths, bond_half_width, draw_bond, ring_center
-from orcaview.gui.design_picking import MoleculeEditView, distance_to_segment
+from orcaview.gui.design_picking import MoleculeEditView, distance_to_segment, polymer_wheel_zoom
 from orcaview.i18n import tr
 
 
@@ -80,6 +80,7 @@ class MoleculeViewport(MoleculeEditView):
         super().__init__(parent, mouse_tracking=design_selection)
         self._result_view = result_view
         self.design_selection = design_selection
+        self.polymer_zoom = False
         self._design_tool = "select"
         if design_selection:
             self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -154,7 +155,10 @@ class MoleculeViewport(MoleculeEditView):
         extent = max(d + r for d, r in zip(self._center_distances, self._atom_radii))
         self._fit_radius = max(1.2, max(self._center_distances), .75 * extent)
 
-    def set_molecule(self, molecule, *, keep_view=False, keep_projection=False):
+    def set_molecule(self, molecule, *, keep_view=False, keep_projection=False, polymer_zoom=False):
+        if self.polymer_zoom and not polymer_zoom:
+            keep_view = False
+        self.polymer_zoom = self.design_selection and polymer_zoom
         keep_view = keep_view and self.molecule is not None and bool(self.molecule.atoms)
         old_center = self._center
         self.molecule = molecule
@@ -716,7 +720,16 @@ class MoleculeViewport(MoleculeEditView):
         if self._box_select or self._fragment_rows is not None:
             event.accept()
             return
-        self.zoom = min(4.0, max(0.3, self.zoom * (1.12 if event.angleDelta().y() > 0 else 1 / 1.12)))
+        if self.polymer_zoom:
+            zoom = polymer_wheel_zoom(self.zoom, event)
+            if zoom != self.zoom:
+                # Keep a detail in a large structure underneath the pointer.
+                offset = event.position() - QPointF(self.width() / 2, self.height() / 2) - self._pan
+                self._pan += offset * (1. - zoom / self.zoom)
+                self.zoom = zoom
+                _, self._projected = self._project_atoms()
+        else:
+            self.zoom = min(4.0, max(0.3, self.zoom * (1.12 if event.angleDelta().y() > 0 else 1 / 1.12)))
         self.update()
 
 

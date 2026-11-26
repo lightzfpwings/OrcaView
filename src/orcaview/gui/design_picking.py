@@ -6,6 +6,14 @@ from PySide6.QtCore import QEvent, QPointF, QRectF
 from PySide6.QtWidgets import QWidget
 
 
+def polymer_wheel_zoom(zoom, event):
+    """Scale a polymer view from 0.3× to 8×, including high-resolution touchpad input."""
+    pixels = event.pixelDelta()
+    steps = event.angleDelta().y() / 120. if pixels.isNull() else pixels.y() / 40.
+    # Forty notches cover the entire range; bound the exponent for coalesced events.
+    return min(8., max(.3, zoom * 1.12 ** max(-40., min(40., steps))))
+
+
 def distance_to_segment(point, start, end):
     vector = end - start
     length2 = QPointF.dotProduct(vector, vector)

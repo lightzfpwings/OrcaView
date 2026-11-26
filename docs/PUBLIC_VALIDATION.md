@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a70
+
+All 785 regression tests passed on Apple Silicon. In the Design workspace, scrolling over the 1BNA DNA duplex (486 atoms) and the 1CRN protein (327 atoms) brought each 2D and 3D view to eight times its fitted scale. The atom under the pointer remained selectable at maximum zoom. Fitting each view restored its original scale and the generated ORCA input matched its contents before zooming. [Zoom and pointer tests](../tests/test_design_biopolymer_zoom.py)
+
+The backbone tests cover crossings, broken chains, independent ligands, project reopening and full-atom copying. Tests with sequence-generated structures and local PDB records compare the coordinates of every atom with the ORCA input after saving and reopening a project. [Backbone interactions](../tests/test_design_backbone_view.py) · [Structure and project checks](../tests/test_backbone_projects.py)
+
 ## 0.1.0a66
 
 All 742 regression tests passed on Apple Silicon. Across 96 combinations of rotation and zoom for the ORCA water output, all three Mulliken charges remained visible and their labels covered no molecular pixels. Regression cases also cover double and triple bonds, bonds in a neighboring fragment and atoms near the edge of the view. [Water output](../artifacts/public/validation/results-0.1.0a12/raman/water.out) · [Label placement tests](../tests/test_population_label_placement.py)

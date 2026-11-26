@@ -114,6 +114,35 @@ class StructureRenderingTests(unittest.TestCase):
         self.assertNotEqual(image.pixelColor(left.x() + 30, left.y()), backdrop)
         self.assertEqual(image.pixelColor(right.x() - 30, right.y()), backdrop)
 
+    def test_crowded_sketch_shows_bonds_and_keeps_individual_atoms_editable(self):
+        view = DesignCanvas()
+        self.addCleanup(view.close)
+        view.resize(420, 280)
+        atoms = tuple(Atom("N" if i == 1 else "C", (i % 24) * 1.4, (i // 24) * 1.4, 0.)
+                      for i in range(72))
+        bonds = tuple(Bond(i, i+1) for i in range(71) if i % 24 != 23)
+        view.set_molecule(Molecule("crowded", atoms, bonds, bonds_explicit=True), fit=True)
+        point, other = view.atom_position(0), view.atom_position(1)
+        midpoint = (point + other) / 2
+        self.assertEqual(view._target_at(other), (1,))
+        self.assertEqual(view._target_at(midpoint), (0, 1))
+        export = self.render(view)
+        self.assertGreater(export.pixelColor(midpoint.toPoint()).alpha(), 0)
+        self.assertEqual(export.pixelColor((other + QPointF(0, 6)).toPoint()).alpha(), 0)
+        screen = view.grab().toImage()
+        view._track_hover(other)
+        self.assertEqual(view._hover_target, (1,))
+        self.assertNotEqual(view.grab().toImage(), screen)
+        view._track_hover(None)
+        view.selected = [1]
+        self.assertNotEqual(view.grab().toImage(), screen)
+        self.assertEqual(self.render(view), export)
+
+        # With enough screen space the ordinary element labels return.
+        view.resize(1400, 800)
+        view.atom_position(0)
+        self.assertFalse(view._compact)
+
     def test_sketch_preserves_bond_styles(self):
         view = DesignCanvas()
         self.addCleanup(view.close)

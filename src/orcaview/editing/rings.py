@@ -8,6 +8,31 @@ from orcaview.core.geometry import display_bonds
 from orcaview.core.models import Atom, Bond
 
 
+CARBON_RING_SIZES = range(3, 13)
+# Vertex zero is the carbon used for attachment. Order i joins vertices i and i+1.
+HETEROCYCLES = {
+    "pyrrole":    ("CCNCC", (2, 1, 1, 2, 1)),
+    "furan":      ("CCOCC", (2, 1, 1, 2, 1)),
+    "thiophene":  ("CCSCC", (2, 1, 1, 2, 1)),
+    "imidazole":  ("CNCCN", (2, 1, 2, 1, 1)),
+    "pyrazole":   ("CCNNC", (2, 1, 1, 2, 1)),
+    "pyridine":   ("CNCCCC", (2, 1, 2, 1, 2, 1)),
+    "pyrimidine": ("CNCNCC", (2, 1, 2, 1, 2, 1)),
+    "pyrazine":   ("CNCCNC", (2, 1, 2, 1, 2, 1)),
+}
+
+
+def ring_composition(size, benzene, heterocycle):
+    if size in CARBON_RING_SIZES and type(benzene) is bool:
+        if heterocycle is None and (not benzene or size == 6):
+            return "C" * size, (2, 1) * 3 if benzene else (1,) * size
+        if not benzene and isinstance(heterocycle, str):
+            template = HETEROCYCLES.get(heterocycle)
+            if template and len(template[0]) == size:
+                return template
+    raise ValueError("Choose a carbon ring with 3 to 12 atoms or a listed aromatic ring.")
+
+
 def open_direction(anchor, bonds, xyz, u, v):
     """Point the new bond into the largest gap between projected neighbour bonds."""
     directions = []
@@ -32,8 +57,9 @@ def insert_ring(molecule, operation, anchor):
     existing = [(atom.x, atom.y, atom.z) for atom in molecule.atoms]
     u, v = ("XYZ".index(axis) for axis in operation.plane)
     count = operation.size
+    elements, orders = ring_composition(count, operation.benzene, operation.heterocycle)
     # Sketch lengths in angstrom. Saturated rings are flat initial sketches.
-    edge = 1.40 if operation.benzene else 1.52
+    edge = 1.40 if 2 in orders else 1.52
     radius = edge / (2 * math.sin(math.pi / count))
     vertices = [math.pi + math.tau * i / count for i in range(count)]
     # The explicit single-carbon document is the design page's starting sketch.
@@ -73,9 +99,10 @@ def insert_ring(molecule, operation, anchor):
 
     first = len(existing)
     rows = ([anchor] if use_seed else []) + list(range(first, first + len(positions)))
-    ring_bonds = tuple(Bond(rows[i], rows[(i + 1) % count],
-                            2 if operation.benzene and i % 2 == 0 else 1) for i in range(count))
+    ring_bonds = tuple(Bond(rows[i], rows[(i + 1) % count], order) for i, order in enumerate(orders))
     if anchor is not None and not use_seed:
         ring_bonds += (Bond(anchor, first),)
-    return replace(molecule, atoms=molecule.atoms + tuple(Atom("C", *point) for point in positions),
+    new_elements = elements[1:] if use_seed else elements
+    new_atoms = tuple(Atom(symbol, *point) for symbol, point in zip(new_elements, positions))
+    return replace(molecule, atoms=molecule.atoms + new_atoms,
                    bonds=bonds + ring_bonds, bonds_explicit=True)

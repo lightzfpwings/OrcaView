@@ -28,6 +28,14 @@ Each atom reference may be an integer row number **starting at 1** in the curren
 
 ## Operations
 
+In the desktop Design workspace, choose **Protein…** or **DNA…**, enter a PDB ID or a sequence, and click **Generate structure**. A PDB ID retrieves the first deposited model from RCSB and keeps the selected polymer type. The coordinates retain deposited hydrogens where present. Check the total charge and spin multiplicity before using deposited coordinates in a calculation. Unspecified atomic charges default to zero and the initial multiplicity is the lowest compatible with that electron count.
+
+A plain sequence or a single FASTA record builds a starting geometry offline. Protein accepts the 20 standard one-letter amino acid codes and builds an idealized helical peptide. DNA accepts A, C, G and T in 5′ to 3′ order and builds the antiparallel complementary strand. **Undo** restores the previous structure. [PDB coordinate files](https://www.rcsb.org/docs/programmatic-access/file-download-services) · [Open Babel FASTA reader](https://openbabel.org/docs/FileFormats/FASTA_format.html)
+
+The 2D sketch traces the N–Cα–C backbone of each peptide and the sugar–phosphate backbone of each DNA strand with smooth curves. Each chain has its own color. In a projection of a 3D structure, the nearer strand appears darker and wider at crossings. An independently edited 2D layout keeps its atom positions. Ligands retain their usual atom-and-bond drawing. Selecting a backbone atom and copying its molecule includes the side chains or bases. The 3D preview and ORCA input use all atoms. A 2D image exported from Design or with `render --view 2d` uses the same backbone drawing.
+
+For a protein or DNA structure, point at a region in either Design view and scroll to zoom up to 8× its fitted size. **Fit sketch** fits the left-hand drawing again. **Reset view** restores the 3D view.
+
 In the desktop Design workspace, select an atom of the molecule you want to position. Hold Alt (Option on macOS) and drag with the left mouse button to rotate the molecule about its center, or with the right button to translate it. In 3D, translation follows the screen plane. In the sketch, both operations act in XY. Release to commit the edit or press Esc to cancel.
 
 With the molecule selected, press Ctrl+C and Ctrl+V (⌘C and ⌘V on macOS) to place a separate copy. The pasted atoms are selected together, ready to rotate or translate. An intermolecular hydrogen bond leaves the two partners independently selectable.
@@ -55,7 +63,7 @@ The tables show the fields that accompany `op`. An atom object has the fields `e
 | `set-bond` | Ordered `atom_a`, `atom_b`, `order` (0 removes, 1–3 sets), optional `style`. For directional bonds the first atom is the donor or narrow end. |
 | `set-bond-length` | `atom_ids` ordered as fixed end, moving end, and positive `target`. For an acyclic bond the entire moving side translates rigidly. Reverse the endpoints to move the other side. |
 | `set-distance` | `atom_ids` ordered as fixed end, moving end, positive `target`, explicit `moving_atom_ids` and optional `fixed_atom_ids`. |
-| `insert-ring` | Integer `size` 3–8, boolean `benzene` (requires size 6 if true), `plane` of `XY`, `XZ` or `YZ` and either `anchor_id` or a `center` given as `[x,y,z]`. |
+| `insert-ring` | Set `size` to 3–12 for a carbon ring, or set `benzene` to true with size 6. For a heterocycle, set the matching size and use `heterocycle` with `pyrrole`, `furan`, `thiophene`, `imidazole`, `pyrazole`, `pyridine`, `pyrimidine` or `pyrazine`. Set `plane` to `XY`, `XZ` or `YZ` and supply either `anchor_id` or a `center` given as `[x,y,z]`. |
 | `add-hydrogen` | `anchor_id` for a single explicit bonded hydrogen. |
 | `add-hydrogens` | Fill missing hydrogens for a supported neutral singlet. |
 | `clean-2d` | Tidy the 2D sketch. Preserves the physical coordinates. |

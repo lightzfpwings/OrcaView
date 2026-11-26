@@ -115,3 +115,12 @@ jobs:
         env:
           QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
         run: python -m unittest discover -s tests -p test_population_label_placement.py -v
+      - name: Test protein and DNA backbone views and zoom
+        if: hashFiles('tests/test_design_biopolymer_zoom.py') != ''
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m unittest discover -s tests -p 'test_*backbone*.py' -v
+          python -m unittest discover -s tests -p test_design_biopolymer_zoom.py -v
+          python -m unittest discover -s tests -p test_biopolymer_sequence.py -v

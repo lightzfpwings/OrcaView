@@ -355,14 +355,17 @@ def _render_structure(args):
         if (args.rotate or args.zoom != 1 or any(args.pan) or args.model or args.labels or
                 any(v is not None for v in (args.atom_scale, args.bond_scale, args.bond_distance_factor))):
             raise ValueError("Model, 3D camera, sizing, inference and atom label options require --view 3d")
+        from orcaview.application.polymer_sketch import sketch_annotations
         from orcaview.gui.design_canvas import DesignCanvas
 
         view = DesignCanvas()
         view.setMinimumSize(1, 1)
         view.resize(args.width, args.height)
         view.set_element_colors(colors)
+        roles, links = sketch_annotations(session.document, snapshot)
         view.set_molecule(session.document.molecule_with_topology(snapshot, sketch=True),
-                          fit=True, independent_sketch=snapshot.sketch_xy is not None)
+                          fit=True, independent_sketch=snapshot.sketch_xy is not None,
+                          polymer_roles=roles, backbone_links=links)
     else:
         from orcaview.gui.viewport import MoleculeViewport
 

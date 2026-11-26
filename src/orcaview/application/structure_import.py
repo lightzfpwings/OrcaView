@@ -1,6 +1,7 @@
 """Open structure files into independent molecular documents; no Qt dependencies."""
 
 from dataclasses import dataclass, replace
+import json
 from pathlib import Path
 import re
 import shutil
@@ -78,6 +79,10 @@ class OpenedStructure:
     def session(self, calculation):
         record = self.record
         parameters = [("unit_source", record.unit_source)]
+        if record.polymer_roles:
+            parameters.append(("polymer_roles", record.polymer_roles))
+        if record.backbone_links is not None:
+            parameters.append(("backbone_links", json.dumps(record.backbone_links, separators=(",", ":"))))
         if record.generated_3d:
             parameters.append(("geometry_generation", "Open Babel 3D"))
         if record.removed_periodicity:

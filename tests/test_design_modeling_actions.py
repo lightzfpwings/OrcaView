@@ -306,7 +306,7 @@ class DesignModelingActions(unittest.TestCase):
 
         panel = self.panel
         ring_menu = panel.ring_menu
-        action = next(action for action in ring_menu.actions() if tuple(action.data()) == (6, False))
+        action = next(action for action in ring_menu.actions() if action.data() == (6, ""))
         ring_menu.popup(panel.ring_tool.mapToGlobal(panel.ring_tool.rect().bottomLeft()))
         self.app.processEvents()
         QTest.mouseClick(ring_menu, Qt.MouseButton.LeftButton, pos=ring_menu.actionGeometry(action).center())

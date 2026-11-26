@@ -7,6 +7,7 @@ from threading import RLock
 from typing import Optional, Tuple
 
 from orcaview.application.document import MoleculeDocument, StaleRevisionError
+from orcaview.application.polymer_sketch import sketch_annotations
 from orcaview.core._validation import Versioned, identifiers, require_tuple
 from orcaview.core.models import Bond, DIRECTIONAL_STYLES, Molecule
 from orcaview.core.geometry import connected_component, display_bonds
@@ -16,7 +17,7 @@ from orcaview.core.snapshots import GeometryRef, GeometrySnapshot, SelectionCont
 
 from .commands import (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, GeometryEditCommand, InsertFragment, InsertRing, MoveAtom,
                        MoveSketchAtom, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength, SetDistance,
-                       SetElectronicState, RotateFragment, TranslateFragment, UseResultGeometry)
+                       SetElectronicState, RotateFragment, TranslateFragment, GenerateBiopolymer, UseResultGeometry)
 from .coordinates import bond_moving_atoms, edit_distance
 from .hydrogens import attached_hydrogen
 from .rings import insert_ring, open_direction
@@ -149,6 +150,8 @@ def _place_fragment(existing, incoming):
 
 def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: GeometryEditCommand):
     op, molecule, ids = command.operation, base.molecule, base.atom_ids
+    if isinstance(op, GenerateBiopolymer):
+        return op.molecule, (None,) * len(op.molecule.atoms)
     if isinstance(op, (SetSketchLayout, MoveSketchAtom)):
         return molecule, ids
     if isinstance(op, (OptimizeCoordinates, AddHydrogens)):
@@ -277,6 +280,8 @@ def _rotated_fragment(points, moving, op):
 
 
 def _edit_sketch(document, base, op, molecule, ids):
+    if isinstance(op, GenerateBiopolymer):
+        return None
     if isinstance(op, InsertFragment):
         if base.sketch_xy is None and op.sketch_xy is None:
             return None
@@ -455,15 +460,33 @@ class EditorService:
             self._check_preview(preview)
             self._check_head()
             command = preview.command
+            op = command.operation
+            # The new snapshot already stores every atom and bond. Record the
+            # sequence or accession that produced it without duplicating coordinates.
+            request = ({"polymer": op.polymer, "source": op.source, "value": op.value}
+                       if isinstance(op, GenerateBiopolymer) else asdict(op))
+            if isinstance(op, InsertFragment):
+                request.pop("polymer_roles")
+                request.pop("backbone_links")
             parameters = (
                 ("operation", command.operation.kind),
                 ("base_snapshot_id", command.expected.snapshot_id),
                 ("preview_id", preview.preview_id),
-                ("request", json.dumps(asdict(command.operation), ensure_ascii=False, allow_nan=False,
+                ("request", json.dumps(request, ensure_ascii=False, allow_nan=False,
                                        sort_keys=True, separators=(",", ":"))),
             )
-            if isinstance(command.operation, UseResultGeometry):
+            links = None
+            if isinstance(op, UseResultGeometry):
                 parameters += (("result_geometry_snapshot_id", command.operation.source.snapshot_id),)
+                roles, links = sketch_annotations(self._document, self._document.resolve(op.source))
+            else:
+                roles = op.polymer_roles if isinstance(op, (GenerateBiopolymer, InsertFragment)) else ""
+                if isinstance(op, InsertFragment):
+                    links = op.backbone_links
+            if roles:
+                parameters += (("polymer_roles", roles),)
+            if links is not None:
+                parameters += (("backbone_links", json.dumps(links, separators=(",", ":"))),)
             origin = Provenance("edit", "orcaview.editing", "1", parameters=parameters)
             after = self._document.publish_revision(
                 command.expected, preview.molecule, preview.mapping.target_ids, origin,

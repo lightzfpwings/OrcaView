@@ -5,13 +5,16 @@ from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QMenu,
                                QPushButton, QSizePolicy, QSplitter, QVBoxLayout, QWidget)
 
+from orcaview.application.polymer_sketch import sketch_annotations
 from orcaview.core.models import Atom
 from orcaview.core.snapshots import SelectionContext
-from orcaview.editing import (AddAtoms, AddHydrogen, AttachAtom, DeleteAtoms, EditorService, GeometryEditCommand,
+from orcaview.editing import (AddAtoms, AddHydrogen, AttachAtom, DeleteAtoms, EditorService, GenerateBiopolymer, GeometryEditCommand,
                               InsertRing, MoveAtom, MoveSketchAtom, ReplaceElement, SetBond, RotateFragment, TranslateFragment)
 from orcaview.editing.diagnostics import design_diagnostics
 from orcaview.editing.hydrogen_bonds import DEFAULT_ANGLE, DEFAULT_DISTANCE
+from orcaview.editing.rings import CARBON_RING_SIZES, HETEROCYCLES
 from orcaview.gui import typography
+from orcaview.gui.biopolymer_dialog import BiopolymerDialog
 from orcaview.gui.bond_button import BondButton
 from orcaview.gui.design_canvas import DesignCanvas
 from orcaview.gui.bond_length_editor import BondLengthEditor
@@ -88,17 +91,21 @@ class DesignPanel(QWidget):
         toolbar.addWidget(self.ring_tool)
         self.ring_menu = QMenu(self.ring_tool)
         self.ring_tool.setMenu(self.ring_menu)
-        self._ring_size, self._benzene = 6, False
+        self._ring_size, self._ring_name = 6, ""
         templates = QActionGroup(self.ring_menu)
-        for size, benzene in [(i, False) for i in range(3, 9)] + [(6, True)]:
-            label = tr("Benzene ring") if benzene else tr("{size}-membered carbon ring", size=size)
-            action = self.ring_menu.addAction(label)
-            action.setData((size, benzene))
-            templates.addAction(action)
-            action.setCheckable(True)
-            if (size, benzene) == (self._ring_size, self._benzene):
-                action.setChecked(True)
-                self.ring_tool.setToolTip(f"{tr('Ring templates')} · {label}")
+        carbon = [(size, "", tr("{size}-membered carbon ring", size=size)) for size in CARBON_RING_SIZES]
+        aromatic = [(6, "benzene", tr("Benzene ring"))]
+        aromatic.extend((len(elements), name, tr(name.capitalize())) for name, (elements, _) in HETEROCYCLES.items())
+        for heading, choices in ((tr("Carbon rings"), carbon), (tr("Aromatic rings"), aromatic)):
+            self.ring_menu.addSection(heading)
+            for size, name, label in choices:
+                action = self.ring_menu.addAction(label)
+                action.setData((size, name))
+                templates.addAction(action)
+                action.setCheckable(True)
+                if (size, name) == (self._ring_size, self._ring_name):
+                    action.setChecked(True)
+                    self.ring_tool.setToolTip(f"{tr('Ring templates')} · {label}")
         self.ring_menu.triggered.connect(self._choose_ring)
         self.hydrogens = tool("designAddHydrogens", "+H", tr("Click to add H to atoms one at a time. Double-click to fill missing H throughout the structure."), "hydrogen")
         self.hydrogens.installEventFilter(self)
@@ -113,6 +120,8 @@ class DesignPanel(QWidget):
         self.redo_button = self._button(toolbar, "designRedo", tr("Redo"), lambda: self._history(False))
         self.delete_button = self._button(toolbar, "designDelete", tr("Delete atoms"), self._delete)
         self._button(toolbar, "designNew", tr("Create a molecule"), self.new_requested.emit)
+        self.protein_button = self._button(toolbar, "designProtein", tr("Protein…"), lambda: self._build_polymer("protein"))
+        self.dna_button = self._button(toolbar, "designDNA", tr("DNA…"), lambda: self._build_polymer("dna"))
         # Let the tallest translated label determine the row height, including the element picker.
         for i in range(toolbar.count()):
             widget = toolbar.itemAt(i).widget()
@@ -295,6 +304,25 @@ class DesignPanel(QWidget):
     def discard_pending_job(self):
         self._structure_job = None
 
+    def _build_polymer(self, polymer):
+        if self.editor is None or self._structure_job is not None:
+            return
+        self.set_document(self.editor.document)
+        base = self.editor.document.head
+        dialog = BiopolymerDialog(polymer, base, self)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            if self.editor.document.head.ref != base.ref:
+                self.status.setText(tr("The structure has changed. Run the operation again."))
+                return
+            if self._commit(dialog.command) is not None:
+                self.select_tool.click()
+                self.canvas.fit()
+                self.viewport.fit()
+        finally:
+            dialog.deleteLater()
+
     def _choose_hbond_targets(self):
         dialog = QDialog(self)
         dialog.setWindowTitle(tr("Optimize H-bonds…"))
@@ -388,7 +416,7 @@ class DesignPanel(QWidget):
         self._show_hint()
 
     def _choose_ring(self, action):
-        self._ring_size, self._benzene = action.data()
+        self._ring_size, self._ring_name = action.data()
         self.ring_tool.setToolTip(f"{tr('Ring templates')} · {action.text()}")
         self.ring_tool.setChecked(True)
         self._set_tool("ring")
@@ -417,12 +445,15 @@ class DesignPanel(QWidget):
     def _refresh(self, *, fit=False, keep_projection=False):
         head = self.editor.document.head
         self._bond_start = None
-        self.canvas.set_molecule(head.sketch_molecule(), fit=fit, independent_sketch=head.sketch_xy is not None)
+        roles, links = sketch_annotations(self.editor.document, head)
+        self.canvas.set_molecule(head.sketch_molecule(), fit=fit, independent_sketch=head.sketch_xy is not None,
+                                 polymer_roles=roles, backbone_links=links)
         if not head.atom_ids and self.canvas.tool == "hydrogen":
             self.select_tool.click()
-        if fit or self.viewport.molecule != head.molecule:
+        if fit or self.viewport.molecule != head.molecule or self.viewport.polymer_zoom != self.canvas.polymer_zoom:
             with QSignalBlocker(self.viewport):
-                self.viewport.set_molecule(head.molecule, keep_view=not fit, keep_projection=keep_projection)
+                self.viewport.set_molecule(head.molecule, keep_view=not fit, keep_projection=keep_projection,
+                                           polymer_zoom=self.canvas.polymer_zoom)
         else:
             # A new revision can retain the geometry but change the sketch or atom IDs.
             self.viewport.set_design_tool(self.canvas.tool)
@@ -472,6 +503,8 @@ class DesignPanel(QWidget):
         self.undo_button.setEnabled(self.editor is not None and self.editor.can_undo)
         self.redo_button.setEnabled(self.editor is not None and self.editor.can_redo)
         ready = head is not None and self._structure_job is None
+        self.protein_button.setEnabled(ready)
+        self.dna_button.setEnabled(ready)
         self.hydrogens.setEnabled(has_atoms)
         self.clean_2d.setEnabled(ready and len(head.atom_ids) > 1)
         self.optimize_3d.setEnabled(ready and len(head.atom_ids) > 1)
@@ -497,7 +530,8 @@ class DesignPanel(QWidget):
             return
         head = self.editor.document.head
         try:
-            mime, count = copy_fragment(head, self.editor.selection.indices(head))
+            mime, count = copy_fragment(head, self.editor.selection.indices(head), self.canvas.polymer_roles,
+                                        self.canvas.backbone_links)
         except ValueError as exc:
             self.status.setText(diagnostic_text(exc))
             return
@@ -544,8 +578,10 @@ class DesignPanel(QWidget):
             self.status.setText(diagnostic_text(exc))
             return
         self._edited(keep_projection=isinstance(entry.command.operation, (TranslateFragment, RotateFragment)))
-        if was_empty:
+        if was_empty or isinstance(entry.command.operation, GenerateBiopolymer):
             self.canvas.fit()
+        if isinstance(entry.command.operation, GenerateBiopolymer):
+            self.viewport.fit()
 
     def _space_clicked(self, x, y, z):
         if self.canvas.tool == "ring":
@@ -604,7 +640,9 @@ class DesignPanel(QWidget):
             self._select([len(result.snapshot.atom_ids) - 1])
 
     def _insert_ring(self, *, center=None, anchor_id=None):
-        operation = InsertRing(self._ring_size, self._benzene, "XY", center, anchor_id)
+        benzene = self._ring_name == "benzene"
+        heterocycle = self._ring_name if self._ring_name in HETEROCYCLES else None
+        operation = InsertRing(self._ring_size, benzene, "XY", center, anchor_id, heterocycle)
         result = self._execute(operation)
         if result is not None:
             visible = self.canvas.rect().adjusted(15, 15, -15, -15)

@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
-from orcaview.editing import GeometryEditCommand
+from orcaview.editing import GenerateBiopolymer, GeometryEditCommand
 from orcaview.editing.modeling import modeling_operation
 
 
@@ -20,7 +20,20 @@ class StructureJob(QRunnable):
 
     def run(self):
         try:
-            command = GeometryEditCommand(self.snapshot.ref, modeling_operation(self.snapshot, self.mode, **self.options))
+            if self.mode == "biopolymer":
+                polymer, value = self.options["polymer"], self.options["value"].strip()
+                if value[:1].isdigit() or value.lower().startswith("pdb_"):
+                    from orcaview.io.biopolymer_record import load_pdb_record
+                    record = load_pdb_record(polymer, value)
+                    source, value = "pdb", value.upper()
+                else:
+                    from orcaview.io.biopolymer_sequence import build_sequence_record
+                    record = build_sequence_record(polymer, value)
+                    source = "sequence"
+                operation = GenerateBiopolymer(record.molecule, polymer, source, value, record.polymer_roles)
+            else:
+                operation = modeling_operation(self.snapshot, self.mode, **self.options)
+            command = GeometryEditCommand(self.snapshot.ref, operation)
         except Exception as exc:
             # Report native-worker errors on the editing page without publishing a revision.
             self.completion.finished.emit(self, None, str(exc))

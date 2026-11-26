@@ -6,11 +6,13 @@ from typing import ClassVar, Optional, Tuple, Union
 
 from orcaview.core._validation import Versioned, identifiers, integer, nonempty, require_tuple, finite_number
 from orcaview.core.elements import ATOMIC_NUMBERS
+from orcaview.core.polymer_backbone import validate_backbone_links, validate_polymer_roles
 from orcaview.core.geometry import connected_component
 from orcaview.core.models import Atom, Bond, Molecule, validate_bond_style
 from orcaview.core.snapshots import GeometryRef, SketchCoordinates, validate_sketch_xy
 
 from .coordinates import CoordinateDefinition
+from .rings import ring_composition
 
 
 @dataclass(frozen=True)
@@ -120,10 +122,14 @@ class InsertFragment(Versioned):
     atoms: Tuple[Atom, ...]
     bonds: Tuple[Bond, ...]
     sketch_xy: Optional[SketchCoordinates] = None
+    polymer_roles: str = ""
+    backbone_links: Optional[Tuple[Tuple[int, int], ...]] = None
     kind: ClassVar[str] = "insert-fragment"
 
     def __post_init__(self):
         Molecule("Fragment", self.atoms, self.bonds, bonds_explicit=True).validate_structure()
+        validate_polymer_roles(self.polymer_roles, len(self.atoms))
+        validate_backbone_links(self.backbone_links, self.polymer_roles)
         if len(connected_component(self.bonds, 0)) != len(self.atoms):
             raise ValueError("Select atoms from one molecule to copy.")
         if self.sketch_xy is not None:
@@ -152,19 +158,19 @@ class AttachAtom(Versioned):
 
 @dataclass(frozen=True)
 class InsertRing(Versioned):
-    """Place a planar carbon-ring sketch, detached at a center or bonded to one atom."""
+    """Place a planar ring sketch, detached at a center or bonded to one atom."""
 
     size: int
     benzene: bool
     plane: str
     center: Optional[Tuple[float, float, float]] = None
     anchor_id: Optional[str] = None
+    heterocycle: Optional[str] = None
     kind: ClassVar[str] = "insert-ring"
 
     def __post_init__(self):
         integer(self.size, "Ring size", 3)
-        if self.size > 8 or type(self.benzene) is not bool or (self.benzene and self.size != 6):
-            raise ValueError("Choose a 3- to 8-membered carbon ring or a benzene ring.")
+        ring_composition(self.size, self.benzene, self.heterocycle)
         if self.plane not in ("XY", "XZ", "YZ"):
             raise ValueError("Choose the XY, XZ or YZ projection plane.")
         if (self.anchor_id is None) == (self.center is None):
@@ -327,6 +333,25 @@ class SetBondLength(SetDistance):
 
 
 @dataclass(frozen=True)
+class GenerateBiopolymer(Versioned):
+    """A standalone structure built from a sequence or read from a PDB entry."""
+
+    molecule: Molecule
+    polymer: str
+    source: str
+    value: str
+    polymer_roles: str = ""
+    kind: ClassVar[str] = "generate-biopolymer"
+
+    def __post_init__(self):
+        if self.polymer not in ("protein", "dna") or self.source not in ("pdb", "sequence"):
+            raise ValueError("Unknown biopolymer source.")
+        nonempty(self.value, "PDB ID or sequence")
+        self.molecule.validate_structure()
+        validate_polymer_roles(self.polymer_roles, len(self.molecule.atoms))
+
+
+@dataclass(frozen=True)
 class UseResultGeometry(Versioned):
     source: GeometryRef
     kind: ClassVar[str] = "use-result-geometry"
@@ -338,7 +363,7 @@ class UseResultGeometry(Versioned):
 
 EditOperation = Union[AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertFragment, InsertRing, MoveAtom,
                       MoveSketchAtom, RotateFragment, TranslateFragment, SetSketchLayout, OptimizeCoordinates,
-                      ReorderAtoms, ReplaceElement, SetBond, SetDistance, SetElectronicState, UseResultGeometry]
+                      ReorderAtoms, ReplaceElement, SetBond, SetDistance, SetElectronicState, GenerateBiopolymer, UseResultGeometry]
 
 
 @dataclass(frozen=True)
@@ -351,7 +376,7 @@ class GeometryEditCommand(Versioned):
             raise ValueError("The edit command must reference the complete editable revision")
         if type(self.operation) not in (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertFragment, InsertRing, MoveAtom,
                                        MoveSketchAtom, RotateFragment, TranslateFragment, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength,
-                                       SetDistance, SetElectronicState, UseResultGeometry):
+                                       SetDistance, SetElectronicState, GenerateBiopolymer, UseResultGeometry):
             raise ValueError("Unsupported edit operation")
         if isinstance(self.operation, SetDistance) and self.operation.coordinate.geometry != self.expected:
             raise ValueError("The coordinate definition must reference the command's base revision")

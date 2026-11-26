@@ -169,8 +169,15 @@ def read_babel_structure(raw, name, format_id, *, remove_periodicity=False):
     payload = run_babel_worker(raw, *arguments)
     if payload.get("periodic"):
         raise PeriodicStructureError("This structure contains a periodic unit cell.")
+    return record_from_babel_payload(name, payload)
+
+
+def record_from_babel_payload(name, payload):
     molecule = Molecule(name, tuple(Atom(*row) for row in payload["atoms"]),
                         tuple(Bond(*row) for row in payload["bonds"]),
                         payload["charge"], payload["multiplicity"], bonds_explicit=payload["bonds_explicit"])
     molecule.validate_structure()
-    return StructureRecord(molecule, generated_3d=payload["generated"], removed_periodicity=payload["finite"])
+    links = payload.get("backbone_links")
+    return StructureRecord(molecule, generated_3d=payload["generated"], removed_periodicity=payload["finite"],
+                           polymer_roles=payload.get("polymer_roles", ""),
+                           backbone_links=tuple(tuple(pair) for pair in links) if links is not None else None)

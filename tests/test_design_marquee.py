@@ -141,7 +141,7 @@ class DesignMarqueeTests(unittest.TestCase):
         current.show()
         self.app.processEvents()
         current.canvas.fit()
-        current.ring_menu.actions()[-1].trigger()
+        next(action for action in current.ring_menu.actions() if action.data() == (6, "benzene")).trigger()
         QTest.mouseClick(current.canvas, Qt.MouseButton.LeftButton, pos=current.canvas.rect().center())
         ring = self.document.head
         self.assertEqual(len(ring.atom_ids), 6)

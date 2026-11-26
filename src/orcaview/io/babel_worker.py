@@ -1,6 +1,7 @@
 """Private, single-file Open Babel subprocess. The stdout protocol is UTF-8 JSON."""
 
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 import json
 import math
 import os
@@ -10,6 +11,8 @@ import shutil
 import sys
 from tempfile import TemporaryDirectory
 from xml.etree import ElementTree
+
+from orcaview.io.structure_record import polymer_atom_role
 
 
 def prepare_windows_babel_data(source, destination):
@@ -180,6 +183,100 @@ def _convert(raw, fmt, finite):
         if mol.NumAtoms() > 1 and not mol.HasNonZeroCoords():
             raise ValueError("Open Babel did not generate valid 3D coordinates.")
 
+    payload = _molecule_payload(mol, ob, explicit_graph=explicit_graph, generated=generated,
+                                periodic=periodic)
+    if fmt == "pdb":
+        payload["polymer_roles"], payload["backbone_links"] = _pdb_polymer_atoms(mol, ob, text)
+    return payload
+
+
+_AMINO_ACIDS = frozenset("ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL SEC PYL ASX GLX".split())
+_DEOXY_RESIDUES = frozenset(("DA", "DC", "DG", "DT", "DI", "DU", "T", "THY"))
+
+
+@dataclass(frozen=True)
+class _BackboneSite:
+    label: str
+    residue: int
+    chain: str
+    segment: int
+    sequence: int
+    insertion: str
+    serial: int
+
+    def joins(self, other, explicit):
+        if self.chain != other.chain or self.segment != other.segment:
+            return False
+        if self.residue == other.residue:
+            return (self.label, other.label) in (
+                ("N", "CA"), ("CA", "C"), ("P", "O5'"), ("O5'", "C5'"),
+                ("C5'", "C4'"), ("C4'", "C3'"), ("C3'", "O3'"))
+        if (self.label, other.label) not in (("C", "N"), ("O3'", "P")):
+            return False
+        return (explicit or (other.sequence == self.sequence + 1 and not other.insertion)
+                or (other.sequence == self.sequence and bool(other.insertion)
+                    and ord(other.insertion) == ord(self.insertion or "@") + 1))
+
+
+def _pdb_polymer_atoms(mol, ob, text):
+    # MODRES identifies residues such as selenomethionine that are written
+    # as HETATM records, while free ligands can have amino-acid residue names.
+    parents, segments, explicit = {}, {}, set()
+    segment = 0
+    for line in text.splitlines():
+        if line.startswith("MODRES") and len(line) >= 27:
+            parents[line[16].strip(), line[18:22].strip(), line[22].strip(), line[12:15].strip()] = line[24:27].strip()
+        elif line.startswith("TER"):
+            segment += 1
+        elif line.startswith(("ATOM  ", "HETATM")) and line[6:11].strip().isdigit():
+            segments[int(line[6:11])] = segment
+        elif line.startswith("CONECT"):
+            fields = [line[i:i+5].strip() for i in range(6, min(len(line), 31), 5)]
+            if fields and fields[0].isdigit():
+                explicit.update(tuple(sorted((int(fields[0]), int(n)))) for n in fields[1:] if n.isdigit())
+    roles = ["."] * mol.NumAtoms()
+    backbone = {}
+    dna_chains = {r.GetChain() for r in ob.OBResidueIter(mol) if r.GetName().strip() in _DEOXY_RESIDUES
+                  and any(not r.IsHetAtom(atom) for atom in ob.OBResidueAtomIter(r))}
+    for residue in ob.OBResidueIter(mol):
+        name = residue.GetName().strip()
+        chain = residue.GetChain()
+        key = (chain.strip(" \0"), str(residue.GetNum()), residue.GetInsertionCode().strip(" \0"), name)
+        standard = parents.get(key)
+        if standard is None and all(residue.IsHetAtom(atom) for atom in ob.OBResidueAtomIter(residue)):
+            continue
+        monomer = standard or name
+        if monomer in _AMINO_ACIDS:
+            polymer = "protein"
+        elif monomer in _DEOXY_RESIDUES or (chain in dna_chains and monomer in ("A", "C", "G", "I")):
+            polymer = "dna"
+        else:
+            continue
+        for atom in ob.OBResidueAtomIter(residue):
+            i = atom.GetIdx() - 1
+            label = residue.GetAtomID(atom).strip().upper().replace("*", "'")
+            roles[i] = polymer_atom_role(polymer, label, ob.GetSymbol(atom.GetAtomicNum()))
+            if roles[i] == "B":
+                serial = residue.GetSerialNum(atom)
+                backbone[i] = _BackboneSite(label, residue.GetIdx(), chain, segments.get(serial, 0), residue.GetNum(),
+                                            residue.GetInsertionCode().strip(" \0"), serial)
+    if all(role == "." for role in roles):
+        return "", None
+    # The native PDB reader can also bond by distance over chain breaks.
+    # Keep named-path connections separately from the unmodified 3D graph.
+    links = []
+    for edge in ob.OBMolBondIter(mol):
+        i, j = edge.GetBeginAtomIdx() - 1, edge.GetEndAtomIdx() - 1
+        a, b = backbone.get(i), backbone.get(j)
+        if not a or not b:
+            continue
+        deposited = tuple(sorted((a.serial, b.serial))) in explicit
+        if a.joins(b, deposited) or b.joins(a, deposited):
+            links.append(tuple(sorted((i, j))))
+    return "".join(roles), sorted(links)
+
+
+def _molecule_payload(mol, ob, *, explicit_graph, generated, periodic=False, polymer_roles=""):
     # After detaching a crystal, the viewport perceives display bonds from
     # finite Cartesian separations only. Native crystal edges may span images.
     bonds = [] if periodic else [
@@ -194,8 +291,41 @@ def _convert(raw, fmt, finite):
             raise ValueError("The molecular model does not retain isotope masses and cannot fully import this structure.")
         atoms.append((ob.GetSymbol(atom.GetAtomicNum()), atom.GetX(), atom.GetY(), atom.GetZ()))
     return {"atoms": atoms, "bonds": bonds, "bonds_explicit": explicit_graph and not periodic,
+            "polymer_roles": polymer_roles,
             "charge": mol.GetTotalCharge(),
             "multiplicity": mol.GetTotalSpinMultiplicity(), "generated": generated, "finite": periodic}
+
+
+def _sequence_worker(kind, sequence):
+    from openbabel import openbabel as ob
+
+    conversion = ob.OBConversion()
+    if not conversion.SetInFormat("fasta"):
+        raise ValueError("The Open Babel FASTA reader is unavailable.")
+    # A fixed header selects the requested template even for an all-ACGT peptide.
+    header = "protein" if kind == "protein" else "DNA"
+    mol = ob.OBMol()
+    read = conversion.ReadString(mol, f">{header}\n{sequence}\n")
+    chains = 1 if kind == "protein" else 2
+    if not read or mol.NumResidues() != len(sequence) * chains or not mol.HasNonZeroCoords():
+        raise ValueError("Open Babel could not build the complete sequence.")
+    # FASTA templates contain explicit hydrogens and bond orders but omit formal
+    # charges. Count these from the drawn atoms, including the actual end groups.
+    charge = 0
+    for atom in ob.OBMolAtomIter(mol):
+        number, valence = atom.GetAtomicNum(), atom.GetExplicitValence()
+        if number == 8 and valence == 1:
+            atom.SetFormalCharge(-1)
+        elif number == 7 and valence == 4:
+            atom.SetFormalCharge(1)
+        charge += atom.GetFormalCharge()
+    mol.SetTotalCharge(charge)
+    mol.SetTotalSpinMultiplicity(1)
+    roles = ["S"] * mol.NumAtoms()
+    for residue in ob.OBResidueIter(mol):
+        for atom in ob.OBResidueAtomIter(residue):
+            roles[atom.GetIdx() - 1] = polymer_atom_role(kind, residue.GetAtomID(atom), ob.GetSymbol(atom.GetAtomicNum()))
+    return _molecule_payload(mol, ob, explicit_graph=True, generated=True, polymer_roles="".join(roles))
 
 
 def main(args=None):
@@ -205,6 +335,8 @@ def main(args=None):
             if args and args[0] in ("optimize-2d", "optimize-3d", "optimize-hbonds", "perceive-orders"):
                 from orcaview.editing.optimization import optimize_worker
                 result = optimize_worker(json.load(sys.stdin.buffer), args[0])
+            elif args in (["sequence", "protein"], ["sequence", "dna"]):
+                result = _sequence_worker(args[1], sys.stdin.buffer.read().decode("ascii"))
             elif args and args[0] in ("sdf", "mol", "mol2", "pdb", "smi", "inchi", "cif", "cdxml", "cml"):
                 result = _convert(sys.stdin.buffer.read(), args[0], "--finite" in args[1:])
             else:
