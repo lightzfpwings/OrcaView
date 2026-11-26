@@ -96,3 +96,29 @@ class ResultsCommandsTest(unittest.TestCase):
         self.assertEqual(header[:8], b"\x89PNG\r\n\x1a\n")
         self.assertEqual(int.from_bytes(header[16:20], "big"), 1800)
         self.assertEqual(int.from_bytes(header[20:24], "big"), 1100)
+
+    def test_nmr_positions_raw_tables_and_coupling_plot(self):
+        nmr = Path(orcaview.__file__).resolve().parents[2] / "artifacts/public/validation/results-0.1.0a12/nmr/water-shield.out"
+        sticks = self.invoke("spectrum", nmr, "--table", 1, "--format", "sticks", "--element", "H",
+                             "--reference-ppm", 32.130)
+        self.assertEqual(sticks.returncode, 0, sticks.stderr)
+        rows = list(csv.reader(StringIO(sticks.stdout)))
+        self.assertEqual(rows[0], ["Chemical shift δ (ppm)", "Nucleus count"])
+        self.assertEqual([float(y) for _, y in rows[1:]], [2.])
+        self.assertAlmostEqual(float(rows[1][0]), 1.)
+        raw = self.invoke("spectrum", nmr, "--table", 1)
+        self.assertIn("Shielding anisotropy", raw.stdout)
+        coupling = self.invoke("spectrum", nmr, "--table", 2)
+        self.assertIn("1 H,2 H,-15.538", coupling.stdout)
+        for flags in (("--table", 1, "--element", "He"), ("--table", 1, "--reference-ppm", "nan"), ("--table", 2)):
+            p = self.invoke("spectrum", nmr, "--format", "curve", *flags)
+            self.assertNotEqual(p.returncode, 0)
+        try:
+            import PySide6
+        except ImportError:
+            return
+        for table in (1, 2):
+            out = self.root / f"nmr-{table}.png"
+            p = self.invoke("spectrum", nmr, "--table", table, "--no-grid", "-o", out, no_qt=False)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual(out.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")

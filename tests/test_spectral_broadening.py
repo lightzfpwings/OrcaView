@@ -5,6 +5,7 @@ import unittest
 
 from orcaview.orca.log_spectra import SpectrumTable, parse_log_spectra
 from orcaview.results.broadening import broaden_spectrum, spectrum_range, stick_spectrum
+from orcaview.results.nmr import coupling_pairs, plot_source, shielding_elements
 
 
 class PrintedSticksTests(unittest.TestCase):
@@ -37,6 +38,32 @@ class PrintedSticksTests(unittest.TestCase):
             self.assertIsNone(stick_spectrum(t))
         for kind in ("vibrations", "continuous"):
             self.assertIsNone(stick_spectrum(SpectrumTable(kind, "", ("x", "y"), ((5, 12),), 1)))
+
+    def test_nmr_reference_counts_and_signed_pairs_from_real_orca(self):
+        shield, coupling = parse_log_spectra((self.fixtures / "nmr/water-shield.out").read_text())
+        self.assertEqual(shielding_elements(shield), ("H", "O"))
+        source = plot_source(shield)
+        self.assertEqual(source.peaks, ((31.130, 2),))
+        self.assertFalse(source.reversed_axis)
+        oxygen = plot_source(shield, element="o", reference=346.078)
+        self.assertEqual(oxygen.peaks, ((-1., 1),))
+        self.assertTrue(oxygen.reversed_axis)
+        self.assertEqual(coupling_pairs(coupling), (("1 H", "2 H", -15.538),))
+        with self.assertRaises(ValueError):
+            plot_source(coupling, reference=1)
+        with self.assertRaisesRegex(ValueError, "Available elements"):
+            plot_source(shield, element="C")
+
+    def test_nmr_legacy_columns_missing_values_and_zero_reference(self):
+        table = SpectrumTable("nmr", "", ("核", "元素", "屏蔽（ppm）"),
+                              ((0, "F", 0.), (1, "F", None), (2, "F", -5.), (3, "F", 0.), (4, "F", 4.)), 1)
+        self.assertEqual(plot_source(table, reference=0).peaks, ((-4., 1), (0., 2), (5., 1)))
+        for value in (float("inf"), float("nan")):
+            with self.assertRaises(ValueError):
+                plot_source(table, reference=value)
+        pairs = SpectrumTable("nmr", "", ("1", "2", "J (Hz)"),
+                              (("0 F", "1 F", 0.), ("1 F", "2 F", None), ("2 F", "3 F", -2.)), 1)
+        self.assertEqual(coupling_pairs(pairs), (("0 F", "1 F", 0.), ("2 F", "3 F", -2.)))
 
     def test_legacy_state_columns_convert_missing_energy_and_skip_missing_strengths(self):
         table = SpectrumTable("uvvis", "", ("State", "Wavenumber (cm⁻¹)", "Wavelength (nm)",

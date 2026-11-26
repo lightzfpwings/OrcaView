@@ -1,6 +1,6 @@
 # ORCA 6.1.1 高级输入块交叉核对
 
-核对对象为 OrcaView 在折叠输入块中提供的字段。按“完整嵌套路径＋关键字”去重后共 301 项，其中通用参数 126 项、求解器参数 147 项、溶剂和 IRC 专用参数 28 项。同名字段出现在不同层级时分别核对。选择作业、方法、积分近似、活性空间和目标根数时由模板写入的值另计。
+核对对象为 OrcaView 在折叠输入块中提供的字段。按“完整嵌套路径＋关键字”去重后共 303 项，其中通用参数 128 项、求解器参数 147 项、溶剂和 IRC 专用参数 28 项。同名字段出现在不同层级时分别核对。选择作业、方法、积分近似、活性空间和目标根数时由模板写入的值另计。
 
 PDF 封面标为 *ORCA Manual, Release 6.1.1*，日期为 2025-12-02，共 1601 页，SHA-256 为 `4df05dcc1126d7816b1770367e29388bb69d079b5ee7b907b939cc7c46830c92`。官网按钮的下载文件名仍含 6_1_0。下表使用 PDF 阅读器的物理页码，从封面第 1 页开始。每行链接打开相应 HTML 章节。 [官方 PDF](https://orca-manual.mpi-muelheim.mpg.de/_static/pdf/orca.pdf) · [网页版首页](https://orca-manual.mpi-muelheim.mpg.de/index.html)
 
@@ -10,6 +10,8 @@ PDF 封面标为 *ORCA Manual, Release 6.1.1*，日期为 2025-12-02，共 1601 
 
 | 输入位置与用途 | 交叉核对的原生字段 | PDF 物理页及对应网页 |
 |---|---|---|
+| `%output` 输出详细程度 | `PrintLevel` | [56–59](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/output.html) |
+| `%scf` 自动读取同名 GBW | `AutoStart` | [213–215](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/initialguess.html) |
 | `%scf` 原生 xTB | `SmearTemp` `UseXTBMixer` | [257–267](https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/semiempirical.html) |
 | `%scf` 收敛与切换 | `AutoTRAH` `AutoTRAHIter` `AutoTRAHNInter` `AutoTRAHTol` `CNVDIIS` `CNVDamp` `CNVSOSCF` `CNVShift` `CNVZerner` `ConvCheckMode` `ConvForced` `Convergence` `DIISBFac` `DIISMaxEq` `DIISMaxIt` `DIISStart` `DampErr` `DampFac` `DampMax` `DampMin` `LShift` `MaxIter` `SOSCFMaxIt` `SOSCFStart` `ShiftErr` `TCut` `Thresh` `TolE` `TolErr` `TolG` `TolMaxP` `TolRMSP` `TolX` | [65–77](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/scf.html) |
 | `%scf.trah` 轨道更新与预条件 | `AlphaMax` `AlphaMin` `InactiveMOs` `MaxNoise` `MaxRed` `MinTolMicro` `NStart` `OrbUpdate` `PreconMaxRed` `Precond` `PseudoRand` `QuadRegionStart` `Randomize` `TolFacMicro` `tradius` | [73–74](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/scf.html) |

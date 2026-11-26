@@ -41,6 +41,8 @@ class ManualCalculationTests(unittest.TestCase):
             self.assertTrue(all(row[0] == number or row[0].startswith(number + ".") for row in results))
         self.assertTrue(any(row[0].startswith("5.9") for row in lookup("EOM")))
         self.assertTrue(any(row[0].startswith("2.6") for row in lookup("MaxIter")))
+        self.assertEqual([(row[0], row[3]) for row in lookup("MiniPrint")][0], ("2.4.2", "59"))
+        self.assertIn(("2.20.6", "213"), [(row[0], row[3]) for row in lookup("NoAutoStart")])
         self.assertFalse(any(row[0] == "5.1" for row in lookup("")))
 
     def test_all_catalog_solvent_aliases_have_single_unambiguous_output(self):

@@ -55,6 +55,7 @@ ORCA 的 `%scf`、`%method` 和 `%geom` 是并列的顶层输入块。界面按�
 
 | 要调整的计算 | 输入块中的示例 |
 |---|---|
+| 输出量与单点重启 | 在预览中添加一行 `! MiniPrint NoAutoStart`，或将 `%output → PrintLevel` 设为 `Mini`、`%scf → AutoStart` 设为关。`MiniPrint` 连写，单独的 `MINI` 是轨道基组名。`NoAutoStart` 关闭单点计算对同名 `.gbw` 的自动读取，几何优化会忽略这个开关。[输出设置](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/output.html#simple-input-keywords) · [初猜与重启](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/initialguess.html#autostart-feature) |
 | SCF 与积分 | 在 `%scf` 调整 MaxIter、密度与能量收敛阈值、DIIS、阻尼或能级平移。TRAH 的微迭代参数位于其内层 trah 块。在适用的 DFT 方法中可通过 `%method` 调整积分网格。 |
 | 优化与频率 | 在 `%geom` 设步数、梯度收敛阈值或 Hessian 更新方式。数值频率的 `%freq Increment` 以 bohr 为单位。 |
 | CASSCF / CASPT2 | `%casscf MaxIter` 调整轨道宏迭代，`%casscf → CI → MaxIter` 调整内层 CI 迭代。CASPT2 的虚位移写入 `PTSettings` 子块。 |
@@ -65,6 +66,7 @@ ORCA 的 `%scf`、`%method` 和 `%geom` 是并列的顶层输入块。界面按�
 
 ```bash
 orcaview methods B3LYP --job OPT --blocks
+orcaview preview examples/water.xyz --method HF --job SP --set output.PrintLevel=Mini --set scf.AutoStart=false
 orcaview preview examples/water.xyz --method B3LYP --job OPT --set scf.MaxIter=250 --set geom.MaxIter=80
 orcaview preview examples/water.xyz --method EOM-CCSD --nroots 3 --set mdci.NDav=8
 orcaview preview examples/water.xyz --method CASPT2 --active-electrons 2 --active-orbitals 2 --set casscf.PTSettings.CASPT2_ishift=0.1

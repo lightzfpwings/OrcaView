@@ -9,6 +9,7 @@ from typing import ClassVar, Mapping, Optional, Tuple
 
 from .. import ORCA_INPUT_TARGET
 from ..core import reaction_path
+from ..core._block_catalog import SIMPLE_INPUT_CONTROLS
 from ..core._validation import Versioned
 from ..core.block_options import validated_block_values
 from ..core._advanced_methods import advanced_input
@@ -74,6 +75,13 @@ def _render_input(
         options += ("NoFrozenCore",)
     if spec.scf_convergence != "Auto":
         options += (spec.scf_convergence,)
+    overrides = validated_block_values(spec)
+    for control, spellings in SIMPLE_INPUT_CONTROLS.items():
+        key = control.block, control.key
+        value = overrides.get(key)
+        if value in spellings:
+            options += (spellings[value],)
+            del overrides[key]
     solvent_words, solvent_block = solvation_input(spec)
     keywords = "! " + preset.keywords(options + solvent_words, spec.job_type, method_keywords,
                                       numerical_frequency=uses_numerical_frequencies(spec))
@@ -81,7 +89,6 @@ def _render_input(
         if not preset.allows_initial_gbw:
             raise ValueError(f"The {spec.method} template does not support an external GBW initial guess")
         keywords += " MORead"
-    overrides = validated_block_values(spec)
     if overrides.get(("irc", "hessMode"), 0) >= 3 * len(molecule.atoms):
         raise ValueError("The initial IRC Hessian mode index exceeds the Cartesian degrees of freedom")
     template_blocks = (

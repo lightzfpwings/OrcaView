@@ -16,6 +16,8 @@
 
 ### 能复核的差异
 
+0.1.0a60 补录 §2.4「输出控制」及两个子节，帮助索引现有 1,020 个标题。新增的 `%output PrintLevel` 与 `%scf AutoStart` 已用 ORCA 6.1.1 的水分子单点重算核对。[输出控制](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/output.html) · [AutoStart](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/initialguess.html#autostart-feature)
+
 - 在 CAS-DFT 节，网页表 3.47–3.49 对应 PDF 表 3.48–3.50。网页和 PDF 的章节仍是 §3.18。比较程序按表题和关键词列匹配。[网页版 §3.18](https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/casdft.html) · [PDF 第 498 页](https://orca-manual.mpi-muelheim.mpg.de/_static/pdf/orca.pdf#page=498)
 - RI 总表在 RIJONX 和 RIJCOSX 两行重复列出 `RIJDX`。软件输出各算法的明确拼写。SCF 积分近似与 MDCI 的 `KCOpt`、`TrafoType` 分开选择。需要相关拟合时联动 AuxC，开壳层与仅限 RHF 的算法组合会被拒绝。[RI §2.8](https://orca-manual.mpi-muelheim.mpg.de/contents/essentialelements/RI.html) · [MDCI §3.10](https://orca-manual.mpi-muelheim.mpg.de/contents/modelchemistries/mdci.html)
 - 两版 EOM 章节对 `NRootsPerBatch` 的示例类型和表格说明存在分歧。它可在手册索引查询，结构化表单暂未收录。需要 ORCA 6.1.1 的实际解析行为才能进一步确认。[网页版 §5.9](https://orca-manual.mpi-muelheim.mpg.de/contents/spectroscopyproperties/eom.html) · [PDF 第 887 页](https://orca-manual.mpi-muelheim.mpg.de/_static/pdf/orca.pdf#page=887)

@@ -15,7 +15,8 @@ from orcaview.core.models import CalculationSpec, Molecule
 from orcaview.core.provenance import ArtifactRef, Provenance
 from orcaview.core.results import DatasetAxis, ResultDataset
 from orcaview.io.structure_record import StructureRecord
-from orcaview.orca._native_output import population_tables, reported_geometry
+from orcaview.orca._native_output import reported_geometry
+from orcaview.orca.populations import population_columns
 from orcaview.orca.log_report import LogReport, job_sections, parse_log_report
 from orcaview.orca.output import parse_output
 from orcaview.results import OrcaImportError, commit_orca_output
@@ -28,18 +29,19 @@ def _add_populations(lines, source, document, frame, geometry_line):
         if dataset.geometry == frame.ref and dataset.values is not None:
             locations = dict(dataset.provenance.parameters)
             existing.add((dataset.kind, locations.get("population_line") or locations.get("mulliken_line")))
-    tables = tuple(population_tables(lines, geometry_line, frame.molecule))
-    counts = Counter(method for method, _, _, _ in tables)
-    for method, line, values, spins in tables:
-        prefix = {"Mulliken": "mulliken", "Löwdin": "loewdin", "Hirshfeld": "hirshfeld"}[method]
-        loc = (("population_line", str(line)),)
-        if counts[method] > 1:
-            loc += (("population_series", f"Line {line}"),)
+    columns = population_columns(lines, geometry_line, frame.molecule)
+    counts = Counter(column.kind for column in columns)
+    axis = (DatasetAxis("atom", frame.atom_ids),)
+    for column in columns:
+        if (column.kind, str(column.line)) in existing:
+            continue
+        loc = (("population_line", str(column.line)), *column.parameters)
+        if counts[column.kind] > 1:
+            loc += (("population_series", f"Line {column.line}"),)
         origin = Provenance("orca-native-import", "orcaview.orca.population", "1", (source,), loc)
-        for kind, unit, series in ((prefix + "-charge", "e", values), (prefix + "-spin", "1", spins)):
-            if series and (kind, str(line)) not in existing:
-                document.add_dataset(ResultDataset(kind, frame.ref, origin, "float64", (len(series),),
-                                                   unit, series, (DatasetAxis("atom", frame.atom_ids),), method=method))
+        unit = "1" if column.kind.endswith("-spin") else "e"
+        document.add_dataset(ResultDataset(column.kind, frame.ref, origin, "float64", (len(column.values),),
+                                           unit, column.values, axis, method=column.method))
 
 
 def read_native_session(path: Path, confirmation=None):

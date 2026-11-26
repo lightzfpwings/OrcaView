@@ -133,20 +133,24 @@ def matched_energy_lines(datasets, source):
     return matches
 
 
+POPULATION_NAMES = {
+    "mulliken-electrons": "Mulliken electron population", "mulliken-charge": "Mulliken charge",
+    "mulliken-spin": "Mulliken spin population",
+    "loewdin-electrons": "Löwdin electron population", "loewdin-charge": "Löwdin charge",
+    "loewdin-spin": "Löwdin spin population",
+    "hirshfeld-electrons": "Hirshfeld electron population", "hirshfeld-charge": "Hirshfeld charge",
+    "hirshfeld-spin": "Hirshfeld spin population",
+    "mbis-electrons": "MBIS electron population", "mbis-charge": "MBIS charge", "mbis-spin": "MBIS spin population",
+    "chelpg-charge": "CHELPG charge", "atomic_charge": "Atomic charge",
+}
+
+
 def dataset_name(data):
     if data.kind == "energy" and "orca-final-single-point-energy" in data.quality:
         return tr("Single-point energy")
-    names = {
-        "energy": "Energy",
-        "mulliken-charge": "Mulliken charge",
-        "mulliken-spin": "Mulliken spin population",
-        "loewdin-charge": "Löwdin charge",
-        "loewdin-spin": "Löwdin spin population",
-        "hirshfeld-charge": "Hirshfeld charge",
-        "hirshfeld-spin": "Hirshfeld spin population",
-        "atomic_charge": "Atomic charge",
-    }
-    return tr(names[data.kind]) if data.kind in names else data.method or data.kind
+    if data.kind == "energy":
+        return tr("Energy")
+    return tr(POPULATION_NAMES[data.kind]) if data.kind in POPULATION_NAMES else data.method or data.kind
 
 
 def result_summary(data):
@@ -210,6 +214,11 @@ def describe(snapshot, data):
                       tr("Source coordinate unit  {unit}", unit=snapshot.source_unit)))
     lines.append(tr("Source type  ") + source_label(snapshot, data))
     parameters = dict(origin.parameters)
+    if parameters.get("population_formula") == "ZA - q" and parameters.get("nuclear_charge_line"):
+        lines.append(tr("Electron population = printed nuclear charge ZA − atomic charge. ZA is on line {line}.",
+                        line=parameters["nuclear_charge_line"]))
+    elif parameters.get("population_column"):
+        lines.append(tr("Printed column  {column}", column=parameters["population_column"]))
     population_line = parameters.get("population_line") or parameters.get("mulliken_line")
     if population_line:
         lines.append(tr("Source line  ") + population_line)

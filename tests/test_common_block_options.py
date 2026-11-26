@@ -20,6 +20,8 @@ class CommonBlockOptionsTests(unittest.TestCase):
                     available = catalog_options(spec)
                     keys = {(o.block, o.key) for o in available}
                     self.assertEqual(len(keys), len(available))
+                    self.assertIn(("output", "PrintLevel"), keys)
+                    self.assertIn(("scf", "AutoStart"), keys)
                     self.assertEqual(("geom", "MaxIter") in keys, job in ("OPT", "OPT_FREQ", "OPT_TS"))
                     self.assertEqual(("freq", "ProjectTR") in keys, job in ("FREQ", "OPT_FREQ"))
 
@@ -27,7 +29,8 @@ class CommonBlockOptionsTests(unittest.TestCase):
         for method in ("HF", "B3LYP", "HF-3c", "FCI", "MRCC-CCSDT"):
             self.assertIn(("scf", "MaxIter"), options(CalculationSpec(method=method)))
         for method in ("GFN-FF", "GFN2-xTB", "PM3"):
-            self.assertFalse(any(block == "scf" for block, key in options(CalculationSpec(method=method))))
+            self.assertEqual({key for block, key in options(CalculationSpec(method=method)) if block == "scf"},
+                             {"AutoStart"})
         native = CalculationSpec(method="Native-GFN2-xTB")
         self.assertIn(("scf", "UseXTBMixer"), options(native))
         self.assertNotIn(("scf", "DIISMaxEq"), options(native))

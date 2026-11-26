@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QAbstractTableModel, QItemSelectionModel, QModelIndex, QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QFrame, QHeaderView, QLabel, QPlainTextEdit, QPushButton,
+    QAbstractItemView, QFrame, QHBoxLayout, QHeaderView, QLabel, QPlainTextEdit, QPushButton,
     QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTabWidget,
     QTableView, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
@@ -14,6 +14,8 @@ from orcaview.editing.coordinates import CoordinateDefinition, measure
 from orcaview.gui import typography
 from orcaview.gui.atom_table import AtomCoordinateTable
 from orcaview.gui.project_navigation import WrappingTreeLabel
+from orcaview.gui.population_dialog import PopulationDialog
+from orcaview.gui.population_map import PopulationMap, PopulationStyle, available_populations
 from orcaview.gui.result_display import (
     describe, display_file_name, geometry_name, log_filename, log_overview_status, log_property_series, log_reference_snapshot,
     dataset_name, matched_energy_lines, report_text, source_file_details,
@@ -31,6 +33,7 @@ QLabel#sectionTitle { color: #372F2D; font-size: 14px; font-weight: $section_wei
 QTabBar#resultInspectorTabs::tab { padding: 8px 7px; }
 QLabel#foundationDetails { color: #372F2D; padding: 10px 8px; }
 QLabel#bondLength { color: #76394D; font-weight: $section_weight; padding: 8px; }
+QPushButton#atomicPopulations, QPushButton#designResultGeometry { padding: 7px 6px; }
 QScrollArea, QScrollArea > QWidget > QWidget { background: #FFFDF9; border: none; }
 QTreeWidget { background: #FFFDF9; border: 1px solid #DDD5CB; border-radius: 6px; padding: 4px; }
 QTreeWidget::item { padding: 8px 3px; }
@@ -108,6 +111,9 @@ class FoundationPanel(QWidget):
         self._preview_index = 0
         self._series = ()
         self._merged_series = {}
+        self._population_id = None
+        self._population_style = PopulationStyle()
+        self._populations = ()
         layout = QVBoxLayout(self)
         # Half a splitter gap at each outer edge keeps all three column
         # centers on the quarter, half, and three-quarter window positions.
@@ -152,7 +158,16 @@ class FoundationPanel(QWidget):
         self.design_button.setToolTip(tr("Use the displayed geometry in the design workspace. You can undo this replacement."))
         self.design_button.setEnabled(False)
         self.design_button.clicked.connect(self._request_design)
-        scene.addWidget(self.design_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        scene_actions = QHBoxLayout()
+        scene_actions.addStretch()
+        self.population_button = QPushButton(tr("Atomic populations…"))
+        self.population_button.setObjectName("atomicPopulations")
+        self.population_button.clicked.connect(self._configure_populations)
+        self.population_button.hide()
+        scene_actions.addWidget(self.population_button)
+        scene_actions.addWidget(self.design_button)
+        scene_actions.addStretch()
+        scene.addLayout(scene_actions)
         splitter.addWidget(self.geometry_pane)
         right = QWidget()
         table_layout = QVBoxLayout(right)
@@ -231,6 +246,8 @@ class FoundationPanel(QWidget):
         snapshots, datasets = document.records()
         if self.document is not document:
             self._input_path = self._project_path = ""
+            self._population_id = None
+            self._populations = ()
             self._report = None
             self._standalone = False
             self._log_selection = None
@@ -282,6 +299,9 @@ class FoundationPanel(QWidget):
             self.spectra.clear()
             self.atoms.setRowCount(0)
         self.viewport.set_molecule(None)
+        self._populations = ()
+        self._population_id = None
+        self.population_button.hide()
         self._select_ids(())
         self.spectrum_preview.set_spectrum(None)
         self.log_model.set_table((), ())
@@ -403,6 +423,7 @@ class FoundationPanel(QWidget):
 
     def _show_empty_report(self):
         self._dataset_id = None
+        self._clear_population_view()
         self._select_ids(())
         self.tables.setCurrentWidget(self.log_table)
         self.table_title.setText(tr("Calculation results"))
@@ -417,6 +438,7 @@ class FoundationPanel(QWidget):
             if self.selected_snapshot is None or self.selected_snapshot.ref != snapshot.ref:
                 self._show_snapshot(snapshot)
         else:
+            self._clear_population_view()
             self._select_ids(())
             self.geometry_pane.hide()
         self._dataset_id = None
@@ -504,6 +526,11 @@ class FoundationPanel(QWidget):
         self.selected_snapshot = snapshot
         if not same_geometry:
             self.viewport.set_molecule(snapshot.molecule)
+        self._populations = available_populations(self.document.records()[1], snapshot.ref)
+        self.population_button.setVisible(bool(self._populations))
+        if data is not None and any(d.dataset_id == data.dataset_id for d in self._populations):
+            self._population_id = data.dataset_id
+        self._display_population(self._population_id, self._population_style)
         self._populate_atoms(snapshot, data)
         self._select_ids(previous_ids)
         artifacts = data.provenance.parents if data is not None else snapshot.provenance.parents
@@ -518,6 +545,34 @@ class FoundationPanel(QWidget):
             artifacts += (data.array_ref,)
         self.evidence.setPlainText(source_file_details(
             artifacts, input_path=self._input_path if data is None else "", project_path=self._project_path))
+
+    def _clear_population_view(self):
+        self._population_id = None
+        self._populations = ()
+        self.population_button.hide()
+        self.viewport.population_map = None
+        self.viewport.update()
+
+    def _display_population(self, dataset_id, style):
+        data = next((d for d in self._populations if d.dataset_id == dataset_id), None)
+        self.viewport.population_map = (PopulationMap(data, self.selected_snapshot, style)
+                                        if data is not None and (style.labels or style.color_atoms) else None)
+        self.viewport.update()
+
+    def _configure_populations(self):
+        if not self._populations:
+            return
+        default = next((d for d in self._populations if d.kind.endswith("-electrons")), self._populations[0])
+        current = next((d for d in self._populations if d.dataset_id == self._population_id), default)
+        dialog = PopulationDialog(self._populations, current.dataset_id, self._population_style, self)
+        dialog.preview_changed.connect(self._display_population)
+        self._display_population(dialog.quantity.currentData(), dialog.style_value())
+        if dialog.exec():
+            self._population_style = dialog.style_value()
+            self.view_dataset(dialog.quantity.currentData())
+        else:
+            self._display_population(self._population_id, self._population_style)
+        dialog.deleteLater()
 
     def _populate_atoms(self, snapshot, data):
         atom_axis = data is not None and len(data.shape) == 1 and data.axes[0].kind == "atom"

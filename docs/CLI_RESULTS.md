@@ -5,6 +5,9 @@ Use `orcaview results FILE` for a JSON inventory of geometry revisions, frames, 
 ```sh
 orcaview results Examples/water-sp.out
 orcaview results Examples/water-sp.out --dataset mulliken-charge --format csv -o charges.csv
+orcaview results Examples/hydroxyl-populations.out --dataset mulliken-spin --format csv -o spin.csv
+orcaview results Examples/hydroxyl-populations.out --dataset mbis-electrons --format csv -o populations.csv
+orcaview render Examples/hydroxyl-populations.out spin.png --population mulliken-spin --population-scale bwr --population-symmetric --labels --rotate y:75
 orcaview results Examples/water-sp.out --property "Final single-point energy" --format tsv
 orcaview results work.oview.json --geometry 2 --format csv -o frame.csv
 orcaview results work.oview.json --evidence -o sources.json
@@ -21,6 +24,9 @@ Running `orcaview spectrum FILE` lists the available tables, including their kin
 orcaview spectrum Examples/water-raman.out
 orcaview spectrum Examples/water-raman.out --table ir --format table -o ir-lines.csv
 orcaview spectrum Examples/water-nmr.out --table 1 -o nmr.csv
+orcaview spectrum Examples/water-nmr.out --table 1 --element H -o h-shielding.png
+orcaview spectrum Examples/water-nmr.out --table 1 --element H --reference-ppm 32.115 --format sticks -o h-shifts.csv
+orcaview spectrum Examples/water-nmr.out --table 2 -o hh-coupling.png
 orcaview spectrum Examples/peroxide-uv-cd.out --table 1 --format sticks --unit eV -o sticks.csv
 orcaview spectrum Examples/water-raman.out --table ir --format curve --fwhm 18 --normalize -o ir-curve.csv
 orcaview spectrum Examples/water-raman.out --table ir --format png --shape pseudo-voigt \
@@ -30,11 +36,13 @@ orcaview spectrum Examples/water-raman.out --table ir --format png --shape pseud
 | Format | Output |
 | --- | --- |
 | `table` | All printed table columns and rows as CSV. Supports frequency lists, NMR shieldings and couplings as well as IR, Raman and optical spectra. |
-| `sticks` | Positions in the selected unit and original signed strengths as CSV. |
+| `sticks` | Positions and signed strengths as CSV. For NMR shielding, the second column counts nuclei at each position. |
 | `curve` | Sampled and broadened curve as CSV. |
 | `png` | The desktop spectrum figure, drawn offscreen at 1800 × 1100 pixels. A filename ending in `.png` also selects this format. |
 
-The last three formats require a table containing stick positions and strengths. They support IR, Raman, UV–visible and CD data. Optical axes accept `nm`, `eV` or `cm-1`. The vibrational unit is `cm-1`. FWHM uses the active axis unit. Adjust the shape with `--shape gaussian|lorentzian|pseudo-voigt`, the pseudo-Voigt Lorentzian fraction with `--mix 0…1`, and the sampling grid with `--points`. Narrow peaks gain extra local samples where needed. `--normalize` scales the curve by the largest absolute value in the selected range.
+IR, Raman, UV–visible, CD and NMR shielding tables support sticks, curves and PNG. Optical axes accept `nm`, `eV` or `cm-1`. The vibrational unit is `cm-1`. FWHM uses the active axis unit. Adjust the shape with `--shape gaussian|lorentzian|pseudo-voigt`, the pseudo-Voigt Lorentzian fraction with `--mix 0…1`, and the sampling grid with `--points`. Narrow peaks gain extra local samples where needed. `--normalize` scales the curve by the largest absolute value in the selected range.
+
+NMR plots show one element at a time. The default is H when present. Each printed site contributes one count, summed at identical positions. By default the figure shows absolute shielding σ in ppm with 0.05 ppm Lorentzian broadening. Supply `--reference-ppm` to plot δ = σref − σ on a decreasing axis. Use a reference for the same element and calculation method. The 32.115 ppm example uses TMS calculated with HF/def2-SVP. The curve represents uncoupled sites. A J table exports directly to a signed chart in Hz with `--format png` or to the original pairs with `--format table`. [ORCA NMR manual](https://www.faccts.de/docs/orca/6.1/manual/contents/spectroscopyproperties/nmr.html)
 
 The PNG accepts `--layers both|curve|sticks`, `--grid` or `--no-grid`, `--reverse` or `--no-reverse`, `--color '#RRGGBB'` and `--stroke-width` from 0.5 to 6. The direction defaults to decreasing wavenumber for IR. The raw stick CSV retains the printed intensities with every appearance setting.
 

@@ -17,7 +17,7 @@ import pypdfium2 as pdfium
 
 def scope(section):
     chapter, part = map(int, section.split(".")[:2])
-    if chapter == 2 and part not in (4, 16):
+    if chapter == 2 and part != 16:
         return True
     if chapter == 3 or chapter in (6, 7):
         return True

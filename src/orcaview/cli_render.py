@@ -70,6 +70,16 @@ def register(sub):
     parser.add_argument("--canvas-width", type=int, help="Final image width, centered around the scaled view")
     parser.add_argument("--canvas-height", type=int, help="Final image height, centered around the scaled view")
     parser.add_argument("--transparent", action="store_true", help="Export PNG or PDF with a transparent background")
+    parser.add_argument("--population", metavar="DATASET", help="Show atomic populations by dataset kind, ID or inventory number")
+    parser.add_argument("--population-mode", choices=("labels", "colors", "both"))
+    palette = parser.add_mutually_exclusive_group()
+    palette.add_argument("--population-scale", choices=("rwb", "bwr", "rainbow", "bw"))
+    palette.add_argument("--population-colors", nargs="+", metavar="HEX", help="Ordered #RRGGBB color stops")
+    limits = parser.add_mutually_exclusive_group()
+    limits.add_argument("--population-range", type=float, nargs=2, metavar=("MIN", "MAX"))
+    limits.add_argument("--population-symmetric", action="store_true", help="Use equal limits on either side of zero")
+    parser.add_argument("--population-midpoint", type=float, help="Value assigned to the central color of a manual range")
+    parser.add_argument("--population-digits", type=int, choices=range(9))
     _view_options(parser)
     parser.set_defaults(handler=render)
 
@@ -288,6 +298,30 @@ def _render_structure(args):
     validate_structure_size(width, height, fmt, scale=args.scale)
     session = load_session(Path(args.input), finite=args.finite)
     snapshot = _snapshot(session.document, args.snapshot)
+    population = None
+    if args.population is not None:
+        from orcaview.cli_results import pick_dataset
+        from orcaview.gui.population_map import PALETTES, PopulationMap, PopulationStyle, available_populations
+
+        if args.view != "3d":
+            raise ValueError("Atomic populations require the 3D view")
+        data = pick_dataset(session.document.records()[1], args.population, snapshot.ref if args.snapshot is not None else None)
+        frame = session.document.resolve(data.geometry)
+        if args.snapshot is not None and snapshot.ref != frame.ref:
+            raise ValueError("The selected population belongs to a different geometry")
+        if not available_populations((data,), frame.ref):
+            raise ValueError("The selected dataset has no available atomic population values")
+        snapshot = frame
+        palette_name = {"rwb": "RWB", "bwr": "BWR", "rainbow": "Rainbow", "bw": "Black–white"}[args.population_scale or "rwb"]
+        mode = args.population_mode or "both"
+        range_mode = "manual" if args.population_range else "symmetric" if args.population_symmetric else "data"
+        style = PopulationStyle(tuple(args.population_colors or PALETTES[palette_name]), range_mode,
+                                *(args.population_range or (-1., 1.)), labels=mode != "colors", color_atoms=mode != "labels",
+                                digits=3 if args.population_digits is None else args.population_digits, midpoint=args.population_midpoint)
+        population = PopulationMap(data, snapshot, style)
+    elif any((args.population_mode, args.population_scale, args.population_colors, args.population_range,
+              args.population_symmetric, args.population_digits is not None, args.population_midpoint is not None)):
+        raise ValueError("Population display settings require --population")
     if not snapshot.molecule.atoms:
         raise ValueError("The selected geometry contains no atoms to render")
     settings, colors = _appearance(args, AppearanceStore())
@@ -310,6 +344,7 @@ def _render_structure(args):
         view.resize(args.width, args.height)
         view.set_appearance(settings, colors)
         view.set_molecule(snapshot.molecule)
+        view.population_map = population
         _camera(view, args)
     save_structure_image(view, args.output, fmt, width, height, transparent=args.transparent, scale=args.scale)
 

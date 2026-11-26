@@ -16,6 +16,7 @@ def install_examples(root: Path, destination: Path):
         "water-raman.out": logs / "raman/water.out",
         "water-nmr.out": logs / "nmr/water-shield.out",
         "peroxide-uv-cd.out": logs / "tdcd/peroxide.out",
+        "hydroxyl-populations.out": examples / "populations/hydroxyl.out",
     }
     for name in ("water.gjf", "ethanol-2d.mol", "crystal.cif"):
         files[f"Structure-import/{name}"] = examples / "structure_import" / name

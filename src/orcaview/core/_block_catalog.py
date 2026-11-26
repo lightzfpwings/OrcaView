@@ -1,6 +1,6 @@
 """Structured settings from the ORCA 6.1.1 manual.
 
-See §§2.6 (SCF), 2.9 (integration), 2.21–22 (core and response),
+See §§2.4 (output), 2.6 (SCF), 2.9 (integration), 2.20 (restart), 2.21–22 (core and response),
 3.3–5 (DFT, dispersion, xTB), 3.7 (ADFT), 4.1 (geometry) and 4.6
 (frequencies). An omitted value is always delegated to ORCA.
 """
@@ -27,6 +27,19 @@ class BlockOption:
     hint: str = ""
     minimum_exclusive: bool = False
     maximum_exclusive: bool = False
+
+
+# Each setting has one typed project value. ORCA 6.1.1 processes these simple
+# keywords in a fixed order, even when they appear on different ! lines.
+SIMPLE_INPUT_CONTROLS = {
+    BlockOption("output", "PrintLevel", "Output detail", "choice",
+                choices=("Nothing", "Mini", "Small", "Normal", "Maxi", "Large", "Huge", "Debug"),
+                hint="MiniPrint selects minimal output. Leave this field unset for the ORCA default."):
+        {level: level + "Print" for level in ("Small", "Mini", "Large", "Normal")},
+    BlockOption("scf", "AutoStart", "Reuse orbitals from a matching GBW file", "bool",
+                hint="For single points, Off writes NoAutoStart. ORCA ignores AutoStart during geometry optimization."):
+        {True: "AutoStart", False: "NoAutoStart"},
+}
 
 
 def _positive(block, key, label, hint=""):
@@ -215,7 +228,7 @@ def catalog_options(spec):
     has_derivatives = spec.job_type != "SP"
     has_frequency = spec.job_type in ("FREQ", "OPT_FREQ")
     numerical = uses_numerical_frequencies(spec)
-    options = []
+    options = list(SIMPLE_INPUT_CONTROLS)
     if spec.method.startswith("Native-"):
         options.extend(_NATIVE_XTB_SCF)
     elif spec.method in CBS_PROTOCOLS:

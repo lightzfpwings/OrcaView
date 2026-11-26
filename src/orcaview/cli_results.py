@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 
 from orcaview.gui.result_display import log_property_series, source_label
-from orcaview.results.broadening import stick_spectrum
+from orcaview.results.nmr import coupling_pairs, default_shape, plot_source
 from orcaview.results.spectrum_profile import PlotProfile, PlotStyle, spectrum_csv
 
 
@@ -34,8 +34,11 @@ def register(sub):
     spectrum.add_argument("--format", choices=("table", "sticks", "curve", "png"),
                           help="CSV table, printed sticks, sampled curve, or offscreen PNG")
     spectrum.add_argument("-o", "--output", type=Path, help="Output path (required for PNG)")
-    spectrum.add_argument("--unit", choices=("nm", "eV", "cm-1", "cm⁻¹"))
-    spectrum.add_argument("--shape", choices=("gaussian", "lorentzian", "pseudo-voigt"), default="gaussian")
+    spectrum.add_argument("--unit", choices=("nm", "eV", "cm-1", "cm⁻¹", "ppm"))
+    spectrum.add_argument("--element", help="Element for an NMR plot (defaults to H when present)")
+    spectrum.add_argument("--reference-ppm", type=float, help="Reference shielding for that element, for δ = σref − σ")
+    spectrum.add_argument("--shape", choices=("gaussian", "lorentzian", "pseudo-voigt"),
+                          help="Line shape (NMR defaults to Lorentzian, other spectra to Gaussian)")
     spectrum.add_argument("--fwhm", type=float, help="Full width at half maximum in the selected axis unit")
     spectrum.add_argument("--mix", type=float, default=.5, help="Lorentzian fraction for pseudo-Voigt (0–1)")
     spectrum.add_argument("--points", type=int, default=1201, help="Base sampling grid (2–20001)")
@@ -73,6 +76,20 @@ def _delimited(columns, rows, delimiter=","):
     writer.writerow(columns)
     writer.writerows(rows)
     return stream.getvalue()
+
+
+def pick_dataset(datasets, selector, geometry=None):
+    # Older projects can retain the native import's missing Mulliken record
+    # alongside a measured charge column for the same frame. Both keep their IDs.
+    measured = {d.geometry for d in datasets if d.kind == selector and d.values is not None}
+    def keys(d):
+        if geometry is not None and d.geometry != geometry:
+            return ()
+        if (d.kind == "mulliken-charge" and d.values is None and d.missing_reason
+                and d.provenance.kind == "orca-native-import" and d.geometry in measured):
+            return (d.dataset_id,)
+        return d.dataset_id, d.kind
+    return _pick(datasets, selector, keys, "dataset")
 
 
 def _json(value):
@@ -153,7 +170,7 @@ def _results(args):
         payload["source_type"] = source_label(snapshot, None)
         table = _atomic_table(snapshot)
     elif args.dataset is not None:
-        data = _pick(datasets, args.dataset, lambda d: (d.dataset_id, d.kind), "dataset")
+        data = pick_dataset(datasets, args.dataset)
         snapshot = session.document.resolve(data.geometry)
         payload = asdict(data)
         payload["source_type"] = source_label(snapshot, data)
@@ -195,16 +212,19 @@ def _selected_spectrum(args, report):
     return _pick(report.spectra, args.table, lambda t: (t.kind, t.title), "spectrum")
 
 
-def _spectrum_source(table, unit):
-    source = stick_spectrum(table, "cm⁻¹" if unit == "cm-1" else unit)
+def _spectrum_source(table, args):
+    source = plot_source(table, "cm⁻¹" if args.unit == "cm-1" else args.unit,
+                         element=args.element, reference=args.reference_ppm)
     if source is None:
+        if coupling_pairs(table):
+            raise ValueError("Choose --format png for a signed J plot or --format table for the printed nucleus pairs.")
         raise ValueError("This table has no printed stick strengths. Choose --format table to export its columns.")
     return source
 
 
 def _profile(source, args):
     width = source.default_fwhm if args.fwhm is None else args.fwhm
-    return PlotProfile.setup(source, args.shape, width, args.mix, args.range, args.points).sampled()
+    return PlotProfile.setup(source, args.shape or default_shape(source), width, args.mix, args.range, args.points).sampled()
 
 
 def _spectrum(args):
@@ -214,6 +234,8 @@ def _spectrum(args):
     kind = args.format
     if kind is None and args.output and args.output.suffix.lower() == ".png":
         kind = "png"
+    if kind in (None, "table") and (args.element is not None or args.reference_ppm is not None):
+        raise ValueError("Choose --format sticks, curve or png to plot NMR positions. The table contains the raw values.")
     if kind == "png":
         if args.output is None or str(args.output) == "-":
             raise ValueError("PNG export requires --output FILE.")
@@ -227,7 +249,7 @@ def _spectrum(args):
         if kind is None or kind == "table":
             text = _delimited(table.columns, table.rows)
         else:
-            source = _spectrum_source(table, args.unit)
+            source = _spectrum_source(table, args)
             if kind == "curve":
                 profile = _profile(source, args)
                 scale = profile.peak_height if args.normalize and profile.peak_height else 1.0
@@ -241,11 +263,24 @@ def _spectrum(args):
 def render_spectrum_image(args):
     """Called in a Qt worker configured for offscreen drawing."""
     from orcaview.cli_io import load_session
+    from orcaview.gui.nmr_couplings import CouplingFigure
     from orcaview.gui.result_display import report_text
     from orcaview.gui.spectrum_plot import SpectrumFigure, save_spectrum_figure
+    from orcaview.gui.spectrum_preview_export import save_spectrum_png
 
     table = _selected_spectrum(args, load_session(Path(args.input)).log_report)
-    source = _spectrum_source(table, args.unit)
+    pairs = coupling_pairs(table)
+    if pairs:
+        if (any(value is not None for value in (args.element, args.reference_ppm, args.unit, args.shape, args.fwhm,
+                                                args.range, args.reverse)) or args.normalize or args.layers != "both"
+                or args.points != 1201 or args.mix != .5 or args.color != PlotStyle.color
+                or args.stroke_width != PlotStyle.stroke_width):
+            raise ValueError("The J plot shows printed values by nucleus pair. Its appearance option is --[no-]grid.")
+        figure = CouplingFigure(report_text(table.title), pairs)
+        figure.grid = args.grid
+        save_spectrum_png(args.output, figure)
+        return 0
+    source = _spectrum_source(table, args)
     if not re.fullmatch(r"#[\da-fA-F]{6}", args.color, re.ASCII):
         raise ValueError("The curve color must use #RRGGBB.")
     if not .5 <= args.stroke_width <= 6:

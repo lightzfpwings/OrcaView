@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from orcaview.application.project import load_project
+from orcaview.application.project import load_project, save_project
 from orcaview.application.session import Session
 from orcaview.cli import main
 from orcaview.core.block_options import BlockOverride
@@ -16,6 +16,59 @@ from orcaview.orca.input import render_input
 
 
 class PreviewTextTests(unittest.TestCase):
+    def test_print_and_autostart_round_trip_from_keywords_blocks_and_cli(self):
+        session = Session()
+        original = session.input_text()
+        head = session.document.head
+        settings = (BlockOverride("output", "PrintLevel", "Mini"), BlockOverride("scf", "AutoStart", False))
+        text = session.apply_input_preview("!mInIpRiNt\n!NOAUTOSTART\n" + original)
+        self.assertIn(" MiniPrint NoAutoStart ", text)
+        self.assertEqual(session.calculation.block_options, settings)
+        blocks = "%output PrintLevel mini end\n%scf AutoStart = FaLsE end\n"
+        self.assertEqual(session.apply_input_preview(blocks + original), text)
+        self.assertIs(session.document.head, head)
+        with TemporaryDirectory() as tmp:
+            project, out = Path(tmp, "water.oview.json"), Path(tmp, "water.inp")
+            save_project(session, project)
+            self.assertEqual(load_project(project).input_text(), text)
+            self.assertEqual(main(["preview", str(project), "--set", "output.PrintLevel=Huge",
+                                   "--set", "scf.AutoStart=true", "-o", str(out)]), 0)
+            result = out.read_text()
+            self.assertIn(" AutoStart ", result)
+            self.assertIn("%output\n  PrintLevel Huge\nend", result)
+            self.assertNotIn("MiniPrint", result)
+        self.assertEqual(session.apply_input_preview(original), original)
+        self.assertEqual(session.calculation.block_options, ())
+
+    def test_print_and_autostart_follow_orca_input_priority(self):
+        session = Session()
+        original = session.input_text()
+        for level in ("Mini", "Small", "Normal", "Large", "Nothing", "Maxi", "Huge", "Debug"):
+            result = session.apply_input_preview(f"%output PrintLevel {level} end\n" + original)
+            self.assertEqual(session.calculation.block_options, (BlockOverride("output", "PrintLevel", level),))
+            self.assertEqual(session.apply_input_preview(result), result)
+        for flags in ("NormalPrint LargePrint AutoStart NoAutoStart", "NoAutoStart AutoStart LargePrint NormalPrint"):
+            result = session.apply_input_preview(original + "! " + flags)
+            self.assertIn(" NormalPrint NoAutoStart ", result)
+        blocks = "%output PrintLevel Large end\n%scf AutoStart false AutoStart true end\n"
+        result = session.apply_input_preview(blocks + original + "!NoAutoStart MiniPrint")
+        self.assertIn(" LargePrint AutoStart ", result)
+        self.assertNotIn("%output", result)
+
+    def test_miniprint_spelling_preserves_mini_basis_and_invalid_drafts_are_atomic(self):
+        session = Session()
+        original = session.input_text().replace("def2-SVP", "MINI")
+        text = session.apply_input_preview(original + "! MiniPrint")
+        self.assertEqual(session.calculation.basis, "MINI")
+        self.assertIn(" MINI MiniPrint ", text)
+        for invalid, reason in ((original + "! mini print", "MiniPrint as one word"),
+                                (text + "! miniprint", "Duplicate ! keyword"),
+                                (original + "%output PrintLevel MiniPrint end", "Allowed values"),
+                                (original + "%scf AutoStart perhaps end", "true or false")):
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
+                session.apply_input_preview(invalid)
+            self.assertEqual(session.input_text(), text)
+
     def test_compact_input_syncs_and_survives_save_reload_and_cli(self):
         session = Session()
         raw = """! opt  PBE0  def2-tzvp TightSCF
@@ -118,6 +171,34 @@ class PreviewWidgetTests(unittest.TestCase):
     def tearDown(self):
         with patch.object(self.window, "_guard_discard", return_value=True):
             self.window.close()
+
+    def test_input_tab_and_block_controls_agree_on_print_and_autostart(self):
+        w, editor = self.window, self.editor
+        original = editor.toPlainText()
+        editor.setFocus()
+        editor.setPlainText(original + "!miniprint noautostart\n")
+        QTest.keyClick(editor, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertTrue(w.export_button.isEnabled())
+        panel = w.block_options
+        panel.toggle.setChecked(True)
+        for block in ("output", "scf"):
+            panel.groups[block].toggle.setChecked(True)
+        level = panel.groups["output"].fields["PrintLevel"]
+        restart = panel.groups["scf"].fields["AutoStart"]
+        self.assertEqual((level.currentData(), restart.currentData()), ("Mini", "false"))
+        level.setCurrentIndex(level.findData("Normal"))
+        restart.setCurrentIndex(restart.findData("true"))
+        self.assertIn(" NormalPrint AutoStart ", editor.toPlainText())
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp, "settings.inp")
+            with patch("orcaview.gui.main_window.QFileDialog.getSaveFileName", return_value=(str(path), "")):
+                w.export_input()
+            self.assertEqual(path.read_text(), editor.toPlainText())
+        panel.groups["output"].reset.click()
+        self.assertIn(" AutoStart ", editor.toPlainText())
+        panel.groups["scf"].reset.click()
+        self.assertEqual(editor.toPlainText(), original)
 
     def test_leave_updates_visible_controls_and_normalizes_once(self):
         w, editor = self.window, self.editor

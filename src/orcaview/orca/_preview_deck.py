@@ -1,9 +1,11 @@
 """Read the structure of one editable inline ORCA deck, independently of Qt."""
 
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, replace
 import re
 
+from ..core._block_catalog import SIMPLE_INPUT_CONTROLS
+from ..core.block_options import parse_option_value
 from ..core.models import Atom
 from ..io._quantum_geometry import atom
 from .input import GENERATED_COMMENT, inline_coordinate
@@ -22,6 +24,26 @@ class Deck:
 _TOKENS = re.compile(r'"[^"]*"|#[^#]*(?:#|$)|[^\s="#;]+|[=;]|"')
 _COORDINATE = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[ed][+-]?[0-9]+)?")
 _NESTED = {"scf": {"trah"}, "casscf": {"ci", "ptsettings", "aughess", "dmrg"}}
+_CONTROL_FIELDS = {(option.block, option.key.casefold()): option for option in SIMPLE_INPUT_CONTROLS}
+CONTROL_WORDS = frozenset(word.casefold() for names in SIMPLE_INPUT_CONTROLS.values() for word in names.values())
+
+
+def _control_keywords(words, fields):
+    if any(a == "mini" and b == "print" for a, b in zip(words, words[1:])):
+        raise ValueError("Write MiniPrint as one word in the ! line. MINI is an orbital basis set.")
+    counts = Counter(words)
+    for option, spellings in SIMPLE_INPUT_CONTROLS.items():
+        selected = None
+        for value, keyword in spellings.items():
+            count = counts[keyword.casefold()]
+            if count > 1:
+                raise ValueError(f"Duplicate ! keyword: {keyword}")
+            if count:
+                selected = str(value).casefold()
+        if selected is not None:
+            # ORCA processes explicit block assignments after every simple keyword.
+            fields.setdefault((option.block, option.key.casefold()), selected)
+    return tuple(word for word in words if word not in CONTROL_WORDS)
 
 
 def _tokens(line, comments):
@@ -75,7 +97,10 @@ def _block(fields, name, tokens):
         elif key in ("scspar", "dftcis_c"):
             while value.endswith(","):
                 value += take()
-        if (parent, key) in fields:
+        if (parent, key) in _CONTROL_FIELDS:
+            # Check each assignment, including those superseded later in the file.
+            parse_option_value(_CONTROL_FIELDS[parent, key], value)
+        elif (parent, key) in fields:
             raise ValueError(f"Duplicate input setting: %{parent} {key}")
         fields[parent, key] = value
     if cursor != len(tokens):
@@ -144,6 +169,7 @@ def read_deck(text):
     if not rows:
         raise ValueError("A molecule requires at least one atom")
     fields = block_fields(blocks)
+    words = _control_keywords(words, fields)
     if maxcore is not None:
         fields["", "maxcore"] = maxcore
     if "bohrs" in words and "angs" in words:

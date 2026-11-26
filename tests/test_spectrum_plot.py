@@ -144,7 +144,7 @@ class SpectrumPlotTests(unittest.TestCase):
                     self.assertEqual(images[0].size(), images[1].size())
                     self.assertNotEqual(images[0], images[1])
                     self.assertEqual(images[0].pixelColor(5, 5).alpha(), 0)
-                    self.assertEqual([state[0] for state in grid_states], [kind == "nmr"] * 2)
+                    self.assertEqual(grid_states, [(False, kind == "nmr")] * 2)
                     if kind == "vibrations":
                         self.assertFalse(grid_states[0][1])
                         def with_grid(options):
@@ -345,7 +345,7 @@ class SpectrumPlotTests(unittest.TestCase):
         self.assertEqual(self.preview._profile.limits, (1010., 1010.04))
         self.assertTrue(any(y > 0 for _, y in self.preview._profile.curve))
 
-    def test_changing_table_updates_open_plot_and_hides_it_for_nmr(self):
+    def test_changing_table_updates_open_plot_including_nmr(self):
         ir = SpectrumTable("ir", "IR", ("Wavenumber (cm⁻¹)", "IR intensity (km/mol)"), ((1100., 9.),), 25)
         self.preview.set_spectrum(ir)
         new_dialog = self.preview._dialog
@@ -359,7 +359,49 @@ class SpectrumPlotTests(unittest.TestCase):
         self.preview.set_spectrum(SpectrumTable("nmr", "NMR", ("Nucleus", "Element", "Shielding (ppm)"),
                                                 ((1, "H", 5.5),), 40))
         self.assertFalse(new_dialog.isVisible())
-        self.assertTrue(self.preview.plot_button.isHidden())
+        self.assertFalse(self.preview.plot_button.isHidden())
+        self.assertTrue(self.preview._dialog.isVisible())
+        self.assertEqual(self.preview._profile.shape, "lorentzian")
         self.assertIn("5.5 ppm", self.preview.accessibleDescription())
         self.preview.set_spectrum(None)
         self.assertTrue(self.preview.isHidden())
+
+    def test_nmr_reference_is_per_element_and_exports_current_view(self):
+        table = SpectrumTable("nmr", "NMR chemical shielding", ("Index", "Element", "Shielding (ppm)"),
+                              ((0, "C", 180.), (1, "H", 30.), (2, "H", 28.), (3, "H", 27.), (4, "H", 26.)), 1)
+        self.preview.set_spectrum(table)
+        dialog = self.preview._dialog
+        self.assertEqual(dialog.element.currentText(), "H")
+        self.assertFalse(dialog.reverse.isChecked())
+        dialog.reference.setText("31")
+        self.assertEqual(self.preview._profile.source.peaks, ((1., 1), (3., 1), (4., 1), (5., 1)))
+        self.assertTrue(dialog.reverse.isChecked())
+        dialog.element.setCurrentText("C")
+        self.assertEqual(dialog.reference.text(), "")
+        self.assertEqual(self.preview._profile.source.peaks, ((180., 1),))
+        dialog.reference.setText("bad")
+        self.assertFalse(self.preview.export_image_button.isEnabled())
+        self.assertFalse(dialog.export_button.isEnabled())
+        dialog.element.setCurrentText("H")
+        self.assertEqual(dialog.reference.text(), "31")
+        self.assertTrue(self.preview.export_image_button.isEnabled())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dialog.save_export(root / "settings.png", "png")
+            dialog.close()
+            exported = self.export_image_from_preview(root / "direct.png")
+            self.assertEqual(exported, QImage(str(root / "settings.png")))
+        dialog.reset()
+        self.assertIsNone(self.preview._profile.source.reference)
+
+    def test_nmr_coupling_plot_draws_pairs_beyond_the_first_three(self):
+        first = (("0 H", "1 H", -5.), ("0 H", "2 H", 0.), ("1 H", "2 H", 10.))
+        with tempfile.TemporaryDirectory() as directory:
+            images = []
+            for value in (8., -8.):
+                table = SpectrumTable("nmr", "NMR spin–spin coupling", ("a", "b", "J (Hz)"),
+                                      first + (("2 H", "3 H", value),), 5)
+                self.preview.set_spectrum(table)
+                self.assertEqual(len(self.preview._dialog.figure.pairs), 4)
+                images.append(self.export_image_from_preview(Path(directory, "pairs.png")))
+            self.assertNotEqual(*images)

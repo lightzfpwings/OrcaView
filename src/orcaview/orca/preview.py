@@ -12,7 +12,7 @@ from ..core.methods import (
 )
 from ..core.models import CalculationSpec, SCF_CONVERGENCE
 from ..core.solvation import MODELS
-from ._preview_deck import edited_geometry, read_deck, template_fields
+from ._preview_deck import CONTROL_WORDS, edited_geometry, read_deck, template_fields
 from .input import method_input, render_input
 
 
@@ -217,7 +217,7 @@ def parse_preview(text, molecule, base):
                 error = exc
             continue
         result = molecule, mapping, spec, normalized
-        if tuple(rendered_words[1:]) == deck.words:
+        if tuple(word for word in rendered_words[1:] if word not in CONTROL_WORDS) == deck.words:
             return result
         if first_match is None:
             first_match = result

@@ -79,6 +79,7 @@ class MoleculeViewport(MoleculeEditView):
         self._editable_bonds = ()
         self.appearance = AppearanceSettings()
         self._colors = _atom_colors(self.appearance, {})
+        self.population_map = None
         self._center_distances = ()
         self._center = (0., 0., 0.)
         self._fit_radius = 1.2
@@ -145,6 +146,7 @@ class MoleculeViewport(MoleculeEditView):
     def set_molecule(self, molecule, *, keep_view=False):
         keep_view = keep_view and self.molecule is not None and bool(self.molecule.atoms)
         self.molecule = molecule
+        self.population_map = None
         self._track_hover(None)
         self.selected = []
         # Previously projected atoms must not be pickable after changing geometry.
@@ -337,7 +339,10 @@ class MoleculeViewport(MoleculeEditView):
 
     def _draw_molecule(self, painter, scale, projected, selection_labels=(), hover=()):
         atoms = self.molecule.atoms
-        colors = [self._colors.get(atom.element, _FALLBACK_ATOM) for atom in atoms]
+        population = self.population_map
+        colored = population is not None and population.style.color_atoms
+        numeric_labels = population is not None and population.style.labels
+        colors = population.colors if colored else [self._colors.get(atom.element, _FALLBACK_ATOM) for atom in atoms]
         model = self.appearance.model
         if model != "space-filling":
             points = [QPointF(x, y) for x, y, z, radius in projected]
@@ -371,7 +376,7 @@ class MoleculeViewport(MoleculeEditView):
                 painter.drawEllipse(QPointF(x, y), outer, outer)
             if model in ("stick", "wireframe"):
                 painter.setBrush(color)
-                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setPen(QPen(_MUTED, .7) if colored and color.lightness() > 215 else Qt.PenStyle.NoPen)
             else:
                 gradient = QRadialGradient(QPointF(x - size * 0.28, y - size * 0.36), size * 1.47)
                 gradient.setColorAt(0, color.lighter(110))
@@ -381,9 +386,16 @@ class MoleculeViewport(MoleculeEditView):
                 painter.setBrush(gradient)
                 painter.setPen(QPen(color.darker(128), 0.8))
             painter.drawEllipse(QPointF(x, y), size, size)
-            if self.labels and index not in selection_labels:
+            if colored and population.values[index] is None:
+                mark = min(5., max(2., size * .55))
+                painter.setPen(QPen(QColor("#333333"), 1.5))
+                painter.drawLine(QPointF(x-mark, y-mark), QPointF(x+mark, y+mark))
+                painter.drawLine(QPointF(x-mark, y+mark), QPointF(x+mark, y-mark))
+            if self.labels and not numeric_labels and index not in selection_labels:
                 painter.setPen(_MUTED)
                 painter.drawText(QPointF(x + size + 5, y - size - 2), "{}{}".format(atoms[index].element, index + 1))
+        if population is not None:
+            population.draw_annotations(painter, self, projected, self.labels, selection_labels)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -393,7 +405,8 @@ class MoleculeViewport(MoleculeEditView):
             return
         atoms = self.molecule.atoms
         scale, self._projected = self._project_atoms()
-        selection_labels = set(self.selected) if self.labels else ()
+        numeric_labels = self.population_map is not None and self.population_map.style.labels
+        selection_labels = set(self.selected) if self.labels or numeric_labels else ()
         self._draw_molecule(painter, scale, self._projected, selection_labels, self._refresh_hover())
         # Table selection may address an atom behind another in this projection.
         if self.selected:
@@ -404,7 +417,7 @@ class MoleculeViewport(MoleculeEditView):
             for position, index in enumerate(self.selected):
                 x, y, _, radius = self._projected[index]
                 painter.drawEllipse(QPointF(x, y), radius + 4, radius + 4)
-                if group_selection and not self.labels:
+                if numeric_labels or (group_selection and not self.labels):
                     continue
                 label = f"{atoms[index].element}{index + 1}"
                 width = metrics.horizontalAdvance(label)

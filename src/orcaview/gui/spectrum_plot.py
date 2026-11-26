@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from functools import partial
 import math
 
 from PySide6.QtCore import QIODevice, QObject, QPointF, QRectF, QRunnable, QSaveFile, Qt, QThreadPool, Signal, Slot
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QFrame, QGroupBox, QHBoxLayout, QMenu, QMessageBox,
+    QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLineEdit, QMenu, QMessageBox,
     QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -18,7 +17,7 @@ from orcaview.gui.result_display import report_text
 from orcaview.gui.spectrum_image_dialog import SpectrumImageDialog
 from orcaview.gui.spectrum_preview_export import capture_spectrum_figure, save_spectrum_png
 from orcaview.i18n import tr
-from orcaview.results.broadening import stick_spectrum
+from orcaview.results.nmr import ShieldingSpectrum, default_shape, plot_source, shielding_elements
 from orcaview.results.spectrum_profile import PlotProfile, PlotStyle, spectrum_csv
 
 
@@ -95,7 +94,7 @@ def _pen(color, width):
     return QPen(QColor(color), width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
 
 
-def _axis_ticks(low, high, count):
+def axis_ticks(low, high, count):
     target = high / count - low / count
     if target <= 0 or not math.isfinite(target):
         return [low, high]
@@ -144,10 +143,10 @@ def draw_traces(painter, rect, profile, style, *, compact=False, grid=None):
     show_grid = style.grid if grid is None else grid
     if show_grid and not compact:
         painter.setPen(_pen(_GRID, .8))
-        for value in _axis_ticks(ymin / scale, ymax / scale, 4):
+        for value in axis_ticks(ymin / scale, ymax / scale, 4):
             y = py(value * scale)
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
-        for value in _axis_ticks(xmin, xmax, 5 if rect.width() > 400 else 3):
+        for value in axis_ticks(xmin, xmax, 5 if rect.width() > 400 else 3):
             x = px(value)
             painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
     painter.setPen(_pen(_AXIS, 1))
@@ -178,6 +177,13 @@ def _shape_label(shape):
     return tr(next(label for label, key in _SHAPES if key == shape))
 
 
+def plot_title(title, source):
+    if isinstance(source, ShieldingSpectrum):
+        job, separator, _ = title.rpartition(" · ")
+        return job + separator + tr("Uncoupled {element} NMR", element=source.element)
+    return title
+
+
 class SpectrumFigure(QWidget):
     def __init__(self):
         super().__init__()
@@ -186,8 +192,11 @@ class SpectrumFigure(QWidget):
         self.profile = self.style = None
         self.title = self.error = ""
 
+    def capture(self, grid=None, size=None):
+        return capture_spectrum_figure(self, grid, size)
+
     def export_image(self, parent):
-        choose_spectrum_image(parent, self.title, partial(capture_spectrum_figure, self), self.style.grid)
+        choose_spectrum_image(parent, plot_title(self.title, self.profile.source), self.capture, self.style.grid)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -213,25 +222,28 @@ class SpectrumFigure(QWidget):
         painter.setFont(font)
         painter.setPen(_INK)
         title_box = bounds.adjusted(20, 8, -20, -bounds.height() + 54)
-        painter.drawText(title_box, _CENTER | Qt.TextFlag.TextWordWrap, self.title)
+        painter.drawText(title_box, _CENTER | Qt.TextFlag.TextWordWrap, plot_title(self.title, profile.source))
         font.setPixelSize(12)
         font.setBold(False)
         painter.setFont(font)
         painter.setPen(_MUTED)
+        if isinstance(profile.source, ShieldingSpectrum) and profile.source.reference is not None:
+            reference = tr("Reference shielding σ = {value} ppm", value=f"{profile.source.reference:.10g}")
+            painter.drawText(bounds.adjusted(12, 48, -12, -bounds.height() + 68), _CENTER, reference)
         y_label = tr("Relative height") if style.normalized else tr(profile.source.y_label)
         painter.drawText(QRectF(left, rect.top() - 25, rect.width(), 19), _LEFT, y_label)
         ymin, ymax = draw_traces(painter, rect, profile, style, grid=grid)
         painter.setPen(_pen(_AXIS, 1))
         painter.drawLine(rect.bottomLeft(), rect.bottomRight())
         painter.drawLine(rect.topLeft(), rect.bottomLeft())
-        for value in _axis_ticks(ymin, ymax, 4):
+        for value in axis_ticks(ymin, ymax, 4):
             fraction = (value - ymin) / (ymax - ymin)
             y = rect.bottom() - fraction * rect.height()
             painter.setPen(_MUTED)
             painter.drawText(QRectF(bounds.left(), y - 10, left - bounds.left() - 8, 20), _RIGHT,
                              _fmt(value, 4))
         xmin, xmax = profile.limits
-        for value in _axis_ticks(xmin, xmax, 5 if rect.width() > 400 else 3):
+        for value in axis_ticks(xmin, xmax, 5 if rect.width() > 400 else 3):
             fraction = (value - xmin) / (xmax - xmin)
             if style.reverse:
                 fraction = 1 - fraction
@@ -243,7 +255,8 @@ class SpectrumFigure(QWidget):
         y = bounds.bottom() - 15
         labels = []
         if style.layers != "curve":
-            labels.append((tr("Printed sticks"), None))
+            label = "Nuclear sites" if isinstance(profile.source, ShieldingSpectrum) else "Printed sticks"
+            labels.append((tr(label), None))
         if style.layers != "sticks":
             text = f"{_shape_label(profile.shape)}  ·  {tr('FWHM')} {_fmt(profile.fwhm)} {profile.source.unit}"
             if profile.shape == "pseudo-voigt":
@@ -327,6 +340,23 @@ class SpectrumPlotDialog(QDialog):
             settings.addWidget(box)
             return form
 
+        self.element = self.reference = None
+        if isinstance(profile.source, ShieldingSpectrum):
+            form = group("NMR")
+            self.element = QComboBox()
+            self.element.addItems(shielding_elements(table))
+            self.element.setCurrentText(profile.source.element)
+            form.addRow(tr("Element"), self.element)
+            self.reference = QLineEdit()
+            self.reference.setPlaceholderText(tr("Blank for shielding"))
+            self.reference.setToolTip(tr("Chemical shift δ = reference shielding − sample shielding."))
+            form.addRow(tr("Reference σ (ppm)"), self.reference)
+            if profile.source.reference is not None:
+                self.reference.setText(str(profile.source.reference))
+            self._references = {profile.source.element: self.reference.text()}
+            self.element.currentTextChanged.connect(self.change_element)
+            self.reference.textChanged.connect(self.change_reference)
+
         form = group("Line profile")
         self.shape = QComboBox()
         for label, key in _SHAPES:
@@ -334,7 +364,8 @@ class SpectrumPlotDialog(QDialog):
         self.shape.setCurrentIndex(self.shape.findData(profile.shape))
         form.addRow(tr("Shape"), self.shape)
         self.width = _spin(.000001, 1e9, 6, 1, profile.fwhm)
-        self.width.setToolTip(tr("Each printed strength sets its isolated peak height. FWHM uses the selected axis unit."))
+        self.width.setToolTip(tr("Each nucleus contributes one line of equal weight.") if self.element is not None
+                              else tr("Each printed strength sets its isolated peak height. FWHM uses the selected axis unit."))
         form.addRow(tr("FWHM"), self.width)
         self.mix = _spin(0, 100, 0, 5, 100 * profile.mix)
         self.mix.setSuffix("%")
@@ -390,8 +421,8 @@ class SpectrumPlotDialog(QDialog):
         actions.addStretch()
         self.export_button = QPushButton(tr("Export…"))
         export_menu = QMenu(self.export_button)
-        for label, kind in (("Export image…", "image"), ("Sampled curve (CSV)…", "curve"),
-                            ("Printed sticks (CSV)…", "sticks")):
+        sticks_label = "Nuclear sites (CSV)…" if self.element is not None else "Printed sticks (CSV)…"
+        for label, kind in (("Export image…", "image"), ("Sampled curve (CSV)…", "curve"), (sticks_label, "sticks")):
             action = export_menu.addAction(tr(label))
             action.triggered.connect(lambda checked=False, mode=kind: self.choose_export(mode))
         self.export_button.setMenu(export_menu)
@@ -451,9 +482,9 @@ class SpectrumPlotDialog(QDialog):
         if self._loading:
             return
         self._update_enabled()
-        source = stick_spectrum(self.table, unit=self.unit.currentText())
         self.figure.error = ""
         try:
+            source = self._source()
             if self.auto_range.isChecked():
                 limits = None
             else:
@@ -479,10 +510,40 @@ class SpectrumPlotDialog(QDialog):
         self.figure.error = error
         self._paint()
 
+    def _source(self):
+        if self.element is None:
+            return plot_source(self.table, self.unit.currentText())
+        text = self.reference.text().strip()
+        try:
+            reference = float(text) if text else None
+        except ValueError:
+            raise ValueError("Enter a finite reference shielding in ppm.") from None
+        return plot_source(self.table, element=self.element.currentText(), reference=reference)
+
+    def change_element(self, element):
+        if self._loading:
+            return
+        self._loading = True
+        self.reference.setText(self._references.get(element, ""))
+        self._loading = False
+        self.change_reference()
+
+    def change_reference(self):
+        if self._loading:
+            return
+        text = self.reference.text().strip()
+        self._references[self.element.currentText()] = text
+        self._loading = True
+        self.auto_range.setChecked(True)
+        self.reverse.setChecked(bool(text))
+        self._loading = False
+        self.update_style()
+        self.update_profile()
+
     def change_unit(self, unit):
         if self._loading:
             return
-        source = stick_spectrum(self.table, unit=unit)
+        source = self._source()
         self._loading = True
         self._set_unit_controls(source)
         self.width.setValue(source.default_fwhm)
@@ -497,11 +558,15 @@ class SpectrumPlotDialog(QDialog):
             self.update_style()
 
     def reset(self):
-        source = stick_spectrum(self.table)
+        source = plot_source(self.table)
         self._loading = True
+        if self.element is not None:
+            self._references.clear()
+            self.element.setCurrentText(source.element)
+            self.reference.clear()
         self.unit.setCurrentText(source.unit)
         self._set_unit_controls(source)
-        self.shape.setCurrentIndex(0)
+        self.shape.setCurrentIndex(self.shape.findData(default_shape(source)))
         self.width.setValue(source.default_fwhm)
         self.mix.setValue(50)
         self.sampling.setCurrentIndex(self.sampling.findData(1201))

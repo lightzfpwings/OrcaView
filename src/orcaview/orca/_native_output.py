@@ -20,10 +20,10 @@ _COORDINATE_HEADING = re.compile(
 )
 _XYZ_ROW = re.compile(rf"({_ELEMENT})\s+({_NUMBER})\s+({_NUMBER})\s+({_NUMBER})")
 _AU_ROW = re.compile(
-    rf"([0-9]{{1,18}})\s+({_ELEMENT})\s+({_NUMBER})\s+[0-9]+\s+{_NUMBER}"
+    rf"([0-9]{{1,18}})\s+({_ELEMENT})\s+({_NUMBER})(\*?)\s+[0-9]+\s+{_NUMBER}"
     rf"\s+({_NUMBER})\s+({_NUMBER})\s+({_NUMBER})"
 )
-_MULLIKEN_ROW = re.compile(rf"([0-9]{{1,18}})\s+({_ELEMENT})\s*:\s*({_NUMBER})")
+_POPULATION_ROW = re.compile(rf"([0-9]{{1,18}})\s+({_ELEMENT})\s*:\s*({_NUMBER})(?:\s+({_NUMBER}))?")
 _MULLIKEN_SUM = re.compile(rf"SUM OF ATOMIC CHARGES\s*:\s*({_NUMBER})", re.I)
 _ECHO_STATE = re.compile(rf"\*\s*XYZ(FILE)?\s+({_INT})\s+({_INT})(?:\s+(.+))?", re.I)
 _ECHO_RUN_TYPE = re.compile(r"(?:%METHOD\s+)?RUNTYP(?:\s*=\s*|\s+)([A-Z][A-Z0-9_-]*)\b", re.I)
@@ -153,31 +153,43 @@ def _geometry(lines, angstrom, bohr, scf_line):
     return tuple(atoms), heading, None
 
 
+def bohr_nuclear_charges(lines, heading, atoms):
+    """Read ZA only from a Bohr table that corroborates the selected geometry."""
+    rows = iter(_table(lines, heading))
+    _, columns = next(rows, (0, ""))
+    if columns.upper().split() != ["NO", "LB", "ZA", "FRAG", "MASS", "X", "Y", "Z"]:
+        raise ValueError
+    charges = []
+    has_ecp = False
+    for index, atom in enumerate(atoms):
+        match = _AU_ROW.fullmatch(next(rows, (0, ""))[1])
+        if not match or int(match[1]) != index or match[2] != atom.element:
+            raise ValueError
+        charge, atomic_number = _finite(match[3]), ATOMIC_NUMBERS[atom.element]
+        if match[4]:
+            if not charge.is_integer() or not 0 < charge < atomic_number:
+                raise ValueError
+            has_ecp = True
+        elif charge != atomic_number:
+            raise ValueError
+        converted = (_finite(value) * BOHR_IN_ANGSTROM for value in match.groups()[4:])
+        if not all(isclose(ang, au, rel_tol=0.0, abs_tol=1e-6)
+                   for ang, au in zip((atom.x, atom.y, atom.z), converted)):
+            raise ValueError
+        charges.append(charge)
+    if has_ecp and next(rows, (0, ""))[1].casefold() != "* core charge reduced due to ecp":
+        raise ValueError
+    if next(rows, None) is not None:
+        raise ValueError
+    return tuple(charges)
+
+
 def _crosscheck_bohr(lines, heading, bohr, atoms, scf_line):
     row_number = bohr[0]
     try:
         if len(bohr) != 1 or row_number <= heading or (scf_line is not None and row_number >= scf_line):
             raise ValueError
-        rows = iter(_table(lines, row_number))
-        _, columns = next(rows, (0, ""))
-        if columns.upper().split() != ["NO", "LB", "ZA", "FRAG", "MASS", "X", "Y", "Z"]:
-            raise ValueError
-        atom_count = 0
-        for index, (row_number, row) in enumerate(rows):
-            match = _AU_ROW.fullmatch(row)
-            if not match or index >= len(atoms):
-                raise ValueError
-            atom = atoms[index]
-            if int(match[1]) != index or match[2] != atom.element or _finite(match[3]) != ATOMIC_NUMBERS[atom.element]:
-                raise ValueError
-            converted = (_finite(value) * BOHR_IN_ANGSTROM for value in match.groups()[3:])
-            # ORCA's two coordinate tables each round independently to six decimal places.
-            if not all(isclose(ang, au, rel_tol=0.0, abs_tol=1e-6)
-                       for ang, au in zip((atom.x, atom.y, atom.z), converted)):
-                raise ValueError
-            atom_count += 1
-        if atom_count != len(atoms):
-            raise ValueError
+        bohr_nuclear_charges(lines, row_number, atoms)
     except ValueError:
         return OutputIssue(
             "conflicting_geometry", "The Bohr table format, atom identities or unit conversion disagree with the table in angstroms.", row_number,
@@ -255,7 +267,8 @@ def _mulliken(lines, atoms, charge, scf_line, normal_line):
     heading, match = headings[0]
     row_number = heading
     try:
-        if len(headings) > 1 or match[1]:
+        with_spin = match[1].strip().upper() == "AND SPIN POPULATIONS"
+        if len(headings) > 1 or (match[1] and not with_spin):
             raise ValueError("The Mulliken table is ambiguous or uses an unsupported header.")
         if not (scf_line is not None and normal_line is not None and scf_line < heading < normal_line):
             raise ValueError("The Mulliken charge table lies outside the verified calculation interval.")
@@ -266,14 +279,16 @@ def _mulliken(lines, atoms, charge, scf_line, normal_line):
             if total and row_number < normal_line:
                 printed_total = _finite(total[1])
                 break
-            entry = _MULLIKEN_ROW.fullmatch(row)
+            entry = _POPULATION_ROW.fullmatch(row)
             index = len(values)
             if (
                 not entry or index >= len(atoms) or int(entry[1]) != index
-                or entry[2] != atoms[index].element or row_number >= normal_line
+                or entry[2] != atoms[index].element or bool(entry[4]) != with_spin or row_number >= normal_line
             ):
                 raise ValueError("Mulliken table units, row format or ordered atom identities do not match.")
             values.append(_finite(entry[3]))
+            if with_spin:
+                _finite(entry[4])
         if not values or len(values) != len(atoms):
             raise ValueError("The Mulliken charge table has the wrong atom count.")
         if printed_total is not None:
@@ -450,7 +465,6 @@ def _hirshfeld_table(lines, start, atoms):
 def population_tables(lines, geometry_line, molecule):
     """Read ordered, charge-balanced population tables printed for this coordinate block."""
     lines = tuple(line.strip() for line in lines)
-    population_row = re.compile(rf"([0-9]+)\s+({_ELEMENT})\s*:\s*({_NUMBER})(?:\s+({_NUMBER}))?")
     for i in range(geometry_line, len(lines)):
         heading = _COORDINATE_HEADING.fullmatch(lines[i])
         if heading and heading.lastgroup == "angstrom":
@@ -468,11 +482,16 @@ def population_tables(lines, geometry_line, molecule):
             continue
         values, spins = [], []
         try:
-            for _, row in _table(lines, i + 1):
+            for line_number, row in _table(lines, i + 1):
                 total = _MULLIKEN_SUM.fullmatch(row)
                 if total:
+                    following = lines[line_number] if line_number < len(lines) else ""
+                    if spins and following.upper().startswith("SUM OF ATOMIC SPIN POPULATIONS"):
+                        spin_total = re.fullmatch(rf"SUM OF ATOMIC SPIN POPULATIONS\s*:\s*({_NUMBER})", following, re.I)
+                        if not spin_total or not _matches_printed_charge_sum(spins, _finite(spin_total[1])):
+                            spins.clear()
                     break
-                m = population_row.fullmatch(row)
+                m = _POPULATION_ROW.fullmatch(row)
                 idx = len(values)
                 if (not m or idx >= len(molecule.atoms) or int(m[1]) != idx
                         or m[2] != molecule.atoms[idx].element or bool(m[4]) != bool(title[2])):

@@ -4,22 +4,22 @@ from __future__ import annotations
 
 from functools import partial
 import math
-import unicodedata
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from orcaview.gui import typography
+from orcaview.gui.nmr_couplings import CouplingFigure, CouplingPlotDialog, draw_pairs
 from orcaview.gui.result_display import report_text
 from orcaview.gui.spectrum_plot import (
     PlotProfile, PlotStyle, ProfileSampler, SpectrumFigure, SpectrumPlotDialog,
-    choose_spectrum_image, draw_traces,
+    choose_spectrum_image, draw_traces, plot_title,
 )
 from orcaview.gui.spectrum_preview_export import capture_preview
 from orcaview.i18n import tr
 from orcaview.orca.log_spectra import SpectrumTable
-from orcaview.results.broadening import stick_spectrum
+from orcaview.results.nmr import ShieldingSpectrum, coupling_pairs, default_shape, plot_source
 
 
 _INK = QColor("#372F2D")
@@ -58,7 +58,7 @@ class SpectrumPreview(QWidget):
         self._sampler = ProfileSampler(self)
         self._sampler.ready.connect(self._profile_ready)
         self._table = self._profile = self._style = self._dialog = None
-        self._samples = self._values = ()
+        self._samples = self._pairs = ()
         self._y_caption = self._x_unit = self._error = ""
         self.hide()
 
@@ -75,7 +75,7 @@ class SpectrumPreview(QWidget):
             self._dialog = None
         self._sampler.cancel()
         self._table, self._profile, self._style = table, None, None
-        self._samples = self._values = ()
+        self._samples = self._pairs = ()
         self._y_caption = self._x_unit = self._error = ""
         self.plot_button.hide()
         self.export_image_button.hide()
@@ -87,10 +87,11 @@ class SpectrumPreview(QWidget):
             self.hide()
             return
 
-        spectrum = stick_spectrum(table)
+        self.setAccessibleName(report_text(table.title))
+        spectrum = plot_source(table)
         if spectrum is not None:
             try:
-                self._profile = PlotProfile.setup(spectrum, "gaussian", spectrum.default_fwhm, .5)
+                self._profile = PlotProfile.setup(spectrum, default_shape(spectrum), spectrum.default_fwhm, .5)
             except (ValueError, OverflowError) as error:
                 self._error = tr(str(error))
             else:
@@ -103,44 +104,43 @@ class SpectrumPreview(QWidget):
         elif table.kind == "vibrations":
             self._samples = tuple((row[1], None) for row in table.rows if len(row) >= 2 and _number(row[1]))
             self._x_unit, self._y_caption = "cm⁻¹", tr("Mode positions")
-        elif table.kind == "nmr" and len(table.columns) >= 3:
-            coupling = "Hz" in table.columns[2]
-            self._x_unit = "Hz" if coupling else "ppm"
-            label = unicodedata.normalize("NFKC", report_text(table.columns[2])).split("(")[0].strip()
-            self._y_caption = f"{label} / {self._x_unit}"
-            rows = []
-            for row in table.rows[:3]:
-                if len(row) < 3:
-                    continue
-                nucleus = f"{row[0]} – {row[1]}" if coupling else f"{row[0]} {row[1]}"
-                value = f"{_format(row[2])} {self._x_unit}" if _number(row[2]) else "—"
-                rows.append((nucleus, value))
-            self._values = tuple(rows)
-        self.export_image_button.setVisible(bool(self._profile or self._samples or self._values))
-        self.export_image_button.setEnabled(not self._error and bool(self._samples or self._values))
-        self.setAccessibleName(report_text(table.title))
+        elif table.kind == "nmr":
+            self._pairs = coupling_pairs(table)
+            if self._pairs:
+                self._y_caption = tr("Isotropic J (Hz)")
+                self.plot_button.show()
+        self.export_image_button.setVisible(bool(self._profile or self._samples or self._pairs))
+        self.export_image_button.setEnabled(not self._error and bool(self._samples or self._pairs))
         self._describe()
         self.setFixedHeight(self.sizeHint().height())
         self.show()
         self.update()
-        if reopen and self._profile:
+        if reopen and (self._profile or self._pairs):
             self.open_plot()
 
     def _describe(self):
-        detail = [f"{name}   {value}" for name, value in self._values]
+        detail = [f"{a} – {b}   {_format(value)} Hz" for a, b, value in self._pairs[:3]]
         for x, y in self._samples[:3]:
             detail.append(f"{_format(x)} {self._x_unit}" + (f"   {_format(y)}" if y is not None else ""))
+        if self._profile and isinstance(self._profile.source, ShieldingSpectrum):
+            detail.append(f"{tr('Source table')} · {tr('Isotropic shielding')} / ppm")
+            for row in self._table.rows[:3]:
+                if len(row) >= 3 and _number(row[2]):
+                    detail.append(f"{row[0]} {row[1]}   {_format(row[2])} ppm")
         description = "\n".join(filter(None, (self._y_caption, *detail, self._error)))
         self.setAccessibleDescription(description)
         self.setToolTip("\n".join(filter(None, (self.accessibleName(), description))))
 
     def open_plot(self):
-        if self._profile is None:
+        if self._profile is None and not self._pairs:
             return
         if self._dialog is None:
-            self._dialog = SpectrumPlotDialog(self._table, self._profile, self._style, self._sampler, self)
-            self._dialog.set_profile(self._profile, self._error)
-            self._dialog.changed.connect(self._plot_changed)
+            if self._pairs:
+                self._dialog = CouplingPlotDialog(self.accessibleName(), self._pairs, self)
+            else:
+                self._dialog = SpectrumPlotDialog(self._table, self._profile, self._style, self._sampler, self)
+                self._dialog.set_profile(self._profile, self._error)
+                self._dialog.changed.connect(self._plot_changed)
         self._dialog.show()
         self._dialog.raise_()
         self._dialog.activateWindow()
@@ -155,6 +155,9 @@ class SpectrumPreview(QWidget):
         self._profile, self._style, self._error = profile, style, error
         self._x_unit, self._samples = profile.source.unit, profile.source.peaks
         self._y_caption = tr("Relative height") if style.normalized else tr(profile.source.y_label)
+        if isinstance(profile.source, ShieldingSpectrum):
+            self.setAccessibleName(plot_title(report_text(self._table.title), profile.source))
+            self._y_caption = f"{tr(profile.source.x_label)} (ppm) · {self._y_caption}"
         self.export_image_button.setEnabled(not error)
         self._describe()
         self.update()
@@ -162,15 +165,19 @@ class SpectrumPreview(QWidget):
     def export_image(self):
         if self._table is None or not self.export_image_button.isEnabled():
             return
+        if self._pairs:
+            figure = self._dialog.figure if self._dialog else CouplingFigure(self.accessibleName(), self._pairs)
+            figure.export_image(self)
+            return
         if self._profile is None:
-            capture = partial(capture_preview, self._table, self._samples, self._values,
+            capture = partial(capture_preview, self._table, self._samples,
                               self._y_caption, self._x_unit, self.font())
-            choose_spectrum_image(self, self.accessibleName(), capture, False if self._samples else None)
+            choose_spectrum_image(self, self.accessibleName(), capture, False)
             return
         if self._dialog is None:
             figure = SpectrumFigure()
             figure.setFont(self.font())
-            figure.title = self.accessibleName()
+            figure.title = report_text(self._table.title)
             figure.profile, figure.style = self._profile, self._style
         else:
             figure = self._dialog.figure
@@ -204,17 +211,13 @@ class SpectrumPreview(QWidget):
         painter.setPen(_MUTED)
         caption = painter.fontMetrics().elidedText(self._y_caption, Qt.TextElideMode.ElideRight, width)
         painter.drawText(QRectF(8, 22, width, 16), _LEFT, caption)
-        if self._values:
-            for i, (nucleus, value) in enumerate(self._values):
-                rect = QRectF(8, 40 + 18 * i, width, 18)
-                value_width = painter.fontMetrics().horizontalAdvance(value)
-                label = painter.fontMetrics().elidedText(nucleus, Qt.TextElideMode.ElideRight, max(0, width - value_width - 8))
-                painter.setPen(_INK)
-                painter.drawText(rect, _LEFT, label)
-                painter.setPen(_POSITIVE)
-                painter.drawText(rect, _RIGHT, value)
+        if self._pairs:
+            draw_pairs(painter, QRectF(10, 40, max(0, self.width() - 20), 37), self._pairs, compact=True)
+            painter.setPen(_MUTED)
+            painter.drawText(QRectF(6, 81, width + 4, 17), _CENTER,
+                             tr("Nucleus pairs ({count})", count=len(self._pairs)))
             return
-        if not self._samples:
+        if not self._samples or self._error:
             painter.drawText(QRectF(8, 43, width, 35), _CENTER, self._error or tr("No plottable values"))
             return
         if self._profile:
