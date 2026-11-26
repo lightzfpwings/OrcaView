@@ -1,104 +1,64 @@
 # OrcaView
 
-Draw a molecule in 2D, refine its 3D geometry and prepare an ORCA 6.1.1 input. Open a finished calculation to inspect its orbitals, charges and spectra, or export a spectrum as a vector PDF.
+OrcaView is a desktop application and command-line interface for preparing ORCA inputs and examining calculation results. Draw a molecule, edit its input, then open an ORCA output to inspect the calculated geometry, plot spectra or map atomic populations. Each imported population is associated with its atoms, geometry and source lines.
 
-OrcaView 0.1.0a58 fixes clipped calculation controls in narrow sidebars and restores the up and down arrows on Windows. [Download OrcaView 0.1.0a58](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a58)
+**Version 0.1.0a61** adds atomic population maps, element-resolved NMR plots and editable `MiniPrint` and `NoAutoStart` input settings. [Release notes and downloads](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a61)
 
-## Install and try OrcaView
+## Install
 
-| Platform | Package | Start |
+| Platform | Package | Launch |
 | --- | --- | --- |
-| Linux x86-64 | Portable tar.gz archive | Extract and run `./OrcaView` from the extracted folder on a graphical desktop. |
-| Windows x64 | ZIP containing `OrcaView.exe`, `LICENSE` and `Examples/` | Extract into a dedicated folder and double-click the EXE. |
-| macOS on Apple Silicon | DMG containing `OrcaView.app` and `Examples/` | Drag the app into Applications and copy the examples to a writable folder. |
+| Windows x64 | [Portable ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-0.1.0a61-Windows-x64-portable.zip) | Extract into a dedicated folder and open `OrcaView.exe`. |
+| macOS on Apple Silicon | [Disk image](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-0.1.0a61.macOS-arm64.dmg) | Drag `OrcaView.app` into Applications. Copy `Examples/` to a writable folder. |
+| Linux x86-64 | [Portable tar.gz](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-0.1.0a61-Linux-x86_64.tar.gz) | Extract and run `./OrcaView` from the extracted folder on a graphical desktop. |
 
-Each download includes Python, Qt, Open Babel and 20 example files. Structures, input generation and imported results work offline. New quantum chemistry calculations require a separate ORCA installation. The local job runner uses POSIX process control. The macOS app uses an ad hoc signature. [GitHub releases and checksums](https://github.com/lightzfpwings/OrcaView/releases) · [macOS opening instructions](https://support.apple.com/en-us/102445)
+All three packages include Python, Qt, Open Babel and 21 example files. Drawing structures, generating inputs and reading existing results work offline. Running a new calculation requires a separate ORCA installation. The local job runner supports macOS and Linux. The macOS app uses an ad hoc signature. [SHA-256 checksums](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/SHA256UMS.txt) · [macOS opening instructions](https://support.apple.com/en-us/102445)
 
-Open `Examples/water.xyz` to inspect the molecule and preview an ORCA input. Open `Examples/water-sp.out` for a small teaching example of energy and charge import. The sample single-point energy is −76.123456789012 hartree. Real ORCA output files include water vibrational and NMR results and peroxide electronic transitions.
+English is built in. The language pack adds German, Japanese, Simplified Chinese and Traditional Chinese. The color pack provides Contrast, Pastel and Grayscale element palettes. [Language pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-Extensions-01-Language-0.1.0a61.zip) · [Color pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a61/OrcaView-Extensions-02-Color-0.1.0a61.zip) · [Installation and authoring](docs/extensions/README.md)
 
-Edit **ORCA input preview**, then move the pointer outside the editor or press Tab. The calculation panel and molecular coordinates update together. The preview uses the same formatting as the exported input. An incomplete or unsupported edit stays in the editor with a diagnostic. Press Escape in the editor to restore the last applied input. The terminal equivalent is `orcaview preview molecule.xyz --edit-input edited.inp -o normalized.inp`.
+## Atomic populations in the hydroxyl radical
 
-### Export a structure image
+Open `Examples/hydroxyl-populations.out`. In **Result**, click **Atomic populations…** and select **Mulliken spin population**. For this unrestricted PBE/def2-SVP doublet, ORCA reports +1.024339 for oxygen and −0.024339 for hydrogen. Their sum is 1.000000. Labels display the signed values and the legend shows the range used to color the atoms. [ORCA input and output](examples/populations/hydroxyl.out)
 
-Choose **File → Export structure image…**. In Design, choose the 2D sketch or 3D view. In Input and Result, the image uses the displayed 3D geometry, camera and atom labels. The preview contains the structure alone.
+![Mulliken spin populations of the hydroxyl radical on a symmetric blue–white–red scale. Oxygen is labeled 1.024 and hydrogen −0.024.](artifacts/public/hydroxyl-spin.png)
 
-Choose PNG, JPEG, BMP or vector PDF. PNG and PDF offer transparent or white backgrounds. JPEG and 24-bit BMP use white.
+Switch between Mulliken, Löwdin, Hirshfeld and MBIS partitions when the output contains them. CHELPG supplies fitted charges. Choose red–white–blue, blue–white–red, rainbow or black–white, edit individual colors, or save a preset. Fixed limits and a midpoint let you compare the same quantity across structures. [Population definitions and ORCA log coverage](docs/ORCA_LOG_COVERAGE.md)
 
-Set the resolution multiplier from 1× to 8× (default 2×). At 4×, a 400 × 400 view is redrawn at 1600 × 1600 pixels with the same framing. Under **Advanced options**, set the final canvas dimensions. For example, 1800 × 1600 adds 100 pixels of space on either side of that 4× drawing. Smaller dimensions crop around the center. PDF retains vector detail and preserves the original print size when only the multiplier changes.
+From a source checkout with the GUI dependencies installed, these commands export the numerical table and reproduce the figure above.
 
-### Spectra
+```sh
+orcaview results examples/populations/hydroxyl.out --dataset mulliken-spin --format csv -o spin.csv
+orcaview render examples/populations/hydroxyl.out spin.png --population mulliken-spin \
+  --population-scale bwr --population-symmetric --labels --rotate y:76 --rotate z:12 \
+  --zoom 1.65 --width 600 --height 355
+```
 
-Open an ORCA `.log` or `.out` containing IR intensities, Raman activities, oscillator strengths or signed CD rotatory strengths. In **Results**, select a spectrum. The preview overlays the printed transitions and a Gaussian curve. **Plot settings…** opens the adjustable figure.
+## Spectra
 
-- Choose Gaussian, Lorentzian or pseudo-Voigt broadening, set the full width at half maximum (FWHM), and adjust the Lorentzian fraction for a mixed profile. The width uses the selected horizontal-axis unit.
-- Set the x limits and direction, select the curve, sticks or both, and customize normalization, grid, line width and color. Electronic spectra support wavelength, wavenumber and energy axes.
-- Choose **Export image…** under the preview or in the plot window’s export menu. The export preview starts with the current plot settings. Choose whether to include grid lines, and select PNG, JPEG, BMP or vector PDF. PNG and PDF support a transparent background.
-- Choose the original aspect ratio, 1:1, 4:3 or 16:9. The axes and legend adapt to the chosen shape. The default 2× scale produces 1800 × 1100 pixels at the original ratio or 1920 × 1080 at 16:9. Use **Advanced options** to add margins or crop the scaled drawing to an exact canvas size.
-- Standalone vibrational frequencies export as mode positions. NMR images contain the shielding or coupling values shown in the preview (up to three rows). The plot settings window also exports the sampled curve and original transitions as CSV.
+Open `Examples/water-nmr.out` and choose **NMR chemical shielding**. Both hydrogens in this calculation have an isotropic shielding of 31.130 ppm and contribute to one peak with weight two. To plot chemical shifts, enter a reference shielding for the same element and method. OrcaView plots δ = σref − σ in ppm. The one-dimensional spectrum uses uncoupled sites. **NMR spin–spin coupling** plots signed J values by atom pair in Hz. [Water NMR output](artifacts/public/validation/results-0.1.0a12/nmr/water-shield.out)
 
-![CD spectrum and line profile controls](artifacts/public/spectrum-plot.png)
+For IR and Raman, try `Examples/water-raman.out`. For UV/Vis absorption and signed circular dichroism, try `Examples/peroxide-uv-cd.out`. **Plot settings…** controls the axis units, line shape, full width at half maximum and stick overlay. Export the displayed figure as PNG, JPEG, BMP or vector PDF, or save the sticks and sampled curve as CSV. [Spectrum example](artifacts/public/spectrum-plot.png) · [CLI commands and export formats](docs/CLI_RESULTS.md)
 
-Try `Examples/water-raman.out` for IR and Raman or `Examples/peroxide-uv-cd.out` for UV/Vis and signed CD. The source log and printed peak data are preserved. [ORCA vibrational-spectrum documentation](https://www.faccts.de/docs/orca/6.1/manual/contents/spectroscopyproperties/vibrations.html)
+## Geometry and ORCA input
 
-### Language and element color packs
+The **Design** workspace pairs a 2D sketch with a 3D geometry. Add rings or hydrogens, edit bonds and coordinates, and optimize a starting geometry with Open Babel's MMFF94 or UFF force field. Import structures from XYZ, MOL/SDF, PDB and other formats. [Design commands](docs/CLI_DESIGN.md) · [Open Babel force fields](https://openbabel.org/docs/Forcefields/Overview.html)
 
-English is built in. The language extension adds Simplified Chinese, Traditional Chinese, German and Japanese, with matching Qt translations. Extract the ZIP, open **View → Interface language…**, choose the extracted **languages** folder, select a language, save and restart. [Language extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a58/OrcaView-Extensions-01-Language-0.1.0a58.zip)
+In **Input**, choose a method, basis set, charge and multiplicity, or edit the ORCA input preview and press Tab to apply it. For example, `! MiniPrint NoAutoStart` requests minimal output and disables automatic reuse of a same-name orbital file for a single-point calculation. The corresponding panel controls are `%output → PrintLevel` and `%scf → AutoStart`. [Supported methods and input blocks](docs/ORCA_METHODS.md) · [Native ORCA input examples](examples/native_methods/)
 
-The color extension includes Contrast, Pastel and Grayscale palettes. Extract the ZIP, open **View → Molecular appearance… → Import color pack…**, choose a JSON file from **colors** and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Color extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a58/OrcaView-Extensions-02-Color-0.1.0a58.zip)
+## Source and validation
 
-Both ZIPs include their own installation guide and JSON schema. [Extension author guide](docs/extensions/README.md)
-
-### Updating
-
-Use **Help → Check for Updates…** to discover a release for your platform and verify its SHA-256 checksum. Save your project before choosing the option to quit and update. The installed app restarts from the same location. Windows and Linux keep a sibling `.previous` backup and preserve personal projects and edited examples. Stable versions follow stable releases. Preview versions also discover prereleases.
-
-On Apple Silicon, versions through 0.1.0a55 need one manual upgrade. Quit OrcaView, open the new DMG and drag the app into Applications to replace the old copy. Versions 0.1.0a56 and later can update in the app.
-
-Windows 0.1.0a42 and earlier require a one-time manual upgrade to the single-file layout. Download and extract the Windows ZIP into a dedicated folder, then open your existing project in the new app. To retain an existing shortcut, quit the old app, rename its folder as a backup, and extract the new version at the original path.
-
-## Structures, input and results
-
-- Import XYZ, MOL/SDF, MOL2, PDB, CML, CDXML, SMILES, InChI and other formats through Open Babel. OrcaView can generate a starting 3D structure from a 2D file and offers a finite-cell representation for periodic inputs. It also reads coordinates from Gaussian, ORCA, Q-Chem, NWChem, Molden, FCHK, WFN and MWFN files. Binary GBW conversion requires a matching `orca_2mkl`.
-- Rotate the central viewport with the left mouse button, pan with the right button and zoom with the wheel. The initial view looks down +z with x to the right and y up. Choose two atoms to measure their distance. Axis controls also support numerical rotation angles.
-- Open **View → Molecular appearance…** to choose ball-and-stick, space-filling, stick or wireframe. Adjust atom size, bond thickness and the distance cutoff for inferred display bonds. The settings apply across all three workspaces and to exported structure images. [Color pack format and example](color-packs/README.md)
-- Configure methods, basis sets, job types, charge and multiplicity. Adjust advanced input blocks or edit and export a native `.inp`. Inline coordinates are written to eight decimal places. [Method reference](docs/ORCA_METHODS.md)
-- Read energies, orbitals, charges, dipoles, vibrations, electronic spectra and NMR properties from ORCA output. The read-only result tables support copying and retain the source filename and line. The Input workspace includes the input preview, result summary and messages.
-
-Project settings, design, results, spectra and image export are available from the terminal. Use `orcaview render molecule.xyz molecule.png` to draw a structure offscreen. Setting `ORCAVIEW_HEADLESS=1` skips interactive display commands in unattended jobs. [Batch CLI guide](docs/CLI.md)
-
-New jobs default to 16 ORCA processes and 4096 MB per process in both the desktop app and the CLI. Set either value independently with `--cores` or `--maxcore`. Use `orcaview resources` to see a recommendation for the current machine.
-
-Document dialogs start on the Desktop and exports default to the opened document’s folder. The mouse wheel scrolls the calculation settings panel. Ordinary HF and DFT frequency jobs use `Freq`, including supported solvent and dispersion settings. [Calculation methods](docs/ORCA_METHODS.md)
-
-## Molecule design
-
-The design workspace pairs an editable 2D drawing with its 3D geometry. Drag the center divider to change their widths or double-click it to restore an equal split. A new design starts with one carbon. You can remove every atom, undo, or start again by placing an atom or a ring.
-
-1. Choose an element by symbol or atomic number. Drag from an atom to add a bonded atom. The single, double and triple tools default to ordinary bonds. Their menus also include coordination lines and arrows, wedge bonds, aromatic partial bonds, crossed double bonds and partial triple bonds.
-2. The ring tool offers three- through eight-membered carbon rings and benzene. Place a standalone ring on empty space or attach it to an atom.
-3. Select a bond or Shift-select two atoms to measure a distance. On an acyclic bond, enter a target length and apply it to translate the selected side. Swap the endpoints to move the other side. Select an individual atom to edit its Cartesian coordinates.
-4. Drag a selection rectangle in the drawing or Shift-drag in either view to add atoms to a selection. The two views share the selection. Atom placement, bond length changes and coordinate edits support undo and redo.
-5. Click **+H**, then click atoms to add individual bonded hydrogens. Double-click **+H** to fill missing hydrogens for supported neutral singlets in one undoable operation. Manual addition is available for other charge and spin states. The design validation area reports unusual bonding.
-6. The 2D cleanup action arranges the drawing's bond lengths, angles and rings. The independent 3D optimization uses Open Babel MMFF94, with UFF as a fallback. ORCA input uses the 3D coordinates. The status shows the force field used. [Open Babel force fields](https://openbabel.org/docs/Forcefields/Overview.html)
-7. Return to Input to inspect or export a calculation. Each result remains associated with its calculated geometry. An individual result geometry can be sent back to Design.
-
-The sketch highlights the target atom or bond in teal, and the 3D pane uses a blue halo. With a bond tool active, click a bond in either pane to change or remove it. To delete atoms, select them and press Delete or Backspace. A new atom placed in empty 3D space uses the depth of the last selected atom, or the centre of the molecule when the selection is empty.
-
-## Build and test
-
-The core and CLI support Python 3.9 and newer. Use CPython 3.13 for the portable builds. Windows packaging also requires Go 1.23 or newer. Use an arm64 virtual environment on Apple Silicon for a macOS build.
+The core and CLI support Python 3.9 and later. In a virtual environment, run the following commands from the repository root.
 
 ```sh
 python -m pip install -e ".[gui]"
 python -m orcaview gui
-python -m orcaview preview examples/water.xyz --job OPT_FREQ
 python tools/run_tests.py -q
-python packaging/desktop/build.py both
-python packaging/build_extension_kit.py
 ```
 
-For macOS, install `PyInstaller==6.22.3` in the build environment and run `python packaging/macos/build.py`. Package outputs appear under `dist/<platform>/<version>/`. Once all platforms and extensions are built, run `python packaging/stage_release.py` to collect the five downloads and their `SHA256UMS.txt` manifest in release order. The test command includes both archived verification cases and tests in the checkout. [Portable build details](packaging/desktop/README.md) · [Validation history](docs/PUBLIC_VALIDATION.md)
+The regression suite combines the archived test set with tests in this checkout. The validation record includes reference ORCA 6.1.1 outputs and package checks for individual releases. Desktop builds use CPython 3.13. Windows packaging requires Go 1.23 or later. On Apple Silicon, install PyInstaller 6.22.3 and run `python packaging/macos/build.py`. [Validation record](docs/PUBLIC_VALIDATION.md) · [Linux and Windows build instructions](packaging/desktop/README.md) · [Batch CLI guide](docs/CLI.md)
 
-## Licensing
+Use **Help → Check for Updates…** for subsequent releases. On macOS, versions through 0.1.0a55 require a one-time manual replacement from the DMG. On Windows, versions through 0.1.0a42 require a one-time manual installation of the single-file package.
 
-OrcaView's own source uses the MIT license. Bundled libraries and ORCA output retain their respective licenses and notices. [License](LICENSE) · [Third-party software and source information](THIRD_PARTY_NOTICES.md)
+For a paper using OrcaView, cite the software version used to prepare the inputs or figures and report the ORCA version and electronic-structure settings for the calculation. [Software citation](CITATION.cff)
+
+OrcaView is distributed under the MIT license. Bundled third-party libraries have their own licenses. [License](LICENSE) · [Third-party notices and sources](THIRD_PARTY_NOTICES.md)

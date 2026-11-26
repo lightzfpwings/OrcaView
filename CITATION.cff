@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "Please cite this version of OrcaView when reporting results generated with the software."
+type: software
+title: OrcaView
+authors:
+  - name: "lightzfpwings and OrcaView contributors"
+version: 0.1.0a61
+date-released: "2026-11-26"
+repository-code: "https://github.com/lightzfpwings/OrcaView"
+url: "https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a61"
+license: MIT

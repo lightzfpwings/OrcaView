@@ -80,6 +80,16 @@ def check(assets, version):
             for image in (with_grid, without_grid):
                 assert image[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", image[16:24]) == (1800, 1100)
             assert with_grid != without_grid
+            hydroxyl = examples / "hydroxyl-populations.out"
+            spins = run("results", hydroxyl, "--dataset", "mulliken-spin", "--format", "csv")
+            assert ",1.024339,available" in spins and ",-0.024339,available" in spins
+            run("render", hydroxyl, "spin.png", "--population", "mulliken-spin",
+                "--population-scale", "bwr", "--population-symmetric")
+            for table in ("1", "2"):
+                run("spectrum", examples / "water-nmr.out", "--table", table, "--format", "png",
+                    "-o", f"nmr-{table}.png")
+            for name in ("spin.png", "nmr-1.png", "nmr-2.png"):
+                assert (work / name).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", name
             water = examples / "water.xyz"
             assert "* xyz -1 2" in run("preview", water, "--charge", "-1", "--multiplicity", "2").splitlines()
             edited = work / "edited.inp"

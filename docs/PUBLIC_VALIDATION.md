@@ -1,18 +1,32 @@
 # OrcaView validation history
 
+## 0.1.0a61
+
+The regression suite passed all 685 tests. The hydroxyl doublet fixture exercises 13 per-atom datasets, including the printed Mulliken spin populations of +1.024339 on O and −0.024339 on H. The tests check that imported values survive a project save and reload with their atom identities, geometry and source records. The water NMR fixture gives one proton shielding line at 31.130 ppm with a count of two, and a signed H–H coupling of −15.538 Hz. [Population tests](../tests/test_population_display.py) · [Spectrum tests](../tests/test_spectral_broadening.py) · [ORCA output coverage and fixtures](ORCA_LOG_COVERAGE.md)
+
+On Apple Silicon, the packaged application generated inputs for three water single-point calculations. ORCA 6.1.1 ran each input and terminated normally. All three final energies matched the archived log values to the 12 decimal places printed. [Reproduction script](../tools/check_orca611.sh)
+
+| Calculation | Final single-point energy (hartree) | Reference output |
+| --- | ---: | --- |
+| B3LYP with SMD water | −76.332753194122 | [SMD log](../artifacts/public/validation/ORCA-6.1.1-macOS-arm64/smd/job.out) |
+| RI-MP2 | −76.154672366449 | [RI-MP2 log](../artifacts/public/validation/ORCA-6.1.1-macOS-arm64/rimp2/job.out) |
+| EOM-CCSD | −75.871014784050 | [EOM-CCSD log](../artifacts/public/validation/ORCA-6.1.1-macOS-arm64/eom/job.out) |
+
+The arm64 DMG mounted read-only and the enclosed application passed strict code-signature verification. All 151 frozen OrcaView modules matched the source checkout. Its executable read the hydroxyl output and exported a 600 × 355 pixel population map. A local in-place update from the a58 DMG to a61 launched the new application at the original path and preserved an adjacent user file. [OH output](../examples/populations/hydroxyl.out) · [Rendered population map](../artifacts/public/hydroxyl-spin.png)
+
 ## 0.1.0a58
 
 All 669 regression tests passed. Four sidebar tests cover wrapped captions, the export button, charge validation and mouse clicks on the numeric and drop-down controls. They also passed against the Windows package under Wine’s Windows graphics backend and the frozen modules from the Apple Silicon DMG. [Sidebar width tests](../tests/test_inspector_width.py) · [Control tests](../tests/test_inspector_controls.py) · [Windows comparison at 150% scaling](../artifacts/public/calculation-sidebar-windows.png)
 
 All 146 OrcaView Python modules in each desktop package matched the release source. Each package contains 20 examples. The read-only macOS image passed strict signature verification. Its app exported the peroxide CD example, loaded all four optional interface languages and rendered the three element palettes. [Packaged application checks](../packaging/check_release_extensions.py)
 
-## 0.1.0a57 alpha测试版
+## 0.1.0a57
 
 All 665 regression tests passed. The spectrum export tests exercise both desktop entry points, independent grid settings, PNG transparency, JPEG and BMP backgrounds, vector PDF output, aspect ratios and centered cropping. Exporting the peroxide CD example at 16:9 and 2× produced a 1920 × 1080 transparent PNG. [Spectrum export tests](../tests/test_spectrum_plot.py)
 
 All 145 OrcaView Python modules matched the release source in each desktop package. Each package contains 20 examples. The macOS disk image mounted read-only and passed strict signature verification. Its executable exported the peroxide CD spectrum and produced distinct water IR spectra with and without grid lines. Under Wine, the Windows launcher reported 0.1.0a57 and its packaged runtime exported the peroxide CD example in all four formats. Both extension ZIPs rebuilt byte for byte. The mounted app loaded the four interface languages and rendered all three external palettes. [Packaged application checks](../packaging/check_release_extensions.py)
 
-## 0.1.0a56 alpha测试版
+## 0.1.0a56
 
 All 658 regression tests passed. The editable input tests cover mouse leave and keyboard commits, invalid text recovery, atom identity and precision, and applying the same input through the command line. All 568 method templates passed a render–read–render check. [Editable input tests](../tests/test_edit_input_preview.py)
 
