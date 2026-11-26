@@ -4,6 +4,8 @@ OrcaView is a desktop application and command-line interface for preparing ORCA 
 
 **Version 0.1.0a63** adds independent rotation, translation and copying of molecules in a complex. You can also mark hydrogen bonds and pre-optimize their geometry before exporting an ORCA input. [Release notes and downloads](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a63)
 
+![Water dimer in OrcaView Design. The 2D sketch and 3D preview show the same O–H···O hydrogen bond as a dotted line.](artifacts/public/hydrogen-bond-design.png)
+
 ## Install
 
 | Platform | Package | Launch |
@@ -37,7 +39,9 @@ orcaview render examples/populations/hydroxyl.out spin.png --population mulliken
 
 Open `Examples/water-nmr.out` and choose **NMR chemical shielding**. Both hydrogens in this calculation have an isotropic shielding of 31.130 ppm and contribute to one peak with weight two. To plot chemical shifts, enter a reference shielding for the same element and method. OrcaView plots δ = σref − σ in ppm. The one-dimensional spectrum uses uncoupled sites. **NMR spin–spin coupling** plots signed J values by atom pair in Hz. [Water NMR output](artifacts/public/validation/results-0.1.0a12/nmr/water-shield.out)
 
-For IR and Raman, try `Examples/water-raman.out`. For UV/Vis absorption and signed circular dichroism, try `Examples/peroxide-uv-cd.out`. **Plot settings…** controls the axis units, line shape, full width at half maximum and stick overlay. Export the displayed figure as PNG, JPEG, BMP or vector PDF, or save the sticks and sampled curve as CSV. [Spectrum example](artifacts/public/spectrum-plot.png) · [CLI commands and export formats](docs/CLI_RESULTS.md)
+For IR and Raman, try `Examples/water-raman.out`. For UV/Vis absorption and signed circular dichroism, try `Examples/peroxide-uv-cd.out`. **Plot settings…** controls the axis units, line shape, full width at half maximum and stick overlay. Export the displayed figure as PNG, JPEG, BMP or vector PDF, or save the sticks and sampled curve as CSV. [CLI commands and export formats](docs/CLI_RESULTS.md)
+
+![Electronic circular dichroism spectrum with signed sticks, Gaussian broadening and line profile controls.](artifacts/public/spectrum-plot.png)
 
 ## Geometry and ORCA input
 
