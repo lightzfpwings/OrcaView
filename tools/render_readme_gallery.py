@@ -1,9 +1,8 @@
-"""Render the README figures from the checked-out OrcaView application."""
+"""Render the example figures from the checked-out OrcaView application."""
 
 import argparse
 import os
 from pathlib import Path
-import re
 import sys
 from tempfile import TemporaryDirectory
 
@@ -27,8 +26,8 @@ def render(output):
     from gallery_molecules import capture_molecules
     from gallery_spectra import capture_spectra
 
-    expected = set(re.findall(r"!\[[^\]]*\]\(artifacts/public/([\w.-]+\.png)\)",
-                              (ROOT / "README.md").read_text(encoding="utf-8")))
+    expected = {"hydrogen-bond-design.png", "hydroxyl-spin.png", "population-controls.png",
+                "input-preview.png", "calculation-results.png", "spectrum-plot.png", "nmr-spectrum.png"}
     output.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=output) as temp:
         work = Path(temp)
@@ -45,7 +44,7 @@ def render(output):
 
         generated = {p.name for p in work.glob("*.png")}
         if generated != expected:
-            raise ValueError(f"README and capture scripts disagree: {sorted(generated ^ expected)}")
+            raise ValueError(f"Unexpected set of example figures: {sorted(generated ^ expected)}")
         for name in sorted(generated):
             if QImage(str(work / name)).isNull():
                 raise ValueError(f"Could not decode {name}")
