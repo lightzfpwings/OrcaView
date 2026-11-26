@@ -1,10 +1,12 @@
 """Desktop gating and real background output through the public command line."""
 
 import contextlib
+from dataclasses import replace
 import io
 import os
 from pathlib import Path
 import struct
+import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -26,6 +28,44 @@ class DisplayCommandTests(unittest.TestCase):
         with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
             result = main(list(map(str, args)))
         return result, stdout.getvalue(), stderr.getvalue()
+
+    @unittest.skipUnless(QImage, "Requires Qt raster support")
+    def test_result_frame_exports_hydrogen_bonds_as_separated_dots(self):
+        from orcaview.application.project import save_project
+        from orcaview.application.session import Session
+        from orcaview.core.models import Atom, Bond, Molecule
+        from orcaview.core.provenance import Provenance
+
+        mol = Molecule("HF contact", (Atom("H", -1.8, 0, 0), Atom("F", 1.8, 0, 0)),
+                       (Bond(0, 1, 1, "hydrogen_bond"),), bonds_explicit=True)
+        session = Session(mol)
+        head = session.document.head
+        frame = session.document.add_frame(head.ref, "scf", replace(mol, bonds=(), bonds_explicit=False),
+                                           head.atom_ids, Provenance("calculated"))
+        with TemporaryDirectory() as temp, patch.dict(os.environ, {"ORCAVIEW_CONFIG_DIR": temp}):
+            project, palette = Path(temp, "contacts.json"), Path(temp, "ink.json")
+            palette.write_text('{"id":"ink","name":"Ink","colors":{"F":"#222222","H":"#222222"}}')
+            save_project(session, project)
+            for view, opts in (("2d", ()), ("3d", ("--model", "wireframe", "--rotate", "y:90"))):
+                for fmt in ("png", "pdf"):
+                    with self.subTest(view=view, fmt=fmt):
+                        path = Path(temp, "export." + fmt)
+                        self.assertEqual(self.run_cli("render", project, path, "--view", view, "--snapshot",
+                                                      frame.ref.snapshot_id, "--width", 320, "--height", 140,
+                                                      "--color-pack", palette, *opts), (0, "", ""))
+                        if fmt == "pdf":
+                            self.assertNotIn(b"/Subtype /Image", path.read_bytes())
+                            converter = shutil.which("pdftoppm")
+                            if not converter:
+                                continue
+                            subprocess.run([converter, "-png", "-singlefile", "-r", "96", str(path),
+                                            str(Path(temp, "pdf-page"))], check=True, capture_output=True)
+                            path = Path(temp, "pdf-page.png")
+                        image = QImage(str(path))
+                        # The midpoint is far from either endpoint in both projections.
+                        ink = [min(image.pixelColor(x, y).lightness() for y in (69, 70, 71)) < 200
+                               for x in range(143, 178)]
+                        self.assertGreaterEqual(sum(a != b for a, b in zip(ink, ink[1:])), 4)
 
     @unittest.skipUnless(QImage, "Requires Qt raster support")
     def test_thumbnail_fits_both_sketch_labels(self):

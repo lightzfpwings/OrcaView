@@ -12,7 +12,8 @@ from orcaview.i18n import tr
 def _choices(order):
     if order == 1:
         return (
-            ("plain", tr("Single bond")), ("coordinate", tr("Coordinate bond (dashed)")),
+            ("plain", tr("Single bond")), ("hydrogen_bond", tr("Hydrogen bond")),
+            ("coordinate", tr("Coordinate bond (dashed)")),
             ("coordinate_arrow", tr("Coordinate bond (arrow)")), ("wedge", tr("Solid wedge")),
             ("hashed_wedge", tr("Hashed wedge")), ("hollow_wedge", tr("Hollow wedge")),
             ("wavy", tr("Wavy bond")), ("wavy_wedge", tr("Wavy wedge")),

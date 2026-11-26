@@ -11,15 +11,16 @@ class _Completion(QObject):
 
 
 class StructureJob(QRunnable):
-    def __init__(self, snapshot, mode):
+    def __init__(self, snapshot, mode, **options):
         super().__init__()
         self.snapshot = snapshot
         self.mode = mode
+        self.options = options
         self.completion = _Completion()
 
     def run(self):
         try:
-            command = GeometryEditCommand(self.snapshot.ref, modeling_operation(self.snapshot, self.mode))
+            command = GeometryEditCommand(self.snapshot.ref, modeling_operation(self.snapshot, self.mode, **self.options))
         except Exception as exc:
             # Report native-worker errors on the editing page without publishing a revision.
             self.completion.finished.emit(self, None, str(exc))

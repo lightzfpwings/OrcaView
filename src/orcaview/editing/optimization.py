@@ -17,13 +17,15 @@ class OptimizationResult:
     method: str
 
 
-def _calculate_points(molecule, mode, bonds):
+def _calculate_points(molecule, mode, bonds, *, contact_restraints=None):
     payload = geometry_payload(molecule, bonds=bonds)
     payload["infer_orders"] = not molecule.bonds and not molecule.bonds_explicit
     if not payload["bonds"]:
         raise ValueError("Structure optimization requires at least one bond.")
-    if mode == "3D" and (molecule.charge != 0 or molecule.multiplicity != 1):
+    if mode != "2D" and (molecule.charge != 0 or molecule.multiplicity != 1):
         raise ValueError("3D force-field optimization currently supports neutral singlets.")
+    if contact_restraints is not None:
+        payload["contact_restraints"] = contact_restraints
     response = run_babel_worker(json.dumps(payload, allow_nan=False).encode(), "optimize-" + mode.lower())
     rows = response.get("atoms", [])
     methods = ("gen2D",) if mode == "2D" else ("MMFF94", "UFF")
@@ -173,18 +175,24 @@ def _perceive_stereo(mol, ob, axes):
     return configs
 
 
-def _minimize(mol, ob):
+def _minimize(mol, ob, restraints=None):
     # Supply implicit hydrogens in the calculation copy for all-atom force
     # fields. Only the input atom IDs are returned to the editor.
     if not mol.AddHydrogens():
         raise ValueError("Open Babel could not place the hydrogens needed by the force field.")
     for name in ("MMFF94", "UFF"):
         field = ob.OBForceField.FindForceField(name)
-        if field is None or not field.Setup(mol):
+        if field is None:
+            continue
+        if not (field.Setup(mol, restraints) if restraints is not None else field.Setup(mol)):
             continue
         initial = field.Energy()
-        field.ConjugateGradients(500, 1e-6)
+        if restraints is not None:
+            initial += field.GetConstraints().GetConstraintEnergy()
+        field.ConjugateGradients(1000 if restraints is not None else 500, 1e-6)
         final = field.Energy()
+        if restraints is not None:
+            final += field.GetConstraints().GetConstraintEnergy()
         if (not math.isfinite(initial) or not math.isfinite(final)
                 or final > initial + 1e-6 or not field.GetCoordinates(mol)):
             raise ValueError("The Open Babel force field could not produce a valid low-energy structure.")
@@ -205,7 +213,7 @@ def _prepare_graph(payload, operation, ob):
     orders = [bond.GetBondOrder() for bond in bonds]
     neutral_valence_limit = {5: 3, 6: 4, 7: 3, 8: 2, 9: 1}
     for atom in ob.OBMolAtomIter(work):
-        if operation == "optimize-3d":
+        if operation in ("optimize-3d", "optimize-hbonds"):
             # The editor has no per-atom charge model. Refuse recognized ionic
             # valences, including neutral zwitterions with a quaternary N.
             max_valence = neutral_valence_limit.get(atom.GetAtomicNum())
@@ -285,8 +293,21 @@ def optimize_worker(payload, operation):
         # can silently reuse an unrelated parameter type while reporting success.
         if any(atom.GetAtomicNum() > 103 for atom in ob.OBMolAtomIter(work)):
             raise ValueError("The Open Babel force fields lack parameters for this structure.")
-        _seed_3d(work, points, ob, axes is not None, expected)
-        method = _minimize(work, ob)
+        if operation == "optimize-hbonds":
+            constraints = ob.OBFFConstraints()
+            spec = payload["contact_restraints"]
+            for donor, hydrogen, acceptor in spec["triples"]:
+                constraints.AddDistanceConstraint(hydrogen + 1, acceptor + 1, spec["distance"])
+                constraints.AddAngleConstraint(donor + 1, hydrogen + 1, acceptor + 1, spec["angle"])
+            # Stereo perception projects planar input onto XY. The restraint
+            # calculation must start from the actual Cartesian assembly.
+            for i, xyz in enumerate(points, 1):
+                work.GetAtom(i).SetVector(*xyz)
+            work.SetDimension(3)
+            method = _minimize(work, ob, constraints)
+        else:
+            _seed_3d(work, points, ob, axes is not None, expected)
+            method = _minimize(work, ob)
     output = ob.OBMol(original)
     for atom in ob.OBMolAtomIter(output):
         updated = work.GetAtomById(atom.GetId())

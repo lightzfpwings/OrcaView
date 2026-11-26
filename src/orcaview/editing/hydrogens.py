@@ -5,7 +5,7 @@ import json
 import math
 
 from orcaview.core.elements import COVALENT_RADII
-from orcaview.core.geometry import display_bonds, occupied_valences
+from orcaview.core.geometry import covalent_bonds, occupied_valences
 from orcaview.core.models import Atom, Bond
 
 from .coordinates import _cross, _dot, _unit
@@ -21,7 +21,7 @@ def missing_hydrogens(molecule):
     """Return new (parent index, H) pairs and any perceived coordinate-only bonds."""
     if molecule.charge or molecule.multiplicity != 1:
         raise ValueError("Automatic H addition supports neutral singlets. Add H manually for other electronic states.")
-    bonds = display_bonds(molecule)
+    bonds = covalent_bonds(molecule)
     perceived = None
     if bonds and not (molecule.bonds or molecule.bonds_explicit):
         from orcaview.io.babel_geometry import geometry_payload, with_perceived_orders
@@ -100,7 +100,7 @@ def attached_hydrogen(molecule, anchor, bonds):
     atom = molecule.atoms[anchor]
     length = .74 if atom.element == "H" else COVALENT_RADII.get(atom.element, .85) + COVALENT_RADII["H"]
     origin = (atom.x, atom.y, atom.z)
-    bonded = {b.b if b.a == anchor else b.a: b.order for b in bonds if anchor in (b.a, b.b)}
+    bonded = {b.b if b.a == anchor else b.a: b.order for b in bonds if b.is_covalent and anchor in (b.a, b.b)}
     neighbors = []
     nearby = []
     for i, other in enumerate(molecule.atoms):

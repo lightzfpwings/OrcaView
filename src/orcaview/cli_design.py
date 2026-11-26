@@ -14,8 +14,8 @@ from orcaview.core.snapshots import SelectionContext
 from orcaview.core.symmetry import DEFAULT_TOLERANCE
 from orcaview.editing import (
     AddAtoms, AddHydrogen, AttachAtom, CoordinateDefinition, DeleteAtoms, EditorService,
-    GeometryEditCommand, InsertRing, MoveAtom, MoveSketchAtom, ReorderAtoms, ReplaceElement,
-    SetBond, SetBondLength, SetDistance, SetElectronicState, SetSketchLayout, measure,
+    GeometryEditCommand, InsertRing, MoveAtom, MoveSketchAtom, ReorderAtoms, ReplaceElement, RotateFragment,
+    SetBond, SetBondLength, SetDistance, SetElectronicState, SetSketchLayout, TranslateFragment, measure,
 )
 from orcaview.editing.coordinates import bond_moving_atoms
 from orcaview.editing.diagnostics import design_diagnostics
@@ -24,9 +24,9 @@ from orcaview.editing.modeling import modeling_operation
 
 _EDIT_TYPES = {cls.kind: cls for cls in (
     AddAtoms, AddHydrogen, AttachAtom, DeleteAtoms, InsertRing, MoveAtom, MoveSketchAtom,
-    ReorderAtoms, ReplaceElement, SetBond, SetElectronicState, SetSketchLayout,
+    ReorderAtoms, ReplaceElement, RotateFragment, SetBond, SetElectronicState, SetSketchLayout, TranslateFragment,
 )}
-_MODELING = {"add-hydrogens": "H", "clean-2d": "2D", "optimize-3d": "3D"}
+_MODELING = {"add-hydrogens": "H", "clean-2d": "2D", "optimize-3d": "3D", "optimize-hbonds": "HB"}
 _OTHER_ACTIONS = ("select", "measure", "set-bond-length", "set-distance", "undo", "redo",
                   "use-geometry", "diagnostics", "symmetry")
 
@@ -75,6 +75,8 @@ def _edit_params(head, params):
         values["xy"] = tuple(tuple(_array(row, "xy entry")) for row in _array(values["xy"], "xy"))
     if "center" in values:
         values["center"] = tuple(_array(values["center"], "center"))
+    if "axis" in values:
+        values["axis"] = tuple(_array(values["axis"], "axis"))
     return values
 
 
@@ -122,9 +124,11 @@ def _step(editor, name, params):
     elif name == "set-distance":
         operation = _set_distance(head, **values)
     elif name in _MODELING:
-        if values:
+        if name == "optimize-hbonds" and values.keys() - {"distance", "angle"}:
+            raise ValueError("optimize-hbonds accepts distance and angle")
+        if values and name != "optimize-hbonds":
             raise ValueError(f"{name} takes no arguments")
-        operation = modeling_operation(head, _MODELING[name])
+        operation = modeling_operation(head, _MODELING[name], **values)
         if name == "clean-2d" and operation.xy == head.sketch_xy:
             return {"changed": False}
     elif name == "select":
@@ -148,7 +152,7 @@ def _step(editor, name, params):
         raise ValueError(f"Unknown design operation: {name}")
     result = editor.commit(editor.preview(GeometryEditCommand(head.ref, operation)))
     details = {"added_atom_ids": [result.snapshot.id_at(i) for i in result.mapping.added_indices]}
-    if name == "optimize-3d":
+    if name in ("optimize-3d", "optimize-hbonds"):
         details["force_field"] = operation.method
     return details
 

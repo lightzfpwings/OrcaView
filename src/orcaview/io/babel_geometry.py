@@ -2,15 +2,17 @@
 
 from dataclasses import replace
 
-from orcaview.core.geometry import display_bonds, occupied_valences
+from orcaview.core.geometry import covalent_bonds, occupied_valences
 from orcaview.core.models import COORDINATE_STYLES
 
 
 def geometry_payload(molecule, *, bonds=None):
-    """Serialize the supplied display bonds in the same order used to read back bond orders."""
+    """Send only chemical connectivity to Open Babel, preserving bond order and indices."""
     molecule.validate_structure()
     if bonds is None:
-        bonds = display_bonds(molecule)
+        bonds = covalent_bonds(molecule)
+    else:
+        bonds = tuple(bond for bond in bonds if bond.is_covalent)
     payload = {
         "atoms": [(atom.element, atom.x, atom.y, atom.z) for atom in molecule.atoms],
         "bonds": [(bond.a, bond.b, bond.order) for bond in bonds],

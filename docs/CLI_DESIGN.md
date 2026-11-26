@@ -28,6 +28,12 @@ Each atom reference may be an integer row number **starting at 1** in the curren
 
 ## Operations
 
+In the desktop Design workspace, select an atom of the molecule you want to position. Hold Alt (Option on macOS) and drag with the left mouse button to rotate the molecule about its center, or with the right button to translate it. In 3D, translation follows the screen plane. In the sketch, both operations act in XY. Release to commit the edit or press Esc to cancel.
+
+With the molecule selected, press Ctrl+C and Ctrl+V (⌘C and ⌘V on macOS) to place a separate copy. The pasted atoms are selected together, ready to rotate or translate. An intermolecular hydrogen bond leaves the two partners independently selectable.
+
+To mark a hydrogen bond, choose **Hydrogen bond** from the single-bond menu and click the explicit hydrogen and its acceptor. **Optimize H-bonds…** in the 3D preview relaxes participating molecules together using MMFF94 or UFF. Set the target H···A distance and D–H···A angle for the marked contacts. The default starting targets are 1.90 Å and 170°. Choose targets appropriate for your complex. Other molecules and the 2D sketch keep their positions.
+
 The tables show the fields that accompany `op`. An atom object has the fields `element`, `x`, `y` and `z`, for example `{"element":"O","x":1.4,"y":0,"z":0}`. Element symbols are case-sensitive.
 
 | Operation | Fields and behavior |
@@ -40,6 +46,8 @@ The tables show the fields that accompany `op`. An atom object has the fields `e
 | `attach-atom` | `anchor_id`, new `atom`, bond `order`, optional `style`. |
 | `replace-element` | `atom_id` and `element`. Preserves the atom ID. |
 | `move-atom` | `atom_id`, `x`, `y`, `z`. Sets the Cartesian coordinates. |
+| `translate-fragment` | `atom_id`, `dx`, `dy`, `dz` in ångströms. Moves the entire bonded component of that atom with fixed connectivity. For a translation in the XY plane, set `move_sketch` to `true` to move the component in an independent 2D layout as well. |
+| `rotate-fragment` | `atom_id`, unit `axis` as `[x,y,z]` in Cartesian coordinates, and signed `degrees`. The pivot is the component's centroid. Set `move_sketch` to `true` for a rotation around the Z axis that also rotates the 2D drawing. |
 | `move-sketch-atom` | `atom_id`, `x`, `y`. Edits the 2D depiction independently. |
 | `set-sketch-layout` | `xy` as an array of all `[x,y]` pairs in the current atom order. |
 | `delete-atoms` | `atom_ids` to delete. An empty design can be saved as a project draft. |
@@ -52,6 +60,7 @@ The tables show the fields that accompany `op`. An atom object has the fields `e
 | `add-hydrogens` | Fill missing hydrogens for a supported neutral singlet. |
 | `clean-2d` | Tidy the 2D sketch. Preserves the physical coordinates. |
 | `optimize-3d` | Pre-optimize the geometry with Open Babel MMFF94 or UFF and report the force field used. Requires a bonded neutral singlet. |
+| `optimize-hbonds` | Restrain all explicit `hydrogen_bond` contacts during force-field pre-optimization of a neutral singlet. Optional `distance` (H···A, Å) and `angle` (D–H···A, degrees) default to 1.90 and 170. Each H needs a covalently bonded donor. |
 | `set-electronic-state` | Integer `charge` and positive integer `multiplicity`. Project saving checks the final state. |
 | `undo`, `redo` | Undo or redo an edit made within this invocation. |
 | `use-geometry` | `snapshot` as a revision number or a snapshot ID string selected from `history`. Adopt a saved revision or result frame as an undoable edit. |
@@ -62,6 +71,6 @@ Available bond styles by order:
 
 | Order | Style |
 | --- | --- |
-| 1 | `plain`, `coordinate`, `coordinate_arrow`, `wedge`, `hashed_wedge`, `hollow_wedge`, `wavy`, `bold`, `hashed`, `wavy_wedge` |
+| 1 | `plain`, `hydrogen_bond` (noncovalent H···A contact), `coordinate`, `coordinate_arrow`, `wedge`, `hashed_wedge`, `hollow_wedge`, `wavy`, `bold`, `hashed`, `wavy_wedge` |
 | 2 | `plain`, `aromatic`, `crossed`, `bold`, `dashed` |
 | 3 | `plain`, `partial_triple` |

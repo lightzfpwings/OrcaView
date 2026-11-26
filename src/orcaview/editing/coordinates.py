@@ -158,6 +158,8 @@ def bond_moving_atoms(snapshot, definition, bonds):
     fixed, moving = (snapshot.index_of(i) for i in definition.atom_ids)
     neighbors = [set() for _ in snapshot.atom_ids]
     for bond in bonds:
+        if not bond.is_covalent:
+            continue
         neighbors[bond.a].add(bond.b)
         neighbors[bond.b].add(bond.a)
     if moving not in neighbors[fixed]:

@@ -9,7 +9,7 @@
 | 对象 | 字段 | 单位与规则 |
 |---|---|---|
 | `Atom` | `element, x, y, z` | 标准大小写元素符号；有限实数；长度为 Å |
-| `Bond` | `a, b, order=1` | 原子索引从 0 开始；两个不同原子；键级 1–3 |
+| `Bond` | `a, b, order=1, style="plain"` | 两个不同的零基原子索引。氢键按下文的 schema 13 约定存储。 |
 | `Molecule` | `name, atoms, bonds=(), charge=0, multiplicity=1, bonds_explicit=False` | 非空结构；总电荷为整数，多重度为正整数 |
 | `CalculationSpec` | 基本方法、基组、作业类型、核数和每核内存，另有活性空间、目标根数、参考泛函和下列高级选项 | 核数和每核 MB 为正整数，方法决定适用字段。 |
 
@@ -32,8 +32,8 @@ schema 5 在计算记录中增加 `block_options` 数组，按 `{"block":"scf","
 | `orca.input.render_input(molecule, spec)` | 结构化对象 → ORCA 输入字符串 | 完整基础校验未通过为 `ValueError`；不启动程序 |
 | `orca.output.parse_output(text, job_type='SP')` | 单作业文本 → `OutputSummary` | 未知任务类型为 `ValueError`；缺证据不猜测成功 |
 | `application.session.Session.open_xyz(path)` | 替换当前会话结构 | 先解析后提交；失败保留原分子 |
-| `application.project.save_project(session, path)` | 按文档、设置和报告写 schema 1–12 | 校验后原子替换，失败保留旧文件 |
-| `application.project.load_project(path)` | schema 1–12 JSON → `Session` | 拒绝未知版本、未知字段和失效的内部引用 |
+| `application.project.save_project(session, path)` | 按文档、设置和报告写 schema 1–13 | 校验后原子替换，失败保留旧文件 |
+| `application.project.load_project(path)` | schema 1–13 JSON → `Session` | 拒绝未知版本、未知字段和失效的内部引用 |
 | `application.project.migrate_project(source, destination)` | schema 1 → 新路径的 schema 2，并返回会话 | 目标已存在或写入失败时保留现场 |
 
 XYZ 的空注释行可以保留，但第二行必须存在；每原子仅四列，额外列与多帧输入明确拒绝。XYZ 未提供电子态时保留默认电荷 0、多重度 1，不以启发式替用户选择自旋。因此奇电子几何可以查看，但必须修正电子态后才能导出计算输入。
@@ -142,6 +142,8 @@ schema 10 允许在设计修订中保存零原子草稿。清空草图是一条�
 schema 11 在可编辑的快照上记录可选的 `sketch_xy`。每个坐标对与同一行的稳定原子 ID 对应。几何哈希仍只包含元素和三维坐标。旧项目打开时从 XY 投影显示草图，首次二维整理或三维优化时保存独立图形。
 
 schema 12 保存输入预览里的自定义注释和显式 SCF 收敛预设。只有使用这些字段的项目需要此版本。其余编辑沿用能表示当前内容的最早 schema。格式化坐标时保留源几何中未编辑分量的原始精度。
+
+schema 13 保存显式氢键。只要任一几何修订含有氢键，项目就使用此版本。键记录采用 `order=1, style="hydrogen_bond"`，两端分别为显式氢原子与受体原子，端点顺序任意。该接触的价态贡献为零。`core.geometry.display_bonds` 返回全部可见连线，`core.geometry.covalent_bonds` 返回划分分子片段和构建力场所用的化学连接。旧版 OrcaView 会提示不支持此项目版本。
 
 `OutputSummary` 字段：
 

@@ -28,7 +28,7 @@ class BondPaletteTests(unittest.TestCase):
     def setUp(self):
         self.panel = DesignPanel()
         self.addCleanup(self.panel.close)
-        self.doc = Session(Molecule("pair", (Atom("C", -1, 0, 0), Atom("C", 1, 0, 0)),
+        self.doc = Session(Molecule("pair", (Atom("H", -1, 0, 0), Atom("F", 1, 0, 0)),
                                     bonds_explicit=True)).document
         self.panel.set_document(self.doc)
         self.panel.resize(1100, 650)

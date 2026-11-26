@@ -2,11 +2,14 @@
 
 from .commands import AddHydrogens, OptimizeCoordinates, SetSketchLayout
 from .hydrogens import missing_hydrogens
+from .hydrogen_bonds import optimize_hydrogen_bonds
 from .optimization import clean_sketch, optimize_structure
 
 
-def modeling_operation(snapshot, mode):
+def modeling_operation(snapshot, mode, **options):
     molecule = snapshot.molecule
+    if mode == "HB":
+        return optimize_hydrogen_bonds(snapshot, **options)
     if mode == "H":
         added, perceived = missing_hydrogens(molecule)
         return AddHydrogens(tuple((snapshot.atom_ids[i], atom) for i, atom in added), perceived)

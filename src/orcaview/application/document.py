@@ -1,5 +1,6 @@
 """Append-only geometry history and result bindings, independent of the current view."""
 
+from dataclasses import replace
 from threading import RLock
 from typing import Optional, Tuple
 
@@ -111,6 +112,19 @@ class MoleculeDocument:
             )
             self._append(snapshot)
             return snapshot
+
+    def molecule_with_topology(self, snapshot: GeometrySnapshot, *, sketch: bool = False) -> Molecule:
+        """Use the owning revision's authored bonds for a coordinate-only result frame."""
+        molecule = snapshot.sketch_molecule() if sketch else snapshot.molecule
+        if snapshot.ref.frame_id is None or molecule.bonds_explicit or molecule.bonds:
+            return molecule
+        parent = self.resolve(snapshot.parent)
+        if not (parent.molecule.bonds_explicit or parent.molecule.bonds):
+            return molecule
+        rows = {atom_id: i for i, atom_id in enumerate(snapshot.atom_ids)}
+        bonds = tuple(replace(b, a=rows[parent.atom_ids[b.a]], b=rows[parent.atom_ids[b.b]])
+                      for b in parent.molecule.bonds)
+        return replace(molecule, bonds=bonds, bonds_explicit=parent.molecule.bonds_explicit)
 
     def add_frame(self, base: GeometryRef, frame_id: str, molecule: Molecule,
                   atom_ids: Tuple[str, ...], provenance: Provenance,

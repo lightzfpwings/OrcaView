@@ -26,6 +26,19 @@ except ModuleNotFoundError as exc:
 
 
 class ResultGeometryTests(unittest.TestCase):
+    def test_viewing_a_coordinate_frame_remaps_hydrogen_bonds_without_altering_the_frame(self):
+        atoms = (Atom("F", -1, 0, 0), Atom("H", 0, 0, 0), Atom("F", 2, 0, 0), Atom("H", 3, 0, 0))
+        bonds = (Bond(0, 1), Bond(1, 2, 1, "hydrogen_bond"), Bond(2, 3))
+        mol = Molecule("HF dimer", atoms, bonds, bonds_explicit=True)
+        doc = Session(mol).document
+        head = doc.head
+        frame = doc.add_frame(head.ref, "scf", replace(mol, atoms=atoms[::-1], bonds=(), bonds_explicit=False),
+                              head.atom_ids[::-1], Provenance("calculated"))
+        expected = (Bond(3, 2), Bond(2, 1, 1, "hydrogen_bond"), Bond(1, 0))
+        for sketch in (True, False):
+            self.assertEqual(doc.molecule_with_topology(frame, sketch=sketch).bonds, expected)
+        self.assertEqual(frame.molecule.bonds, ())
+
     def test_coordinate_only_frame_uses_parent_bonds_and_live_atom_ids(self):
         mol = Molecule("CO", (Atom("C", 0, 0, 0), Atom("O", 1.14, 0, 0)),
                        (Bond(0, 1, 3),), bonds_explicit=True)

@@ -10,6 +10,24 @@ from .models import Bond, Molecule
 DEFAULT_BOND_DISTANCE_FACTOR = 1.20
 
 
+def connected_component(bonds, anchor):
+    """Atom indices reachable from anchor through the chemical topology."""
+    neighbors = {}
+    for bond in bonds:
+        if not bond.is_covalent:
+            continue
+        neighbors.setdefault(bond.a, []).append(bond.b)
+        neighbors.setdefault(bond.b, []).append(bond.a)
+    component = {anchor}
+    pending = [anchor]
+    while pending:
+        for index in neighbors.get(pending.pop(), ()):
+            if index not in component:
+                component.add(index)
+                pending.append(index)
+    return frozenset(component)
+
+
 def occupied_valences(molecule, bonds, *, ambiguous_donors=None):
     """Count explicit valence and optionally collect unresolved aromatic protonation sites."""
     occupied = [0] * len(molecule.atoms)
@@ -97,6 +115,11 @@ def display_bonds(molecule: Molecule, distance_factor: float = DEFAULT_BOND_DIST
     if molecule.bonds or molecule.bonds_explicit:
         return molecule.bonds
     return infer_bonds(molecule, distance_factor)
+
+
+def covalent_bonds(molecule: Molecule) -> Tuple[Bond, ...]:
+    """Chemical connectivity for geometry editing and external structure engines."""
+    return tuple(bond for bond in display_bonds(molecule) if bond.is_covalent)
 
 
 def infer_bonds(molecule: Molecule, distance_factor: float = DEFAULT_BOND_DISTANCE_FACTOR) -> Tuple[Bond, ...]:

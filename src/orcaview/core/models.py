@@ -17,7 +17,7 @@ SUPPORTED_BASES = BASES
 SCF_CONVERGENCE = ("SloppySCF", "LooseSCF", "NormalSCF", "MediumSCF", "StrongSCF", "TightSCF", "VeryTightSCF", "ExtremeSCF")
 
 BOND_STYLES = {
-    1: ("plain", "coordinate", "coordinate_arrow", "wedge", "hashed_wedge", "hollow_wedge",
+    1: ("plain", "hydrogen_bond", "coordinate", "coordinate_arrow", "wedge", "hashed_wedge", "hollow_wedge",
         "wavy", "bold", "hashed", "wavy_wedge"),
     2: ("plain", "aromatic", "crossed", "bold", "dashed"),
     3: ("plain", "partial_triple"),
@@ -60,7 +60,14 @@ class Bond:
     style: str = "plain"
 
     @property
+    def is_covalent(self):
+        """Whether the edge connects atoms in the chemical topology."""
+        return self.style != "hydrogen_bond"
+
+    @property
     def valence_order(self):
+        if not self.is_covalent:
+            return 0
         if self.style in ("aromatic", "partial_triple"):
             return self.order - .5
         return self.order
@@ -109,6 +116,8 @@ class Molecule:
             validate_bond_style(bond.order, bond.style)
             if bond.a >= len(self.atoms) or bond.b >= len(self.atoms) or bond.a == bond.b:
                 raise ValueError("A bond must connect two distinct valid atoms")
+            if not bond.is_covalent and (self.atoms[bond.a].element, self.atoms[bond.b].element).count("H") != 1:
+                raise ValueError("A hydrogen bond requires an explicit H and an acceptor atom.")
             key = tuple(sorted((bond.a, bond.b)))
             if key in seen:
                 raise ValueError("A bond cannot be defined twice for the same atom pair")

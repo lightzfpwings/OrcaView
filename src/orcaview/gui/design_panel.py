@@ -2,19 +2,21 @@
 
 from PySide6.QtCore import QEvent, QSignalBlocker, QThreadPool, Qt, Signal, Slot
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
-from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QMenu,
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QMenu,
                                QPushButton, QSizePolicy, QSplitter, QVBoxLayout, QWidget)
 
 from orcaview.core.models import Atom
 from orcaview.core.snapshots import SelectionContext
 from orcaview.editing import (AddAtoms, AddHydrogen, AttachAtom, DeleteAtoms, EditorService, GeometryEditCommand,
-                              InsertRing, MoveAtom, MoveSketchAtom, ReplaceElement, SetBond)
+                              InsertRing, MoveAtom, MoveSketchAtom, ReplaceElement, SetBond, RotateFragment, TranslateFragment)
 from orcaview.editing.diagnostics import design_diagnostics
+from orcaview.editing.hydrogen_bonds import DEFAULT_ANGLE, DEFAULT_DISTANCE
 from orcaview.gui import typography
 from orcaview.gui.bond_button import BondButton
 from orcaview.gui.design_canvas import DesignCanvas
 from orcaview.gui.bond_length_editor import BondLengthEditor
 from orcaview.gui.element_picker import ElementPicker
+from orcaview.gui.fragment_clipboard import copy_fragment, read_fragment
 from orcaview.gui.ring_button import RingTemplateButton
 from orcaview.gui.structure_job import StructureJob
 from orcaview.gui.view_icons import hydrogen_cursor
@@ -151,6 +153,9 @@ class DesignPanel(QWidget):
         right.addLayout(preview_header)
         preview_header.addWidget(self._section(tr("3D preview")))
         preview_header.addStretch()
+        self.optimize_hbonds = self._button(preview_header, "designOptimizeHBonds", tr("Optimize H-bonds…"),
+                                            self._choose_hbond_targets)
+        self.optimize_hbonds.setToolTip(tr("Relax the marked hydrogen bonds with distance and angle restraints."))
         self.optimize_3d = self._button(preview_header, "designOptimize3D", tr("Optimize 3D"),
                                          lambda: self._start_structure_job("3D"))
         self.optimize_3d.setToolTip(tr("Pre-optimize the 3D coordinates with an Open Babel force field and preserve the 2D sketch. You can undo this edit."))
@@ -212,12 +217,30 @@ class DesignPanel(QWidget):
         self.canvas.bond_clicked.connect(self._bond_clicked)
         self.canvas.bond_to_space.connect(self._extend_bond)
         self.canvas.atom_moved.connect(self._move_in_sketch)
+        self.canvas.fragment_moved.connect(lambda index, dx, dy: self._move_fragment(index, dx, dy, 0., from_sketch=True))
+        self.canvas.fragment_rotated.connect(lambda index, degrees: self._rotate_fragment(index, (0., 0., 1.), degrees,
+                                                                                          from_sketch=True))
         self.canvas.delete_requested.connect(self._delete)
         self.viewport.selection_changed.connect(self._select)
         self.viewport.atom_targeted.connect(self._atom_clicked)
         self.viewport.bond_targeted.connect(self._bond_clicked)
         self.viewport.space_targeted.connect(self._space_clicked)
+        self.viewport.fragment_moved.connect(self._move_fragment)
+        self.viewport.fragment_rotated.connect(self._rotate_fragment)
         self.viewport.delete_requested.connect(self._delete)
+        for key, label, slot in ((QKeySequence.StandardKey.Copy, tr("Copy molecule"), self._copy_molecule),
+                                 (QKeySequence.StandardKey.Paste, tr("Paste molecule"), self._paste_molecule)):
+            action = QAction(label, self)
+            action.setShortcuts(QKeySequence.keyBindings(key))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+            action.triggered.connect(slot)
+            for widget in (self.canvas, self.viewport, self.select_tool, self.atom_choice):
+                widget.addAction(action)
+        native = QKeySequence.SequenceFormat.NativeText
+        shortcuts = tr("Copy molecule ({copy}) · Paste molecule ({paste})",
+                       copy=QKeySequence(QKeySequence.StandardKey.Copy).toString(native),
+                       paste=QKeySequence(QKeySequence.StandardKey.Paste).toString(native))
+        self.select_tool.setToolTip(self.select_tool.toolTip() + "\n" + shortcuts)
         self._set_tool("select")
         self._sync_selection()
 
@@ -272,14 +295,38 @@ class DesignPanel(QWidget):
     def discard_pending_job(self):
         self._structure_job = None
 
-    def _start_structure_job(self, mode):
+    def _choose_hbond_targets(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("Optimize H-bonds…"))
+        form = QFormLayout(dialog)
+        form.addRow(QLabel(tr("Targets apply to all marked hydrogen bonds.")))
+        distance = QDoubleSpinBox()
+        distance.setRange(.50, 5.)
+        distance.setSingleStep(.05)
+        distance.setValue(DEFAULT_DISTANCE)
+        distance.setSuffix(" Å")
+        form.addRow(tr("H···A distance"), distance)
+        angle = QDoubleSpinBox()
+        angle.setRange(90., 180.)
+        angle.setDecimals(1)
+        angle.setValue(DEFAULT_ANGLE)
+        angle.setSuffix("°")
+        form.addRow(tr("D–H···A angle"), angle)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._start_structure_job("HB", distance=distance.value(), angle=angle.value())
+
+    def _start_structure_job(self, mode, **options):
         if self._structure_job is not None or self.editor is None:
             return
         self.set_document(self.editor.document)
         base = self.editor.document.head
         if not base.atom_ids:
             return
-        job = StructureJob(base, mode)
+        job = StructureJob(base, mode, **options)
         self._structure_job = job
         job.completion.finished.connect(self._finish_structure_job)
         self._sync_selection()
@@ -305,12 +352,14 @@ class DesignPanel(QWidget):
         result = self._commit(command)
         if result is None:
             return
-        if job.mode != "3D":
+        if job.mode in ("H", "2D"):
             self.canvas.fit()
         if job.mode == "H":
             self.status.setText(tr("Hydrogen atoms added: {count}.", count=len(command.operation.attachments)))
         elif job.mode == "2D":
             self.status.setText(tr("2D layout complete."))
+        elif job.mode == "HB":
+            self.status.setText(tr("Hydrogen bonds pre-optimized with {method}.", method=command.operation.method))
         else:
             self.status.setText(tr("3D structure pre-optimized with {method}.", method=command.operation.method))
 
@@ -348,7 +397,7 @@ class DesignPanel(QWidget):
         if self.canvas.molecule is not None and not self.canvas.molecule.atoms:
             text = tr("Choose the atom tool or a ring template, then click the canvas to start drawing.")
         elif self.canvas.tool == "select":
-            text = tr("In 2D, drag on empty space to select atoms, or drag an atom to move it. Shift-drag in either view to add to the selection.")
+            text = tr("Select a molecule. Hold Alt/Option and drag with the left button to rotate it or the right button to move it.")
         elif self.canvas.tool == "atom":
             text = tr("Click empty space to add an atom, or click an atom to change its element.")
         elif self.canvas.tool == "hydrogen":
@@ -357,13 +406,15 @@ class DesignPanel(QWidget):
             text = tr("Click the starting carbon to build a ring through it, another atom to attach a ring, or empty space to place a separate ring.")
         elif self._bond_start is not None:
             text = tr("Click the second atom.")
+        elif self.canvas.bond_style == "hydrogen_bond" and self.canvas.bond_order:
+            text = tr("Click an explicit H and its acceptor to mark a hydrogen bond.")
         elif self.canvas.bond_order:
             text = tr("Click a bond to change it, or click two atoms to connect them. In 2D, drag from an atom to extend the molecule.")
         else:
             text = tr("Click two atoms in order, or click an existing bond.")
         self.status.setText(text)
 
-    def _refresh(self, *, fit=False):
+    def _refresh(self, *, fit=False, keep_projection=False):
         head = self.editor.document.head
         self._bond_start = None
         self.canvas.set_molecule(head.sketch_molecule(), fit=fit, independent_sketch=head.sketch_xy is not None)
@@ -371,7 +422,10 @@ class DesignPanel(QWidget):
             self.select_tool.click()
         if fit or self.viewport.molecule != head.molecule:
             with QSignalBlocker(self.viewport):
-                self.viewport.set_molecule(head.molecule, keep_view=not fit)
+                self.viewport.set_molecule(head.molecule, keep_view=not fit, keep_projection=keep_projection)
+        else:
+            # A new revision can retain the geometry but change the sketch or atom IDs.
+            self.viewport.set_design_tool(self.canvas.tool)
         with QSignalBlocker(self.atom_choice):
             self.atom_choice.clear()
             self.atom_choice.addItems([f"{atom.element}{i}" for i, atom in enumerate(head.molecule.atoms, 1)])
@@ -421,6 +475,9 @@ class DesignPanel(QWidget):
         self.hydrogens.setEnabled(has_atoms)
         self.clean_2d.setEnabled(ready and len(head.atom_ids) > 1)
         self.optimize_3d.setEnabled(ready and len(head.atom_ids) > 1)
+        has_contacts = head is not None and any(b.style == "hydrogen_bond" for b in head.molecule.bonds)
+        self.optimize_hbonds.setVisible(has_contacts)
+        self.optimize_hbonds.setEnabled(ready and has_contacts)
         self.bond_length.set_selection(head, selected, bonds=self.viewport.bonds)
 
     def _shift_select(self, index):
@@ -435,6 +492,29 @@ class DesignPanel(QWidget):
             indices = list(dict.fromkeys([*self.canvas.selected, *indices]))
         self._select(indices)
 
+    def _copy_molecule(self):
+        if self.editor is None:
+            return
+        head = self.editor.document.head
+        try:
+            mime, count = copy_fragment(head, self.editor.selection.indices(head))
+        except ValueError as exc:
+            self.status.setText(diagnostic_text(exc))
+            return
+        QApplication.clipboard().setMimeData(mime)
+        self.status.setText(tr("Copied {count} atoms.", count=count))
+
+    def _paste_molecule(self):
+        if self.editor is None:
+            return
+        try:
+            fragment = read_fragment(QApplication.clipboard().mimeData())
+        except ValueError as exc:
+            self.status.setText(diagnostic_text(exc))
+            return
+        if self._execute(fragment) is not None:
+            self.canvas.fit()
+
     def _execute(self, operation):
         return self._commit(GeometryEditCommand(self.editor.expected, operation))
 
@@ -444,11 +524,11 @@ class DesignPanel(QWidget):
         except ValueError as exc:
             self.status.setText(diagnostic_text(exc))
             return
-        self._edited()
+        self._edited(keep_projection=isinstance(command.operation, (TranslateFragment, RotateFragment)))
         return result
 
-    def _edited(self):
-        self._refresh()
+    def _edited(self, *, keep_projection=False):
+        self._refresh(keep_projection=keep_projection)
         self.geometry_changed.emit()
 
     def _history(self, undo):
@@ -456,12 +536,14 @@ class DesignPanel(QWidget):
         try:
             if undo:
                 self.editor.undo()
+                entry = self.editor.redo_entries[-1]
             else:
                 self.editor.redo()
+                entry = self.editor.undo_entries[-1]
         except ValueError as exc:
             self.status.setText(diagnostic_text(exc))
             return
-        self._edited()
+        self._edited(keep_projection=isinstance(entry.command.operation, (TranslateFragment, RotateFragment)))
         if was_empty:
             self.canvas.fit()
 
@@ -506,6 +588,10 @@ class DesignPanel(QWidget):
             self._execute(SetBond(head.atom_ids[first], head.atom_ids[second], self.canvas.bond_order, self.canvas.bond_style))
 
     def _extend_bond(self, index, x, y, z):
+        if self.canvas.bond_style == "hydrogen_bond":
+            self._bond_start = None
+            self._show_hint()
+            return
         head = self.editor.document.head
         if head.sketch_xy is not None:
             anchor = head.molecule.atoms[index]
@@ -534,6 +620,14 @@ class DesignPanel(QWidget):
             self._execute(MoveAtom(atom_id, x, y, z))
         else:
             self._execute(MoveSketchAtom(atom_id, x, y))
+
+    def _move_fragment(self, index, dx, dy, dz, *, from_sketch=False):
+        atom_id = self.editor.document.resolve(self.editor.expected).atom_ids[index]
+        self._execute(TranslateFragment(atom_id, dx, dy, dz, move_sketch=from_sketch))
+
+    def _rotate_fragment(self, index, axis, degrees, *, from_sketch=False):
+        atom_id = self.editor.document.resolve(self.editor.expected).atom_ids[index]
+        self._execute(RotateFragment(atom_id, axis, degrees, move_sketch=from_sketch))
 
     def _apply_coordinates(self):
         index = self.atom_choice.currentIndex()

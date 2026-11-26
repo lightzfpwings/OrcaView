@@ -1,11 +1,13 @@
 """Immutable M2 edit requests. Coordinates are in angstrom, angles in degrees."""
 
 from dataclasses import dataclass
+import math
 from typing import ClassVar, Optional, Tuple, Union
 
 from orcaview.core._validation import Versioned, identifiers, integer, nonempty, require_tuple, finite_number
 from orcaview.core.elements import ATOMIC_NUMBERS
-from orcaview.core.models import Atom, Bond, validate_bond_style
+from orcaview.core.geometry import connected_component
+from orcaview.core.models import Atom, Bond, Molecule, validate_bond_style
 from orcaview.core.snapshots import GeometryRef, SketchCoordinates, validate_sketch_xy
 
 from .coordinates import CoordinateDefinition
@@ -112,6 +114,25 @@ class AddAtoms(Versioned):
 
 
 @dataclass(frozen=True)
+class InsertFragment(Versioned):
+    """Append a separate molecule with fragment-local bond endpoints."""
+
+    atoms: Tuple[Atom, ...]
+    bonds: Tuple[Bond, ...]
+    sketch_xy: Optional[SketchCoordinates] = None
+    kind: ClassVar[str] = "insert-fragment"
+
+    def __post_init__(self):
+        Molecule("Fragment", self.atoms, self.bonds, bonds_explicit=True).validate_structure()
+        if len(connected_component(self.bonds, 0)) != len(self.atoms):
+            raise ValueError("Select atoms from one molecule to copy.")
+        if self.sketch_xy is not None:
+            validate_sketch_xy(self.sketch_xy)
+            if len(self.sketch_xy) != len(self.atoms):
+                raise ValueError("The number of sketch positions does not match the number of atoms.")
+
+
+@dataclass(frozen=True)
 class AttachAtom(Versioned):
     """Place a new atom and connect it to an existing atom in one revision."""
 
@@ -198,6 +219,47 @@ class MoveAtom(Versioned):
 
 
 @dataclass(frozen=True)
+class TranslateFragment(Versioned):
+    """Translate the bonded component of one atom in the base revision."""
+
+    atom_id: str
+    dx: float
+    dy: float
+    dz: float
+    move_sketch: bool = False
+    kind: ClassVar[str] = "translate-fragment"
+
+    def __post_init__(self):
+        nonempty(self.atom_id, "Atom ID")
+        for value in (self.dx, self.dy, self.dz):
+            finite_number(value, "Fragment displacement")
+        if type(self.move_sketch) is not bool or (self.move_sketch and self.dz != 0):
+            raise ValueError("A translation in the sketch must be in the XY plane.")
+
+
+@dataclass(frozen=True)
+class RotateFragment(Versioned):
+    """Rotate a connected component about its centroid in input coordinates."""
+
+    atom_id: str
+    axis: Tuple[float, float, float]
+    degrees: float
+    move_sketch: bool = False
+    kind: ClassVar[str] = "rotate-fragment"
+
+    def __post_init__(self):
+        nonempty(self.atom_id, "Atom ID")
+        require_tuple(self.axis, "Rotation axis")
+        for value in self.axis:
+            finite_number(value, "Rotation axis")
+        if len(self.axis) != 3 or not math.isclose(math.hypot(*self.axis), 1.0, rel_tol=1e-12):
+            raise ValueError("The rotation axis must be a unit vector.")
+        finite_number(self.degrees, "Rotation angle")
+        if type(self.move_sketch) is not bool or (self.move_sketch and self.axis[:2] != (0., 0.)):
+            raise ValueError("A rotation in the sketch must be in the XY plane.")
+
+
+@dataclass(frozen=True)
 class SetBond(Versioned):
     """Set the bond order between two stable atom IDs, or remove it with zero."""
 
@@ -274,8 +336,8 @@ class UseResultGeometry(Versioned):
             raise ValueError("The restore target must be a complete GeometryRef")
 
 
-EditOperation = Union[AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertRing, MoveAtom,
-                      MoveSketchAtom, SetSketchLayout, OptimizeCoordinates,
+EditOperation = Union[AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertFragment, InsertRing, MoveAtom,
+                      MoveSketchAtom, RotateFragment, TranslateFragment, SetSketchLayout, OptimizeCoordinates,
                       ReorderAtoms, ReplaceElement, SetBond, SetDistance, SetElectronicState, UseResultGeometry]
 
 
@@ -287,8 +349,8 @@ class GeometryEditCommand(Versioned):
     def __post_init__(self):
         if not isinstance(self.expected, GeometryRef) or self.expected.frame_id is not None:
             raise ValueError("The edit command must reference the complete editable revision")
-        if type(self.operation) not in (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertRing, MoveAtom,
-                                       MoveSketchAtom, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength,
+        if type(self.operation) not in (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, InsertFragment, InsertRing, MoveAtom,
+                                       MoveSketchAtom, RotateFragment, TranslateFragment, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength,
                                        SetDistance, SetElectronicState, UseResultGeometry):
             raise ValueError("Unsupported edit operation")
         if isinstance(self.operation, SetDistance) and self.operation.coordinate.geometry != self.expected:

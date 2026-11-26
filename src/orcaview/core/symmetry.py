@@ -74,7 +74,8 @@ def _matrix(source, target, sign):
                        + sign*target[2][i]*source[2][j] for j in range(3)) for i in range(3))
 
 
-def _axis_angle(matrix, sign):
+def rotation_axis_angle(matrix, sign=1):
+    """Return the unit axis and angle in radians of the proper rotation sign * matrix."""
     # Extract a quaternion from R = sign * matrix. The diagonal branch is stable near pi.
     m = tuple(tuple(sign * x for x in row) for row in matrix)
     trace = sum(m[i][i] for i in range(3))
@@ -96,7 +97,8 @@ def _axis_angle(matrix, sign):
     return axis, 2 * math.atan2(length, w)
 
 
-def _rotation_matrix(axis, angle, sign):
+def rotation_matrix(axis, angle, sign=1):
+    """Build a right-handed rotation from a unit axis and an angle in radians."""
     if axis is None:
         return ((sign, 0, 0), (0, sign, 0), (0, 0, sign))
     x, y, z = axis
@@ -185,7 +187,7 @@ def _refine(matrix, points, mapping):
     angle = _norm(delta)
     if angle < 1e-12:
         return matrix
-    correction = _rotation_matrix(_unit(delta), angle, 1)
+    correction = rotation_matrix(_unit(delta), angle, 1)
     return tuple(tuple(_dot(row, col) for col in zip(*matrix)) for row in correction)
 
 
@@ -203,10 +205,10 @@ def _verified_operation(matrix, sign, mapping, points, tolerance):
     # On a planar molecule an odd permutation period can still leave a plane reflection
     # acting on the unoccupied normal. Doubling it bounds the period of R = -operation.
     denominator = 2*period if sign < 0 and period % 2 else period
-    axis, angle = _axis_angle(matrix, sign)
+    axis, angle = rotation_axis_angle(matrix, sign)
     numerator = round(angle * denominator / math.tau)
     order = denominator // math.gcd(numerator, denominator)
-    snapped = _rotation_matrix(axis, math.tau * numerator / denominator, sign)
+    snapped = rotation_matrix(axis, math.tau * numerator / denominator, sign)
     if any(math.dist(tuple(_dot(row, p) for row in snapped), points[j]) > tolerance
            for p, j in zip(points, mapping)):
         return None
@@ -337,7 +339,7 @@ def analyze_rotations(molecule: Molecule, tolerance: float = DEFAULT_TOLERANCE) 
         return RotationAnalysis(no_axis, (), closed=False)
     line = _linear_axis(points, _unit(points[farthest]), tolerance)
     if line is not None:
-        inversion = _rotation_matrix(None, 0., -1)
+        inversion = rotation_matrix(None, 0., -1)
         matched = _Matcher(points, elements, tolerance).match(inversion)
         operations = (SymmetryOperation(-1, 1, None),) if matched is not None else ()
         return RotationAnalysis(RotationAxis(math.inf, line), operations)

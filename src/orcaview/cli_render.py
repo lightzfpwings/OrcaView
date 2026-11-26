@@ -335,7 +335,8 @@ def _render_structure(args):
         view.setMinimumSize(1, 1)
         view.resize(args.width, args.height)
         view.set_element_colors(colors)
-        view.set_molecule(snapshot.sketch_molecule(), fit=True, independent_sketch=snapshot.sketch_xy is not None)
+        view.set_molecule(session.document.molecule_with_topology(snapshot, sketch=True),
+                          fit=True, independent_sketch=snapshot.sketch_xy is not None)
     else:
         from orcaview.gui.viewport import MoleculeViewport
 
@@ -343,7 +344,7 @@ def _render_structure(args):
         view.setMinimumSize(1, 1)
         view.resize(args.width, args.height)
         view.set_appearance(settings, colors)
-        view.set_molecule(snapshot.molecule)
+        view.set_molecule(session.document.molecule_with_topology(snapshot))
         view.population_map = population
         _camera(view, args)
     save_structure_image(view, args.output, fmt, width, height, transparent=args.transparent, scale=args.scale)

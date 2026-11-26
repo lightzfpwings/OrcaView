@@ -12,7 +12,7 @@ def open_direction(anchor, bonds, xyz, u, v):
     """Point the new bond into the largest gap between projected neighbour bonds."""
     directions = []
     for bond in bonds:
-        if anchor not in (bond.a, bond.b):
+        if not bond.is_covalent or anchor not in (bond.a, bond.b):
             continue
         other = bond.b if bond.a == anchor else bond.a
         dx = xyz[other][u] - xyz[anchor][u]

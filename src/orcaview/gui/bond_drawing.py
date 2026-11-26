@@ -15,6 +15,8 @@ def aromatic_ring_paths(bonds):
         return {}
     neighbors = {}
     for bond in bonds:
+        if not bond.is_covalent:
+            continue
         neighbors.setdefault(bond.a, []).append(bond.b)
         neighbors.setdefault(bond.b, []).append(bond.a)
     paths = {}
@@ -112,7 +114,14 @@ def draw_bond(painter, start, end, order, style, ink, width, spacing, *,
 
     painter.setPen(pen())
     span = _symbol_span(length, spacing)
-    if style in ("wedge", "hollow_wedge"):
+    if style == "hydrogen_bond":
+        # Center a line of separated round dots even on short projected contacts.
+        count = max(2, min(2048, round(length / max(4., 2 * width))))
+        step = length / count
+        painter.setPen(pen(weight=min(width, .48 * step)))
+        for i in range(count):
+            painter.drawPoint(QPointF((i + .5) * step, 0))
+    elif style in ("wedge", "hollow_wedge"):
         triangle = QPolygonF([QPointF(), QPointF(length, -span), QPointF(length, span)])
         painter.setPen(pen(weight=min(width, span / 2)))
         painter.setBrush(ink if style == "wedge" else Qt.BrushStyle.NoBrush)

@@ -525,7 +525,7 @@ class FoundationPanel(QWidget):
         previous_ids = tuple(self._selected_ids) if same_geometry and retain_selection else ()
         self.selected_snapshot = snapshot
         if not same_geometry:
-            self.viewport.set_molecule(snapshot.molecule)
+            self.viewport.set_molecule(self.document.molecule_with_topology(snapshot))
         self._populations = available_populations(self.document.records()[1], snapshot.ref)
         self.population_button.setVisible(bool(self._populations))
         if data is not None and any(d.dataset_id == data.dataset_id for d in self._populations):

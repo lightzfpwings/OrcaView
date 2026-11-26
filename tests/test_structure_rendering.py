@@ -117,7 +117,7 @@ class StructureRenderingTests(unittest.TestCase):
     def test_sketch_preserves_bond_styles(self):
         view = DesignCanvas()
         self.addCleanup(view.close)
-        atoms = (Atom("C", -1, 0, 0), Atom("C", 1, 0, 0))
+        atoms = (Atom("H", -1, 0, 0), Atom("F", 1, 0, 0))
         for order, styles in BOND_STYLES.items():
             drawings = []
             for style in styles:

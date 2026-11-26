@@ -1,17 +1,22 @@
 """Stable atom identities, explicit bond editing and project compatibility."""
 
 from pathlib import Path
+from dataclasses import replace
 from tempfile import TemporaryDirectory
 import json
 import unittest
 
 from orcaview.application.project import load_project, save_project
 from orcaview.application.session import Session
-from orcaview.core.geometry import display_bonds
-from orcaview.core.models import Atom, Bond, BOND_STYLES, Molecule
+from orcaview.core.geometry import connected_component, covalent_bonds, display_bonds, occupied_valences
+from orcaview.core.models import Atom, Bond, BOND_STYLES, CalculationSpec, Molecule
 from orcaview.editing import (AttachAtom, DeleteAtoms, EditorService, GeometryEditCommand, MoveAtom,
                               ReorderAtoms, SetBond)
 from orcaview.editing.diagnostics import design_diagnostics
+from orcaview.editing.hydrogens import missing_hydrogens
+from orcaview.io.babel_geometry import geometry_payload
+from orcaview.io.xyz import write_xyz
+from orcaview.orca.input import render_input
 
 
 class DesignTopologyTests(unittest.TestCase):
@@ -85,13 +90,15 @@ class DesignTopologyTests(unittest.TestCase):
                 for style in styles:
                     with self.subTest(order=order, style=style):
                         bond = Bond(0, 1, order, style)
-                        molecule = Molecule("H2", self.session.molecule.atoms, (bond,))
+                        molecule = Molecule("HF", (Atom("H", 0, 0, 0), Atom("F", 1, 0, 0)), (bond,))
                         session = Session(molecule)
                         save_project(session, path)
                         record = json.loads(path.read_text())
                         if style == "plain":
                             self.assertEqual(record["schema_version"], 1)
                             self.assertEqual(record["molecule"]["bonds"], [{"a": 0, "b": 1, "order": order}])
+                        elif style == "hydrogen_bond":
+                            self.assertEqual(record["schema_version"], 13)
                         else:
                             self.assertEqual(record["schema_version"], 9)
                         self.assertEqual(load_project(path).molecule, molecule)
@@ -108,6 +115,43 @@ class DesignTopologyTests(unittest.TestCase):
             bond_record["style"] = "partial_triple"
             path.write_text(json.dumps(record))
             with self.assertRaisesRegex(ValueError, "unknown fields"):
+                load_project(path)
+
+    def test_hydrogen_bond_is_visible_without_joining_fragments_or_consuming_valence(self):
+        atoms = (Atom("F", -1, 0, 0), Atom("H", 0, 0, 0), Atom("F", 2, 0, 0), Atom("H", 3, 0, 0))
+        contacts = (Bond(0, 1), Bond(2, 3), Bond(1, 2, 1, "hydrogen_bond"))
+        molecule = Molecule("HF dimer", atoms, contacts, bonds_explicit=True)
+        self.assertEqual(display_bonds(molecule), contacts)
+        self.assertEqual(covalent_bonds(molecule), contacts[:2])
+        self.assertEqual(connected_component(contacts, 0), {0, 1})
+        self.assertEqual(connected_component(contacts, 3), {2, 3})
+        self.assertEqual(occupied_valences(molecule, contacts), [1, 1, 1, 1])
+        self.assertEqual(missing_hydrogens(molecule), ((), None))
+        self.assertEqual(geometry_payload(molecule)["bonds"], [(0, 1, 1), (2, 3, 1)])
+        self.assertEqual(geometry_payload(molecule, bonds=contacts)["bond_styles"], ["plain", "plain"])
+        unmarked = replace(molecule, bonds=covalent_bonds(molecule))
+        self.assertEqual(write_xyz(molecule), write_xyz(unmarked))
+        self.assertEqual(render_input(molecule, CalculationSpec()), render_input(unmarked, CalculationSpec()))
+
+    def test_contact_endpoint_validation_and_schema_after_contact_removed(self):
+        atoms = (Atom("F", -1, 0, 0), Atom("H", 0, 0, 0), Atom("F", 2, 0, 0), Atom("H", 3, 0, 0))
+        self.session = Session(Molecule("HF dimer", atoms, (Bond(0, 1), Bond(2, 3))))
+        self.editor = EditorService(self.session.document)
+        ids = self.editor.document.head.atom_ids
+        for pair in ((0, 2), (1, 3)):
+            with self.assertRaisesRegex(ValueError, "explicit H"):
+                self.apply(SetBond(ids[pair[0]], ids[pair[1]], 1, "hydrogen_bond"))
+        self.apply(SetBond(ids[2], ids[1], 1, "hydrogen_bond"))
+        self.apply(SetBond(ids[1], ids[2], 0))
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "contact-history.oview.json"
+            save_project(self.session, path)
+            self.assertEqual(load_project(path).document.records(), self.session.document.records())
+            record = json.loads(path.read_text())
+            self.assertEqual(record["schema_version"], 13)
+            record["schema_version"] = 12
+            path.write_text(json.dumps(record))
+            with self.assertRaisesRegex(ValueError, "schema 13"):
                 load_project(path)
 
     def test_fractional_and_coordinate_bonds_contribute_to_valence_by_endpoint(self):

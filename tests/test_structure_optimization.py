@@ -63,6 +63,16 @@ class OptimizationFailureTests(unittest.TestCase):
 
 @unittest.skipUnless(find_spec("openbabel"), "requires desktop Open Babel")
 class NativeOptimizationTests(unittest.TestCase):
+    def test_regular_3d_optimization_preserves_the_marked_hydrogen_bond(self):
+        atoms = (Atom("O", 0., 0., 0.), Atom("H", 1., 0., 0.), Atom("H", -.25, .90, .02),
+                 Atom("O", 3., .1, 0.), Atom("H", 3.6, .8, 0.), Atom("H", 3.5, -.7, .03))
+        bonds = (Bond(0, 1), Bond(0, 2), Bond(3, 4), Bond(3, 5), Bond(1, 3, 1, "hydrogen_bond"))
+        molecule = Molecule("water dimer", atoms, bonds, bonds_explicit=True)
+        result = optimize_structure(molecule, "3D").molecule
+        self.assertEqual(result.bonds, bonds)
+        self.assertNotEqual(result.atoms, atoms)
+        self.assertGreater(math.dist(points(result)[1], points(result)[3]), 1.35)
+
     def test_depiction_centers_a_regular_ring_on_its_drawing_not_its_conformer(self):
         physical = optimize_structure(ring(), "3D").molecule
         reference = tuple((a.x + 8, a.y - 4) for a in physical.atoms)

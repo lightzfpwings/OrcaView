@@ -8,9 +8,9 @@ from PySide6.QtWidgets import QApplication
 
 from orcaview.appearance import AppearanceSettings, MODEL_LABELS
 from orcaview.core.elements import ELEMENT_COLORS, VDW_RADII
-from orcaview.core.geometry import DEFAULT_BOND_DISTANCE_FACTOR, display_bonds
+from orcaview.core.geometry import DEFAULT_BOND_DISTANCE_FACTOR, connected_component, display_bonds
 from orcaview.core.point_group import geometric_symmetry
-from orcaview.core.symmetry import DEFAULT_TOLERANCE
+from orcaview.core.symmetry import DEFAULT_TOLERANCE, rotation_axis_angle
 from orcaview.gui.bond_drawing import aromatic_ring_paths, bond_half_width, draw_bond, ring_center
 from orcaview.gui.design_picking import MoleculeEditView, distance_to_segment
 from orcaview.i18n import tr
@@ -58,11 +58,22 @@ def _in_frame(rows, x, y, z):
     return tuple(a * x + b * y + c * z for a, b, c in rows)
 
 
+def _orbit(x, y, z, yaw, pitch):
+    x, z = x * math.cos(yaw) + z * math.sin(yaw), -x * math.sin(yaw) + z * math.cos(yaw)
+    y, z = y * math.cos(pitch) - z * math.sin(pitch), y * math.sin(pitch) + z * math.cos(pitch)
+    return x, y, z
+
+
+_ORBIT_RADIANS_PER_PIXEL = .012
+
+
 class MoleculeViewport(MoleculeEditView):
     selection_changed = Signal(list)
     atom_targeted = Signal(int)
     bond_targeted = Signal(int, int)
     space_targeted = Signal(float, float, float)
+    fragment_moved = Signal(int, float, float, float)
+    fragment_rotated = Signal(int, object, float)
     delete_requested = Signal()
 
     def __init__(self, parent=None, *, result_view=False, design_selection=False):
@@ -143,8 +154,9 @@ class MoleculeViewport(MoleculeEditView):
         extent = max(d + r for d, r in zip(self._center_distances, self._atom_radii))
         self._fit_radius = max(1.2, max(self._center_distances), .75 * extent)
 
-    def set_molecule(self, molecule, *, keep_view=False):
+    def set_molecule(self, molecule, *, keep_view=False, keep_projection=False):
         keep_view = keep_view and self.molecule is not None and bool(self.molecule.atoms)
+        old_center = self._center
         self.molecule = molecule
         self.population_map = None
         self._track_hover(None)
@@ -194,7 +206,13 @@ class MoleculeViewport(MoleculeEditView):
         self.setAccessibleDescription(self.symmetry_label)
         self.setToolTip(self.symmetry_label + "\n" + tr("Geometry matching tolerance: {tolerance:g} Å. The atom table and ORCA input use the original coordinates.", tolerance=DEFAULT_TOLERANCE))
         if keep_view:
-            self._update_fit_radius()
+            if keep_projection:
+                # The new centroid is the pivot for subsequent rotations. Offset
+                # its shift on screen so only the translated fragment moves.
+                x, y, _ = self.transform(*(new - old for new, old in zip(self._center, old_center)))
+                self._pan += QPointF(x, -y) * self._projection_scale()
+            else:
+                self._update_fit_radius()
             self._end_gesture()
             self.update()
         else:
@@ -217,10 +235,7 @@ class MoleculeViewport(MoleculeEditView):
 
     def camera_transform(self, x, y, z):
         # The axis triad is already in the local frame. Apply only the camera to it.
-        x, y, z = _in_frame(self._camera, x, y, z)
-        x, z = x * math.cos(self.yaw) + z * math.sin(self.yaw), -x * math.sin(self.yaw) + z * math.cos(self.yaw)
-        y, z = y * math.cos(self.pitch) - z * math.sin(self.pitch), y * math.sin(self.pitch) + z * math.cos(self.pitch)
-        return x, y, z
+        return _orbit(*_in_frame(self._camera, x, y, z), self.yaw, self.pitch)
 
     def _commit_orbit(self):
         # The next gesture starts in screen coordinates from the displayed orientation.
@@ -230,7 +245,7 @@ class MoleculeViewport(MoleculeEditView):
 
     def rotate_view(self, axis, degrees):
         """Rotate the displayed molecule about a screen axis, using right-handed degrees."""
-        if self._box_select:
+        if self._box_select or self._fragment_rows is not None:
             self._end_gesture()
         first, second = {"x": (1, 2), "y": (2, 0), "z": (0, 1)}[axis]
         angle = math.radians(degrees)
@@ -306,7 +321,7 @@ class MoleculeViewport(MoleculeEditView):
             radius = max(.5, .85 * self.appearance.bond_scale)
         return radius if bond.order == 1 else max(.6, radius * .52)
 
-    def _target_at(self, point):
+    def _target_at(self, point, *, fragment=False):
         front = None
         px, py = point.x(), point.y()
         for i, (x, y, z, radius) in enumerate(self._projected):
@@ -318,14 +333,19 @@ class MoleculeViewport(MoleculeEditView):
                     front = hit
         if front is not None:
             return (front[2],)
-        if (not self.design_selection or self._design_tool not in ("select", "bond") or self._box_select
+        if self.design_selection and self._button is None:
+            modifiers = QApplication.keyboardModifiers()
+            fragment = fragment or bool(modifiers & Qt.KeyboardModifier.AltModifier)
+            if not fragment and modifiers & Qt.KeyboardModifier.ShiftModifier:
+                return ()
+        if (not self.design_selection or not (fragment or self._design_tool in ("select", "bond")) or self._box_select
                 or self.appearance.model == "space-filling" or not self._projected):
-            return ()
-        if self._button is None and QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
             return ()
         scale = self._projection_scale()
         best = None
         for bond in self._editable_bonds:
+            if fragment and not bond.is_covalent:
+                continue
             x1, y1, z1, _ = self._projected[bond.a]
             x2, y2, z2, _ = self._projected[bond.b]
             miss, fraction, length = distance_to_segment(point, QPointF(x1, y1), QPointF(x2, y2))
@@ -405,6 +425,20 @@ class MoleculeViewport(MoleculeEditView):
             return
         atoms = self.molecule.atoms
         scale, self._projected = self._project_atoms()
+        if self._fragment_rows and self._dragged:
+            delta = self._last - self._press
+            if self._button == Qt.MouseButton.LeftButton:
+                cx, cy, cz, _ = (sum(values) / len(self._fragment_rows)
+                                 for values in zip(*(self._projected[i] for i in self._fragment_rows)))
+                yaw, pitch = delta.x() * _ORBIT_RADIANS_PER_PIXEL, delta.y() * _ORBIT_RADIANS_PER_PIXEL
+                for i in self._fragment_rows:
+                    x, y, z, radius = self._projected[i]
+                    rx, ry, rz = _orbit((x - cx) / scale, (cy - y) / scale, z - cz, yaw, pitch)
+                    self._projected[i] = (cx + rx * scale, cy - ry * scale, cz + rz, radius)
+            else:
+                for i in self._fragment_rows:
+                    x, y, z, radius = self._projected[i]
+                    self._projected[i] = (x + delta.x(), y + delta.y(), z, radius)
         numeric_labels = self.population_map is not None and self.population_map.style.labels
         selection_labels = set(self.selected) if self.labels or numeric_labels else ()
         self._draw_molecule(painter, scale, self._projected, selection_labels, self._refresh_hover())
@@ -516,9 +550,18 @@ class MoleculeViewport(MoleculeEditView):
             self._button = event.button()
             self._press = self._last = event.position()
             self._dragged = False
-            self._box_select = (self.design_selection and self._design_tool != "hydrogen"
-                                and self._button == Qt.MouseButton.LeftButton
-                                and bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier))
+            if self.design_selection:
+                if event.modifiers() & Qt.KeyboardModifier.AltModifier:
+                    self._fragment_rows = frozenset()
+                    if self.has_exportable_structure():
+                        _, self._projected = self._project_atoms()
+                        target = self.selected[-1:] or self._target_at(self._press, fragment=True)
+                        if target:
+                            self._fragment_anchor = target[0]
+                            self._fragment_rows = connected_component(self.bonds, self._fragment_anchor)
+                elif self._button == Qt.MouseButton.LeftButton:
+                    self._box_select = (self._design_tool != "hydrogen"
+                                        and bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier))
 
     def mouseMoveEvent(self, event):
         if self._button is not None and event.buttons() & self._button:
@@ -530,17 +573,19 @@ class MoleculeViewport(MoleculeEditView):
         if position == self._last:
             return
         displacement = position - self._press
+        orbit = self._button == Qt.MouseButton.LeftButton and not self._box_select and self._fragment_rows is None
         if not self._dragged:
-            if displacement.manhattanLength() <= 4:
+            threshold = QApplication.startDragDistance() if self._fragment_rows is not None else 5
+            if displacement.manhattanLength() < threshold:
                 return
             self._dragged = True
-            if self._button == Qt.MouseButton.LeftButton and not self._box_select:
+            if orbit:
                 self._commit_orbit()
-        if self._button == Qt.MouseButton.RightButton:
+        if self._button == Qt.MouseButton.RightButton and self._fragment_rows is None:
             self._pan += position - self._last
-        elif not self._box_select:
-            self.yaw = displacement.x() * 0.012
-            self.pitch = displacement.y() * 0.012
+        elif orbit:
+            self.yaw = displacement.x() * _ORBIT_RADIANS_PER_PIXEL
+            self.pitch = displacement.y() * _ORBIT_RADIANS_PER_PIXEL
         self._last = position
         self.update()
 
@@ -548,7 +593,28 @@ class MoleculeViewport(MoleculeEditView):
         if event.button() != self._button:
             return
         self._drag_to(event.position())
-        if self._box_select and self._dragged:
+        if self._fragment_rows is not None:
+            delta = event.position() - self._press
+            anchor = self._fragment_anchor
+            rows, button = self._fragment_rows, self._button
+            changed = bool(rows and self._dragged and not delta.isNull())
+            self._end_gesture()
+            if changed and button == Qt.MouseButton.LeftButton and len(rows) > 1:
+                yaw, pitch = delta.x() * _ORBIT_RADIANS_PER_PIXEL, delta.y() * _ORBIT_RADIANS_PER_PIXEL
+                rotation = tuple(zip(*(_orbit(*axis, yaw, pitch) for axis in _INPUT_FRAME)))
+                screen_axis, angle = rotation_axis_angle(rotation)
+                if screen_axis is not None:
+                    world_axis = tuple(sum(a * b for a, b in zip(self.transform(*axis), screen_axis))
+                                       for axis in _INPUT_FRAME)
+                    self.fragment_rotated.emit(anchor, world_axis, math.degrees(angle))
+            elif changed and button == Qt.MouseButton.RightButton:
+                # The inverse of the orthographic camera rotation is its
+                # transpose. The depth component of a screen-plane drag is zero.
+                scale = self._projection_scale()
+                axes = (self.transform(*axis) for axis in _INPUT_FRAME)
+                xyz = tuple((x * delta.x() - y * delta.y()) / scale for x, y, _ in axes)
+                self.fragment_moved.emit(anchor, *xyz)
+        elif self._box_select and self._dragged:
             bounds = QRectF(self._press, event.position()).normalized()
             selected = set(self.selected)
             self.selected.extend(i for i, (x, y, _, _) in enumerate(self._projected)
@@ -606,14 +672,16 @@ class MoleculeViewport(MoleculeEditView):
     def _end_gesture(self):
         self._button = self._last = self._press = None
         self._dragged = self._box_select = False
+        self._fragment_anchor = self._fragment_rows = None
 
     def event(self, event):
         if (event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease)
-                and event.key() == Qt.Key.Key_Shift and self._hover_point is not None):
+                and event.key() in (Qt.Key.Key_Shift, Qt.Key.Key_Alt) and self._hover_point is not None):
             self.update()
         if getattr(self, "_button", None) is not None and (
                 event.type() in (QEvent.Type.UngrabMouse, QEvent.Type.FocusOut, QEvent.Type.Hide,
-                                 QEvent.Type.WindowDeactivate) or self._box_select and event.type() == QEvent.Type.Resize):
+                                 QEvent.Type.WindowDeactivate) or event.type() == QEvent.Type.Resize
+                and (self._box_select or self._fragment_rows is not None)):
             self._end_gesture()
             self.update()
         return super().event(event)
@@ -623,7 +691,7 @@ class MoleculeViewport(MoleculeEditView):
             self._end_gesture()
             self.delete_requested.emit()
             event.accept()
-        elif event.key() == Qt.Key.Key_Escape and self._box_select:
+        elif event.key() == Qt.Key.Key_Escape and (self._box_select or self._fragment_rows is not None):
             self._end_gesture()
             self.update()
             event.accept()
@@ -631,7 +699,7 @@ class MoleculeViewport(MoleculeEditView):
             super().keyPressEvent(event)
 
     def wheelEvent(self, event):
-        if self._box_select:
+        if self._box_select or self._fragment_rows is not None:
             event.accept()
             return
         self.zoom = min(4.0, max(0.3, self.zoom * (1.12 if event.angleDelta().y() > 0 else 1 / 1.12)))

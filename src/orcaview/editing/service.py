@@ -9,13 +9,14 @@ from typing import Optional, Tuple
 from orcaview.application.document import MoleculeDocument, StaleRevisionError
 from orcaview.core._validation import Versioned, identifiers, require_tuple
 from orcaview.core.models import Bond, DIRECTIONAL_STYLES, Molecule
-from orcaview.core.geometry import display_bonds
+from orcaview.core.geometry import connected_component, display_bonds
+from orcaview.core.symmetry import rotation_matrix
 from orcaview.core.provenance import Provenance, new_id
 from orcaview.core.snapshots import GeometryRef, GeometrySnapshot, SelectionContext, SketchCoordinates, validate_sketch_xy
 
-from .commands import (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, GeometryEditCommand, InsertRing, MoveAtom,
+from .commands import (AddAtoms, AddHydrogen, AddHydrogens, AttachAtom, DeleteAtoms, GeometryEditCommand, InsertFragment, InsertRing, MoveAtom,
                        MoveSketchAtom, SetSketchLayout, OptimizeCoordinates, ReorderAtoms, ReplaceElement, SetBond, SetBondLength, SetDistance,
-                       SetElectronicState, UseResultGeometry)
+                       SetElectronicState, RotateFragment, TranslateFragment, UseResultGeometry)
 from .coordinates import bond_moving_atoms, edit_distance
 from .hydrogens import attached_hydrogen
 from .rings import insert_ring, open_direction
@@ -133,6 +134,19 @@ def _result_atom_ids(document, target, live_ids):
     return tuple(mapped)
 
 
+def _place_fragment(existing, incoming):
+    """Leave the first molecule in place; fit subsequent copies to its right."""
+    if not existing:
+        return incoming
+    offsets = []
+    for axis, (old, new) in enumerate(zip(zip(*existing), zip(*incoming))):
+        if axis == 0:
+            offsets.append(max(old) + 2.5 - min(new))
+        else:
+            offsets.append((min(old) + max(old) - min(new) - max(new)) / 2)
+    return tuple(tuple(x + delta for x, delta in zip(point, offsets)) for point in incoming)
+
+
 def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: GeometryEditCommand):
     op, molecule, ids = command.operation, base.molecule, base.atom_ids
     if isinstance(op, (SetSketchLayout, MoveSketchAtom)):
@@ -159,6 +173,12 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
         return replace(molecule, atoms=atoms, bonds=bonds, bonds_explicit=True), ids
     if isinstance(op, AddAtoms):
         return replace(molecule, atoms=molecule.atoms + op.atoms), ids + (None,) * len(op.atoms)
+    if isinstance(op, InsertFragment):
+        xyz = _place_fragment(base.coordinates(), tuple((a.x, a.y, a.z) for a in op.atoms))
+        new_atoms = tuple(replace(atom, x=x, y=y, z=z) for atom, (x, y, z) in zip(op.atoms, xyz))
+        new_bonds = tuple(replace(bond, a=bond.a + len(ids), b=bond.b + len(ids)) for bond in op.bonds)
+        return replace(molecule, atoms=molecule.atoms + new_atoms, bonds=display_bonds(molecule) + new_bonds,
+                       bonds_explicit=True), ids + (None,) * len(new_atoms)
     if isinstance(op, (AttachAtom, AddHydrogen)):
         anchor = base.index_of(op.anchor_id)
         bonds = display_bonds(molecule)
@@ -192,6 +212,20 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
         else:
             atoms[row] = replace(atoms[row], x=op.x, y=op.y, z=op.z)
         return replace(molecule, atoms=tuple(atoms)), ids
+    if isinstance(op, (TranslateFragment, RotateFragment)):
+        bonds = display_bonds(molecule)
+        moving = connected_component(bonds, base.index_of(op.atom_id))
+        if isinstance(op, RotateFragment):
+            points = _rotated_fragment(base.coordinates(), moving, op)
+            atoms = tuple(replace(atom, x=x, y=y, z=z) if i in moving else atom
+                          for i, (atom, (x, y, z)) in enumerate(zip(molecule.atoms, points)))
+        else:
+            atoms = tuple(replace(atom, x=atom.x + op.dx, y=atom.y + op.dy, z=atom.z + op.dz)
+                          if i in moving else atom for i, atom in enumerate(molecule.atoms))
+        if atoms == molecule.atoms:
+            return molecule, ids
+        # Keep the original topology even when two XYZ fragments pass close together.
+        return replace(molecule, atoms=atoms, bonds=bonds, bonds_explicit=True), ids
     if isinstance(op, SetBond):
         a, b = base.index_of(op.atom_a), base.index_of(op.atom_b)
         edge = {a, b}
@@ -216,13 +250,7 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
         return replace(molecule, charge=op.charge, multiplicity=op.multiplicity), ids
     if isinstance(op, UseResultGeometry):
         target = document.resolve(op.source)
-        chosen = target.molecule
-        if target.ref.frame_id is not None and not (chosen.bonds_explicit or chosen.bonds):
-            # Coordinate-only output frames share their parent's atom identities.
-            parent = document.resolve(target.parent)
-            if parent.molecule.bonds or parent.molecule.bonds_explicit:
-                topology = _subset(parent, target.atom_ids)
-                chosen = replace(chosen, bonds=topology.bonds, bonds_explicit=topology.bonds_explicit)
+        chosen = document.molecule_with_topology(target)
         return chosen, _result_atom_ids(document, target, ids)
     if isinstance(op, SetDistance):
         edited = edit_distance(base, op.coordinate, op.target, op.moving_atom_ids, op.fixed_atom_ids)
@@ -235,7 +263,34 @@ def _apply(document: MoleculeDocument, base: GeometrySnapshot, command: Geometry
     raise ValueError("Unsupported edit operation")
 
 
+def _rotated_fragment(points, moving, op):
+    if len(moving) == 1 or op.degrees % 360 == 0:
+        return points
+    matrix = rotation_matrix(op.axis, math.radians(op.degrees))
+    center = tuple(sum(column) / len(moving) for column in zip(*(points[i] for i in moving)))
+    result = list(points)
+    for i in moving:
+        relative = tuple(value - origin for value, origin in zip(points[i], center))
+        result[i] = tuple(origin + sum(a * b for a, b in zip(row, relative))
+                          for origin, row in zip(center, matrix))
+    return tuple(result)
+
+
 def _edit_sketch(document, base, op, molecule, ids):
+    if isinstance(op, InsertFragment):
+        if base.sketch_xy is None and op.sketch_xy is None:
+            return None
+        existing = base.sketch_xy or tuple((a.x, a.y) for a in base.molecule.atoms)
+        incoming = op.sketch_xy or tuple((a.x, a.y) for a in op.atoms)
+        return existing + _place_fragment(existing, incoming)
+    if isinstance(op, (TranslateFragment, RotateFragment)):
+        if base.sketch_xy is None or not op.move_sketch:
+            return base.sketch_xy
+        moving = connected_component(display_bonds(molecule), base.index_of(op.atom_id))
+        if isinstance(op, RotateFragment):
+            return _rotated_fragment(base.sketch_xy, moving, op)
+        return tuple((x + op.dx, y + op.dy) if i in moving else (x, y)
+                     for i, (x, y) in enumerate(base.sketch_xy))
     if isinstance(op, SetSketchLayout):
         if len(op.xy) != len(ids):
             raise ValueError("The number of sketch positions does not match the number of atoms.")
@@ -415,7 +470,10 @@ class EditorService:
                 source_unit=preview.before.source_unit if isinstance(command.operation, (MoveSketchAtom, SetSketchLayout))
                 else "angstrom", sketch_xy=preview.sketch_xy,
             )
-            selection = SelectionContext(after.ref, preview.selection_after_ids, preview.selection_before.mode)
+            selected = preview.selection_after_ids
+            if isinstance(command.operation, InsertFragment):
+                selected = tuple(after.atom_ids[i] for i in preview.mapping.added_indices)
+            selection = SelectionContext(after.ref, selected, preview.selection_before.mode)
             entry = EditHistoryEntry(command, preview.before, after, preview.selection_before, selection)
             self._undo.append(entry)
             self._redo.clear()

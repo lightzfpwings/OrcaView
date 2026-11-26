@@ -9,8 +9,8 @@ import tempfile
 from orcaview import (
     ADVANCED_PROJECT_SCHEMA_VERSION, DOCUMENT_PROJECT_SCHEMA_VERSION, LEGACY_PROJECT_SCHEMA_VERSION,
     BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION,
-    INPUT_TEXT_PROJECT_SCHEMA_VERSION, LOG_REPORT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION,
-    TOPOLOGY_PROJECT_SCHEMA_VERSION, __version__,
+    HYDROGEN_BOND_PROJECT_SCHEMA_VERSION, INPUT_TEXT_PROJECT_SCHEMA_VERSION, LOG_REPORT_PROJECT_SCHEMA_VERSION,
+    SKETCH_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION, __version__,
     SOLVATION_PROJECT_SCHEMA_VERSION, STATE_PROJECT_SCHEMA_VERSION,
 )
 from orcaview.core.methods import PATH_JOBS
@@ -43,7 +43,9 @@ def _payload(session, target):
     document = session.tracked_document
     records = document.records() if document is not None else None
     molecules = [s.molecule for s in records[0]] if records is not None else [session.molecule]
-    if spec.input_comments or spec.scf_convergence != "Auto":
+    if any(not bond.is_covalent for molecule in molecules for bond in molecule.bonds):
+        version = HYDROGEN_BOND_PROJECT_SCHEMA_VERSION
+    elif spec.input_comments or spec.scf_convergence != "Auto":
         version = INPUT_TEXT_PROJECT_SCHEMA_VERSION
     elif records is not None and any(s.sketch_xy is not None for s in records[0]):
         version = SKETCH_PROJECT_SCHEMA_VERSION
@@ -158,7 +160,7 @@ def load_project(path: Path) -> Session:
             STATE_PROJECT_SCHEMA_VERSION, ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION,
             SOLVATION_PROJECT_SCHEMA_VERSION, LOG_REPORT_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION,
             BOND_STYLE_PROJECT_SCHEMA_VERSION, EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION,
-            INPUT_TEXT_PROJECT_SCHEMA_VERSION):
+            INPUT_TEXT_PROJECT_SCHEMA_VERSION, HYDROGEN_BOND_PROJECT_SCHEMA_VERSION):
         raise ValueError("Unsupported project version. Migrate the project explicitly")
     common = {"schema_version", "software_version", "calculation", "source_path"}
     extra = {"molecule"} if version == LEGACY_PROJECT_SCHEMA_VERSION else {"contract_version", "document"}

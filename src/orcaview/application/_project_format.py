@@ -3,8 +3,8 @@
 from dataclasses import asdict, fields
 
 from orcaview import (ADVANCED_PROJECT_SCHEMA_VERSION, BLOCK_PROJECT_SCHEMA_VERSION, BOND_STYLE_PROJECT_SCHEMA_VERSION,
-                      EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, INPUT_TEXT_PROJECT_SCHEMA_VERSION,
-                      SKETCH_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
+                      EMPTY_DRAFT_PROJECT_SCHEMA_VERSION, HYDROGEN_BOND_PROJECT_SCHEMA_VERSION,
+                      INPUT_TEXT_PROJECT_SCHEMA_VERSION, SKETCH_PROJECT_SCHEMA_VERSION, SOLVATION_PROJECT_SCHEMA_VERSION,
                       STATE_PROJECT_SCHEMA_VERSION, TOPOLOGY_PROJECT_SCHEMA_VERSION)
 from orcaview.core.block_options import BlockOverride
 from orcaview.core._state_methods import EARLIER_RESPONSE_FUNCTIONALS
@@ -40,6 +40,8 @@ def read_molecule(record, version):
         raise ValueError("A molecule requires at least one atom")
     bond_fields = ("a", "b", "order", "style") if version >= BOND_STYLE_PROJECT_SCHEMA_VERSION else ("a", "b", "order")
     data["bonds"] = tuple(Bond(**check_fields(b, bond_fields, "Bond")) for b in _array(data["bonds"]))
+    if version < HYDROGEN_BOND_PROJECT_SCHEMA_VERSION and any(not bond.is_covalent for bond in data["bonds"]):
+        raise ValueError("Hydrogen bonds require project schema 13.")
     return Molecule(**data)
 
 

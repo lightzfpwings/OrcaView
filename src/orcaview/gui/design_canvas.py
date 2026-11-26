@@ -3,10 +3,10 @@
 import math
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, QSizeF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QTransform
 from PySide6.QtWidgets import QApplication
 
-from orcaview.core.geometry import display_bonds
+from orcaview.core.geometry import connected_component, display_bonds
 from orcaview.gui.bond_drawing import aromatic_ring_paths, bond_half_width, draw_bond, ring_center
 from orcaview.gui.design_picking import MoleculeEditView, distance_to_segment
 from orcaview.i18n import tr
@@ -23,6 +23,8 @@ class DesignCanvas(MoleculeEditView):
     box_selected = Signal(list, bool)
     space_clicked = Signal(float, float, float)
     atom_moved = Signal(int, float, float, float)
+    fragment_moved = Signal(int, float, float)
+    fragment_rotated = Signal(int, float)
     bond_clicked = Signal(int, int)
     bond_to_space = Signal(int, float, float, float)
     delete_requested = Signal()
@@ -50,6 +52,7 @@ class DesignCanvas(MoleculeEditView):
 
     def cancel_gesture(self):
         self._start = self._pressed = self._drag = self._bond_tip = None
+        self._fragment = self._button = self._rotation_center = None
         self._box = None
         self._can_box = self._append_box = False
         self._track_hover(None)
@@ -116,7 +119,7 @@ class DesignCanvas(MoleculeEditView):
                 closest, best = i, distance2
         return closest
 
-    def _target_at(self, point):
+    def _target_at(self, point, *, fragment=False):
         if self.molecule is None:
             return ()
         atom = self._hit_atom(point)
@@ -124,11 +127,13 @@ class DesignCanvas(MoleculeEditView):
             return (atom,) if atom is not None and atom != self._pressed else ()
         if atom is not None:
             return (atom,)
-        if self.tool not in ("select", "bond"):
+        if not fragment and self.tool not in ("select", "bond"):
             return ()
         best = None
         positions = self._atom_positions()
         for bond in self._bonds:
+            if fragment and not bond.is_covalent:
+                continue
             distance, fraction, length = distance_to_segment(point, positions[bond.a], positions[bond.b])
             half_width = bond_half_width(bond.order, bond.style, 1.8, 4.2, length, fraction)
             if distance <= max(7., half_width + 4.) and (best is None or distance < best[0]):
@@ -136,14 +141,26 @@ class DesignCanvas(MoleculeEditView):
         return best[1:] if best else ()
 
     def mousePressEvent(self, event):
-        self.cancel_gesture()
-        if event.button() == Qt.MouseButton.LeftButton and self.molecule is not None:
+        if self._start is not None:
+            return
+        alt = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
+        if self.molecule is not None and (event.button() == Qt.MouseButton.LeftButton
+                                          or alt and event.button() == Qt.MouseButton.RightButton):
             self.setFocus()
+            self._track_hover(None)
+            self._button = event.button()
             self._press_tool = self.tool
             self._start = event.position()
-            self._press_target = self._target_at(self._start)
+            self._press_target = self._target_at(self._start, fragment=alt)
+            if alt:
+                self._press_target = self.selected[-1:] or self._press_target
+                self._fragment = (connected_component(self._bonds, self._press_target[0])
+                                  if self._press_target else frozenset())
+                if self._button == Qt.MouseButton.LeftButton and self._fragment:
+                    self._rotation_center = (sum((self.atom_position(i) for i in self._fragment), QPointF())
+                                             / len(self._fragment))
             self._pressed = self._press_target[0] if len(self._press_target) == 1 else None
-            self._can_box = self.tool == "select" and not self._press_target
+            self._can_box = not alt and self.tool == "select" and not self._press_target
             self._append_box = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         else:
             super().mousePressEvent(event)
@@ -153,35 +170,55 @@ class DesignCanvas(MoleculeEditView):
             if not event.buttons():
                 self._track_hover(event.position())
             return
-        if not event.buttons() & Qt.MouseButton.LeftButton or self.tool != self._press_tool:
+        if not event.buttons() & self._button or self.tool != self._press_tool:
             self.cancel_gesture()
             return
         delta = event.position() - self._start
         if (delta.manhattanLength() < QApplication.startDragDistance()
                 and self._drag is None and self._bond_tip is None and self._box is None):
             return
-        if self._can_box:
+        if self._fragment is not None:
+            if self._fragment:
+                self._drag = delta
+        elif self._can_box:
             self._box = QRectF(self._start, event.position()).normalized()
         elif self._pressed is not None and self.tool == "select":
-            self._drag = self.atom_position(self._pressed) + delta
+            self._drag = delta
         elif self._pressed is not None and self.tool == "bond":
             self._track_hover(event.position())
             if self.bond_order:
                 self._bond_tip = event.position()
         self.update()
 
+    def _rotation_degrees(self, delta):
+        start = self._start - self._rotation_center
+        if math.hypot(start.x(), start.y()) < 8:
+            # At the pivot there is no initial radial direction.
+            return .7 * (delta.x() - delta.y())
+        end = start + delta
+        cross = start.y() * end.x() - start.x() * end.y()
+        return math.degrees(math.atan2(cross, QPointF.dotProduct(start, end)))
+
     def mouseReleaseEvent(self, event):
-        if event.button() != Qt.MouseButton.LeftButton or self._start is None:
+        if self._start is None or event.button() != self._button:
             return
-        start, index = self._start, self._pressed
+        start, index, fragment = self._start, self._pressed, self._fragment
         delta = event.position() - start
         moved = delta.manhattanLength() >= QApplication.startDragDistance()
+        degrees = self._rotation_degrees(delta) if self._rotation_center is not None else None
         box_select = self._can_box and (moved or self._box is not None)
         append = self._append_box or bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         self.cancel_gesture()
         if self.tool != self._press_tool:
             return
-        if box_select:
+        if fragment is not None:
+            if moved and fragment:
+                if degrees is None:
+                    scale = self._scale()
+                    self.fragment_moved.emit(self._press_target[0], delta.x() / scale, -delta.y() / scale)
+                elif len(fragment) > 1 and abs(degrees) > 1e-10:
+                    self.fragment_rotated.emit(self._press_target[0], degrees)
+        elif box_select:
             rect = QRectF(start, event.position()).normalized()
             indices = [i for i in range(len(self.molecule.atoms)) if rect.contains(self.atom_position(i))]
             self.box_selected.emit(indices, append)
@@ -247,7 +284,14 @@ class DesignCanvas(MoleculeEditView):
         positions = self._atom_positions()
         if interactive and self._drag is not None:
             positions = list(positions)
-            positions[self._pressed] = self._drag
+            if self._rotation_center is not None:
+                transform = QTransform().rotate(-self._rotation_degrees(self._drag))
+                for index in self._fragment:
+                    offset = positions[index] - self._rotation_center
+                    positions[index] = self._rotation_center + transform.map(offset)
+            else:
+                for index in self._fragment or (self._pressed,):
+                    positions[index] = positions[index] + self._drag
         font = self.font()
         font.setPixelSize(17)
         font.setBold(True)

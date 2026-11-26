@@ -202,7 +202,7 @@ def main(args=None):
     args = sys.argv[1:] if args is None else args
     try:
         with _windows_resources():
-            if args and args[0] in ("optimize-2d", "optimize-3d", "perceive-orders"):
+            if args and args[0] in ("optimize-2d", "optimize-3d", "optimize-hbonds", "perceive-orders"):
                 from orcaview.editing.optimization import optimize_worker
                 result = optimize_worker(json.load(sys.stdin.buffer), args[0])
             elif args and args[0] in ("sdf", "mol", "mol2", "pdb", "smi", "inchi", "cif", "cdxml", "cml"):
