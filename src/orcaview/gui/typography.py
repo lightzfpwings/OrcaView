@@ -67,5 +67,8 @@ def stylesheet(source):
         heading_weight=400 if WINDOWS else 700,
         section_weight=400 if WINDOWS else 600,
         header_rule="QHeaderView { font-weight: 400; }" if WINDOWS else "",
+        # Align the top border of the Windows tab pane with the bottom
+        # border of the native dock title on either side of it.
+        workspace_tab_bottom="6px" if WINDOWS else "9px",
         dock_family="" if WINDOWS else 'font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;',
     )

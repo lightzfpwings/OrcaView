@@ -2,7 +2,8 @@
 
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget,
+    QComboBox, QLabel, QLineEdit, QPushButton, QSizePolicy, QStyle, QStyleOptionToolButton,
+    QStylePainter, QToolButton, QVBoxLayout, QWidget,
 )
 
 from orcaview.i18n import tr
@@ -10,16 +11,32 @@ from orcaview.core.block_options import BlockOverride, available_options, parse_
 from orcaview.gui.inspector_form import InspectorForm, wrap_parameter_text
 
 
-def _disclosure(text):
-    button = QToolButton()
-    button.setText(text)
-    button.setCheckable(True)
-    button.setAutoRaise(True)
-    button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    button.setArrowType(Qt.ArrowType.RightArrow)
-    button.toggled.connect(lambda expanded: button.setArrowType(
-        Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow))
-    return button
+class _Disclosure(QToolButton):
+    def __init__(self, text):
+        super().__init__()
+        self.setText(text)
+        self.setCheckable(True)
+        self.setAutoRaise(True)
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.setArrowType(Qt.ArrowType.RightArrow)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.toggled.connect(lambda expanded: self.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow))
+
+    def setText(self, text):
+        super().setText(text)
+        self.setToolTip(text)
+
+    def paintEvent(self, event):
+        option = QStyleOptionToolButton()
+        self.initStyleOption(option)
+        shortage = self.sizeHint().width() - self.width()
+        if shortage > 0:
+            metrics = option.fontMetrics
+            width = max(0, metrics.horizontalAdvance(option.text) - shortage)
+            option.text = metrics.elidedText(option.text, Qt.TextElideMode.ElideRight, width)
+        painter = QStylePainter(self)
+        painter.drawComplexControl(QStyle.ComplexControl.CC_ToolButton, option)
 
 
 def _caption(title, count):
@@ -61,7 +78,7 @@ class _BlockGroup(QWidget):
         self.panel = panel
         self.fields = {}
         self.body = None
-        self.toggle = _disclosure(_block_label(name))
+        self.toggle = _Disclosure(_block_label(name))
         self.group_layout = QVBoxLayout(self)
         self.group_layout.setContentsMargins(0, 0, 0, 0)
         self.group_layout.addWidget(self.toggle, 0, Qt.AlignmentFlag.AlignLeft)
@@ -109,7 +126,7 @@ class BlockOptionsPanel(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.toggle = _disclosure(tr("Advanced input blocks"))
+        self.toggle = _Disclosure(tr("Advanced input blocks"))
         self.body = QWidget()
         self.body.hide()
         self.groups_layout = QVBoxLayout(self.body)

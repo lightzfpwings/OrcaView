@@ -88,3 +88,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m unittest discover -s tests -p test_spectrum_plot.py -v
+      - name: Test calculation sidebar layout and controls
+        if: hashFiles('tests/test_inspector_width.py') != ''
+        env:
+          QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
+        run: python -m unittest discover -s tests -p "test_inspector_*.py" -v

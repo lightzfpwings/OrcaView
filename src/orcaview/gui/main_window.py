@@ -40,7 +40,8 @@ from orcaview.gui.design_panel import DesignPanel
 from orcaview.gui.file_dialogs import document_directory, set_document_directory, suggested_file
 from orcaview.gui.foundation_demo import build_foundation_demo
 from orcaview.gui.foundation_panel import FoundationPanel
-from orcaview.gui.inspector_form import InspectorForm, InspectorScrollArea, InspectorStatusLabel
+from orcaview.gui.inspector_controls import apply_inspector_control_style
+from orcaview.gui.inspector_form import InspectorForm, InspectorLabel, InspectorScrollArea
 from orcaview.gui.language_settings import LanguageDialog, load_interface_language
 from orcaview.gui.manual import ManualDialog
 from orcaview.gui.native_input import edit_native_input
@@ -98,7 +99,7 @@ QTabWidget::pane { border: 1px solid #DDD5CB; background: #FFFDF9; }
 QTabWidget#workspaceTabs::pane { border: none; border-top: 1px solid #DDD5CB; }
 QTabWidget#workspaceTabs::tab-bar { alignment: left; }
 QTabBar::tab { background: #FAF7F2; padding: 9px 22px; color: #70635F; }
-QTabBar#workspaceTabBar::tab { padding: 7px 16px 9px; }
+QTabBar#workspaceTabBar::tab { padding: 7px 16px $workspace_tab_bottom; }
 QTabBar::tab:selected { background: #FFFDF9; color: #904359; border-top: 2px solid #904359; }
 QTabWidget#inputOutputTabs::pane { border: none; background: #FFFDF9; }
 QTabWidget#inputOutputTabs::tab-bar { alignment: left; }
@@ -429,9 +430,10 @@ class MainWindow(QMainWindow):
     def _create_inspector(self):
         panel = QWidget()
         panel.setObjectName("calculationInspector")
+        apply_inspector_control_style(panel)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(16, 18, 16, 14)
-        label = QLabel(tr("Calculation settings"))
+        label = InspectorLabel(tr("Calculation settings"))
         label.setObjectName("heading")
         layout.addWidget(label)
         self.method_form = form = InspectorForm(spacing=12)
@@ -505,28 +507,28 @@ class MainWindow(QMainWindow):
                                (tr("ORCA processes"), self.cores), (tr("Memory per process / MB"), self.maxcore)]:
             form.addRow(label, control)
         cores, memory = self.resources.recommend()
-        self.resource_hint = QLabel(tr("Startup recommendation: {cores} × {memory:,} MB per process",
-                                       cores=cores, memory=memory))
+        self.resource_hint = InspectorLabel(tr("Startup recommendation: {cores} × {memory:,} MB per process",
+                                              cores=cores, memory=memory))
         unknown = tr("Unknown")
         memory_mb = self.resources.memory_mb
         self.resource_hint.setToolTip(tr("CPU limit at startup: {cpus}\nAvailable memory at startup (MB): {memory}\n"
                                          "The recommendation targets up to 75% of detected available memory.",
                                          cpus=self.resources.cpu_limit or unknown,
                                          memory=f"{memory_mb:,}" if memory_mb is not None else unknown))
-        self.memory_hint = QLabel()
+        self.memory_hint = InspectorLabel()
         self.memory_hint.setToolTip(tr("ORCA may use more memory than the configured total."))
         for hint in (self.resource_hint, self.memory_hint):
-            hint.setWordWrap(True)
             hint.setObjectName("muted")
             form.addRow(hint)
         layout.addWidget(form)
         self.block_options = BlockOptionsPanel()
         self.block_options.changed.connect(self._settings_changed)
         layout.addWidget(self.block_options)
-        self.validation = InspectorStatusLabel()
+        self.validation = InspectorLabel(reserve_text=tr("● Geometry and electron count validated"))
         layout.addWidget(self.validation)
         self.export_button = QPushButton(tr("Export .inp"))
         self.export_button.setObjectName("primary")
+        self.export_button.setStyleSheet("padding: 8px 4px;")
         self.export_button.clicked.connect(self.export_input)
         layout.addWidget(self.export_button)
         line = QFrame()
@@ -1138,7 +1140,7 @@ class MainWindow(QMainWindow):
                 self.memory_hint.setText(tr("Highest configured module budget: {peak:,} MB per process, {total:,} MB total",
                                             peak=peak, total=peak * cores))
             self.input_preview.display(text, self.session.document.head.ref)
-            self.validation.setText(tr("● Geometry and electron count validated"))
+            self.validation.setText(self.validation.reserve_text)
             self.validation.setToolTip(self.validation.text())
             self.validation.setStyleSheet("color: #466446; padding: 8px 0;")
             self.export_button.setEnabled(True)

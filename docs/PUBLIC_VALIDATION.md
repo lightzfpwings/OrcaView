@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a58
+
+All 669 regression tests passed. Four sidebar tests cover wrapped captions, the export button, charge validation and mouse clicks on the numeric and drop-down controls. They also passed against the Windows package under Wine’s Windows graphics backend and the frozen modules from the Apple Silicon DMG. [Sidebar width tests](../tests/test_inspector_width.py) · [Control tests](../tests/test_inspector_controls.py) · [Windows comparison at 150% scaling](../artifacts/public/calculation-sidebar-windows.png)
+
+All 146 OrcaView Python modules in each desktop package matched the release source. Each package contains 20 examples. The read-only macOS image passed strict signature verification. Its app exported the peroxide CD example, loaded all four optional interface languages and rendered the three element palettes. [Packaged application checks](../packaging/check_release_extensions.py)
+
 ## 0.1.0a57 alpha测试版
 
 All 665 regression tests passed. The spectrum export tests exercise both desktop entry points, independent grid settings, PNG transparency, JPEG and BMP backgrounds, vector PDF output, aspect ratios and centered cropping. Exporting the peroxide CD example at 16:9 and 2× produced a 1920 × 1080 transparent PNG. [Spectrum export tests](../tests/test_spectrum_plot.py)

@@ -2,7 +2,7 @@
 
 import re
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QRect, QSize, Qt
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QComboBox, QFrame, QGridLayout, QLabel, QScrollArea, QSizePolicy,
     QStylePainter, QWidget,
@@ -15,20 +15,61 @@ def wrap_parameter_text(text):
                   "\u200b", text)
 
 
-class InspectorStatusLabel(QLabel):
-    """Display one line without letting the current diagnostic set the dock width."""
+class InspectorLabel(QLabel):
+    """Wrap a sidebar caption, including a translated word wider than the dock."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, text="", *, reserve_text=None):
+        super().__init__(text)
+        # Validation reserves the height of its success caption for all diagnostics.
+        self.reserve_text = reserve_text
         self.setTextFormat(Qt.TextFormat.PlainText)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.setWordWrap(True)
+        policy = self.sizePolicy()
+        policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.setSizePolicy(policy)
+
+    def _measure(self, text, width):
+        area = QRect(0, 0, max(1, width), 0)
+        metrics = self.fontMetrics()
+        wrap = Qt.TextFlag.TextWordWrap
+        bounds = metrics.boundingRect(area, wrap, text)
+        if bounds.width() > area.width():
+            wrap = Qt.TextFlag.TextWrapAnywhere
+            bounds = metrics.boundingRect(area, wrap, text)
+        return wrap, bounds.height()
+
+    def heightForWidth(self, width):
+        margins = self.contentsMargins()
+        _, height = self._measure(self.reserve_text or self.text(), width - margins.left() - margins.right())
+        return margins.top() + height + margins.bottom()
+
+    def sizeHint(self):
+        return QSize(0, self.heightForWidth(self.width()))
+
+    def minimumSizeHint(self):
+        margins = self.contentsMargins()
+        return QSize(0, self.fontMetrics().height() + margins.top() + margins.bottom())
 
     def paintEvent(self, event):
         QFrame.paintEvent(self, event)
         painter = QStylePainter(self)
         rect = self.contentsRect()
-        line = painter.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, rect.width())
-        painter.drawItemText(rect, self.alignment(), self.palette(), self.isEnabled(), line, self.foregroundRole())
+        text = self.text()
+        wrap, height = self._measure(text, rect.width())
+        if self.reserve_text and height > rect.height():
+            # Use the reserved lines for the diagnostic, keeping its full text in the tooltip.
+            low, high = 0, len(text)
+            while low < high:
+                end = (low + high + 1) // 2
+                _, height = self._measure(text[:end].rstrip() + "…", rect.width())
+                if height <= rect.height():
+                    low = end
+                else:
+                    high = end - 1
+            text = text[:low].rstrip() + "…"
+            wrap, _ = self._measure(text, rect.width())
+        flags = int(self.alignment()) | wrap.value
+        painter.drawItemText(rect, flags, self.palette(), self.isEnabled(), text, self.foregroundRole())
 
 
 class InspectorScrollArea(QScrollArea):

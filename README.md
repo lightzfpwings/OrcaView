@@ -1,6 +1,8 @@
 # OrcaView
 
-OrcaView is a desktop workbench for preparing ORCA inputs and examining molecular structures, calculation logs and spectra. Its input templates target ORCA 6.1.1. Version 0.1.0a57 adds a spectrum image export dialog with grid and background controls, aspect ratios, and custom canvas dimensions. English is built in. Optional extensions provide four interface languages and three element color palettes. [Download OrcaView 0.1.0a57 alpha测试版](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a57)
+Draw a molecule in 2D, refine its 3D geometry and prepare an ORCA 6.1.1 input. Open a finished calculation to inspect its orbitals, charges and spectra, or export a spectrum as a vector PDF.
+
+OrcaView 0.1.0a58 fixes clipped calculation controls in narrow sidebars and restores the up and down arrows on Windows. [Download OrcaView 0.1.0a58](https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a58)
 
 ## Install and try OrcaView
 
@@ -40,9 +42,9 @@ Try `Examples/water-raman.out` for IR and Raman or `Examples/peroxide-uv-cd.out`
 
 ### Language and element color packs
 
-The language extension includes Simplified Chinese, Traditional Chinese, German and Japanese, together with matching Qt translations. Extract the ZIP, open **View → Interface language…**, choose the extracted **languages** folder, select a language, save and restart. The ZIP includes installation instructions and an editable template. [Language extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a57/OrcaView-Extensions-01-Language-0.1.0a57.zip)
+English is built in. The language extension adds Simplified Chinese, Traditional Chinese, German and Japanese, with matching Qt translations. Extract the ZIP, open **View → Interface language…**, choose the extracted **languages** folder, select a language, save and restart. [Language extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a58/OrcaView-Extensions-01-Language-0.1.0a58.zip)
 
-The color extension includes Contrast, Pastel and Grayscale palettes. Extract the ZIP, open **View → Molecular appearance… → Import color pack…**, choose a JSON file from **colors** and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Color extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a57/OrcaView-Extensions-02-Color-0.1.0a57.zip)
+The color extension includes Contrast, Pastel and Grayscale palettes. Extract the ZIP, open **View → Molecular appearance… → Import color pack…**, choose a JSON file from **colors** and save. The CLI can install the same file with `orcaview settings appearance --import-palette FILE`, or use it for one image with `orcaview render molecule.xyz figure.png --color-pack FILE`. [Color extension ZIP](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a58/OrcaView-Extensions-02-Color-0.1.0a58.zip)
 
 Both ZIPs include their own installation guide and JSON schema. [Extension author guide](docs/extensions/README.md)
 
@@ -50,7 +52,7 @@ Both ZIPs include their own installation guide and JSON schema. [Extension autho
 
 Use **Help → Check for Updates…** to discover a release for your platform and verify its SHA-256 checksum. Save your project before choosing the option to quit and update. The installed app restarts from the same location. Windows and Linux keep a sibling `.previous` backup and preserve personal projects and edited examples. Stable versions follow stable releases. Preview versions also discover prereleases.
 
-On Apple Silicon, versions through 0.1.0a55 recognize the new release but look for the previous DMG filename. To upgrade once, quit OrcaView, open the 0.1.0a57 DMG, and drag the app into Applications to replace the old copy. Versions 0.1.0a56 and later recognize both filename formats and can update in the app.
+On Apple Silicon, versions through 0.1.0a55 need one manual upgrade. Quit OrcaView, open the new DMG and drag the app into Applications to replace the old copy. Versions 0.1.0a56 and later can update in the app.
 
 Windows 0.1.0a42 and earlier require a one-time manual upgrade to the single-file layout. Download and extract the Windows ZIP into a dedicated folder, then open your existing project in the new app. To retain an existing shortcut, quit the old app, rename its folder as a backup, and extract the new version at the original path.
 

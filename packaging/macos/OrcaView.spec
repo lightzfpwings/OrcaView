@@ -33,6 +33,7 @@ analysis = Analysis(
     [str(packaging_dir / "launcher.py")],
     pathex=[str(source)],
     datas=[(str(source / "orcaview" / "gui" / "assets" / "orcaview.png"), "orcaview/gui/assets"),
+           (str(source / "orcaview" / "gui" / "assets" / "*.svg"), "orcaview/gui/assets"),
            (str(babel_data), "openbabel/share/openbabel"), *copy_metadata("openbabel"), *notices],
     binaries=[(str(babel_plugins / "*.so"), "openbabel/lib/openbabel/3.2.0")],
     hiddenimports=[*collect_submodules("orcaview"), "openbabel.openbabel", "openbabel._openbabel"],
