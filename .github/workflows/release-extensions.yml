@@ -52,7 +52,7 @@ jobs:
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir assets \
             --pattern "*$SUFFIX" --pattern 'OrcaView-Extensions-*.zip' --pattern 'SHA256UMS.txt' \
             --pattern '*-language-pack.zip' --pattern '*-color-pack.json' --pattern '*-extension-kit.zip' --pattern 'SHA256SUMS.txt'
-      - name: Apply extensions and compare exported images
+      - name: Check the packaged application, extensions and exported media
         shell: bash
         run: python packaging/check_release_extensions.py assets "$RELEASE_TAG"
       - name: Get the interaction tests from the workflow revision for a manual recheck
@@ -96,6 +96,15 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m unittest discover -s tests -p test_spectrum_plot.py -v
+      - name: Test optimization curves and vibration camera controls
+        if: hashFiles('tests/test_normal_mode_view_controls.py') != ''
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: src
+        run: |
+          python -m unittest discover -s tests -p test_optimization_curve.py -v
+          python -m unittest discover -s tests -p test_normal_mode_view_controls.py -v
       - name: Test calculation sidebar layout and controls
         if: hashFiles('tests/test_inspector_width.py') != ''
         env:

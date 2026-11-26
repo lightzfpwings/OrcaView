@@ -24,6 +24,8 @@ def stage(dist, output):
     for group in ("01-Language", "02-Color"):
         name = f"OrcaView-Extensions-{group}-{__version__}.zip"
         items.append((dist / "extensions" / __version__ / name, name))
+    name = f"OrcaView-ThirdParty-FFmpeg-{__version__}.zip"
+    items.append((dist / "sources" / __version__ / name, name))
     output.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=output.parent) as temporary:
         ready = Path(temporary) / "release"

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -45,6 +46,48 @@ def open_package(assets, prefix, work):
         raise ValueError(f"Unknown release platform: {sys.platform}")
 
 
+def check_vibration_export(run, binary, examples, work, env):
+    """Run the public launcher without a host encoder, then decode both movies."""
+    command_dir = work / "commands"
+    command_dir.mkdir()
+    movie_env = dict(env, PATH=str(command_dir))
+    movie_env.pop("IMAGEIO_FFMPEG_EXE", None)
+    if sys.platform == "win32":
+        # Each launcher invocation removes its private runtime after it exits.
+        with ZipFile(binary) as payload:
+            member, = (name for name in payload.namelist()
+                       if name.startswith("python/Lib/site-packages/imageio_ffmpeg/binaries/ffmpeg-")
+                       and name.endswith(".exe"))
+            encoder = Path(payload.extract(member, work))
+    elif sys.platform == "darwin":
+        encoder, = (binary.parents[1] / "Frameworks/imageio_ffmpeg/binaries").glob("ffmpeg-*")
+    else:
+        # The Linux shell launcher uses dirname to locate its private Python.
+        (command_dir / "dirname").symlink_to(shutil.which("dirname"))
+        encoder, = binary.parent.glob("python/lib/python*/site-packages/imageio_ffmpeg/binaries/ffmpeg-*")
+
+    water = examples / "water-opt-freq.out"
+    run("project", water, "-o", "water.oview.json")
+    points = json.loads(run("results", "water.oview.json", "--optimization"))["runs"][0]["points"]
+    assert [p["step"] for p in points] == [1, 2, 3, 4, None] and points[3]["energy"] > points[2]["energy"]
+    modes = json.loads(run("results", "water.oview.json", "--normal-modes"))["groups"][0]["modes"]
+    assert [(m["index"], m["frequency"]) for m in modes] == [(6, 1637.65), (7, 3787.02), (8, 3882.)]
+    for extension, frame_count in (("gif", 25), ("mp4", 75)):
+        target = work / f"water bend.{extension}"
+        run("vibration", "water.oview.json", target, "--mode", "6", "--rotate", "x:90", child_env=movie_env)
+        data = target.read_bytes()
+        if extension == "gif":
+            assert data[:6] == b"GIF89a" and b"NETSCAPE2.0" in data
+        else:
+            assert data[4:8] == b"ftyp" and b"avc1" in data
+        decoded = subprocess.run([encoder, "-v", "error", "-i", target, "-vf", "scale=32:24", "-pix_fmt", "rgb24",
+                                  "-f", "rawvideo", "pipe:1"], capture_output=True, check=True, timeout=90)
+        size = 32 * 24 * 3
+        frames = [decoded.stdout[i:i + size] for i in range(0, len(decoded.stdout), size)]
+        assert len(decoded.stdout) == frame_count * size and len(set(frames)) > 8, target
+    print("Water optimization: four steps and one final energy. Mode 6: 25 GIF frames and 75 H.264 frames.")
+
+
 def check(assets, version):
     prefix = "OrcaView-" + version
     manifest = "SHA256UMS.txt"
@@ -68,14 +111,16 @@ def check(assets, version):
         assert {p.stem for p in colors.glob("*.json")} == {"contrast", "pastel", "grayscale"}
         env = dict(os.environ, ORCAVIEW_CONFIG_DIR=str(work / "preferences"), ORCAVIEW_HEADLESS="1")
         with open_package(assets, prefix, work) as (binary, examples):
-            def run(*args):
-                result = subprocess.run([binary, *args], cwd=work, env=env, capture_output=True,
+            def run(*args, child_env=env):
+                result = subprocess.run([binary, *args], cwd=work, env=child_env, capture_output=True,
                                         encoding="utf-8", errors="replace", timeout=180)
                 if result.returncode:
                     raise RuntimeError(f"{args}: {result.returncode}\n{result.stdout}\n{result.stderr}")
                 return result.stdout
 
             assert run("--version").strip() == version
+            if _version_key(version) >= _version_key("0.1.0a65"):
+                check_vibration_export(run, binary, examples, work, env)
             if _version_key(version) >= _version_key("0.1.0a63"):
                 dimer = work / "water-dimer.xyz"
                 dimer.write_text("6\nWater dimer\nO 0 0 0\nH .96 0 0\nH -.25 .92 0\n"

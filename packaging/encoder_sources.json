@@ -1,0 +1,75 @@
+{
+  "wrapper": "imageio-ffmpeg 0.8.1",
+  "archives": {
+    "imageio_ffmpeg-0.8.1.tar.gz": {
+      "url": "https://files.pythonhosted.org/packages/58/b9/f5887f8fed3f2c145a01a91580f83671ae6753be28fc55ba753bb8a794fc/imageio_ffmpeg-0.8.1.tar.gz",
+      "sha256": "9e5162fa482c3c45a6703b2223947d15c37730e63b048d64937fa80243aa5a0c"
+    },
+    "imageio-build-v0.8.1.tar.gz": {
+      "url": "https://api.github.com/repos/imageio/imageio-ffmpeg/tarball/v0.8.1",
+      "sha256": "4e76888b770efefe3a6795d94b047f7316a168c6d8838dfd4a134b1fea3c7368"
+    },
+    "ffmpeg-9.0.tar.xz": {
+      "url": "https://ffmpeg.org/releases/ffmpeg-9.0.tar.xz",
+      "sha256": "7f607a00dd0d28a729d5a4811205812eef01cf6ef6155025febb6f36a9062d52"
+    },
+    "ffmpeg-9.0.2.tar.xz": {
+      "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+      "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
+    },
+    "ffmpeg-linux-2a571b6068.tar.gz": {
+      "url": "https://api.github.com/repos/FFmpeg/FFmpeg/tarball/2a571b6068",
+      "sha256": "fae3ca6561b43f4bc14da3d9b56dbed788dd43128ce3c038babbf6d7f7156f02"
+    },
+    "x264-7ed753b.tar.gz": {
+      "url": "https://api.github.com/repos/mirror/x264/tarball/7ed753b",
+      "sha256": "8f472911eddcb79c0732e11f23759d193277dfbb33b1d1a2f87807d1907b4a39"
+    },
+    "x264-0480cb0.tar.gz": {
+      "url": "https://api.github.com/repos/mirror/x264/tarball/0480cb0",
+      "sha256": "c871ca12907ad5da1ef790547a7e8d83f24d413d515718a5377fe2bcbb832157"
+    },
+    "btbn-recipes-20260930.tar.gz": {
+      "url": "https://api.github.com/repos/BtbN/FFmpeg-Builds/tarball/autobuild-2026-09-30-13-08",
+      "sha256": "bc515ca28c9f94c70874bdf82e2ccb2ce663eef7aa2439181d2e4243e2d821c9"
+    }
+  },
+  "platforms": {
+    "macos-aarch64": {
+      "wheel": "imageio_ffmpeg-0.8.1-py3-none-macosx_12_0_arm64.whl",
+      "wheel_sha256": "5636d691e36e5274b13fe38182b1f627b2e35dcecc63944012c2470f9484fc45",
+      "executable": "ffmpeg-macos-aarch64-v9.0",
+      "upstream_executable_sha256": "591260c945d0eef150e3bf82b0ef988bd36a9cecc18ff05d6679617159f0a95e",
+      "binary_distribution": "https://www.osxexperts.net/ffmpeg9arm.zip",
+      "binary_distribution_sha256": "d0c06c5c68ce48af3143b262f7a9118a7c9f67de1e237fcc24ffb14df9c67af9",
+      "ffmpeg_revision": "d32b387f2b0a484599d4587d651891f0c63c4238",
+      "x264_revision": "7ed753b10a61d0be95f683289dfb925b800b0676",
+      "build_record": "https://www.osxexperts.net/",
+      "configure": "--prefix=/Volumes/tempdisk/sw --extra-cflags=-fno-stack-check --arch=arm64 --cc=/usr/bin/clang --enable-gpl --enable-libvmaf --enable-libopenjpeg --enable-libopus --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libvvenc --enable-libvpx --enable-libwebp --enable-libass --enable-libfreetype --enable-fontconfig --enable-libtheora --enable-libvorbis --enable-libsnappy --enable-libaom --enable-libvidstab --enable-libzimg --enable-libsvtav1 --enable-libharfbuzz --enable-libkvazaar --pkg-config-flags=--static --enable-ffplay --enable-neon --enable-runtime-cpudetect --disable-indev=qtkit --disable-indev=x11grab_xcb"
+    },
+    "windows-x86_64": {
+      "wheel": "imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl",
+      "wheel_sha256": "f27ca4cb85e2d4946deedbce1a81245dfd942a2bcf94b53676fb3956aa95bf1b",
+      "executable": "ffmpeg-win-x86_64-v9.0.2.exe",
+      "upstream_executable_sha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec",
+      "binary_distribution": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+      "binary_distribution_sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+      "ffmpeg_revision": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+      "x264_revision": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee",
+      "build_record": "https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2",
+      "configure": "--enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-cairo --enable-fontconfig --enable-iconv --enable-gnutls --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-zlib --enable-libsrt --enable-libssh --enable-libzmq --enable-avisynth --enable-sdl2 --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxvid --enable-libaom --enable-libopenjpeg --enable-libvpx --enable-mediafoundation --enable-libass --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-libvidstab --enable-libvmaf --enable-libzimg --enable-amf --enable-cuda-llvm --enable-cuvid --enable-dxva2 --enable-d3d11va --enable-d3d12va --enable-ffnvcodec --enable-libvpl --enable-nvdec --enable-nvenc --enable-vaapi --enable-openal --enable-libgme --enable-libopenmpt --enable-libopencore-amrwb --enable-libmp3lame --enable-libtheora --enable-libvo-amrwbenc --enable-libgsm --enable-libopencore-amrnb --enable-libopus --enable-libspeex --enable-libvorbis --enable-librubberband"
+    },
+    "linux-x86_64": {
+      "wheel": "imageio_ffmpeg-0.8.1-py3-none-manylinux_2_28_x86_64.whl",
+      "wheel_sha256": "050d6850601c3b3890bd2b28306f3b842b3daea390a561101174375a1c460bda",
+      "executable": "ffmpeg-linux-x86_64-v9.0.2",
+      "upstream_executable_sha256": "0d709a0bed1a43f24cd2c420878c63afea4580671b6949ad19ed124572f3bc3d",
+      "binary_distribution": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz",
+      "binary_distribution_sha256": "68ee646831adaae2495618346f3bba94ff207ff83bbd34d643e7004730d66269",
+      "ffmpeg_revision": "2a571b606854520cf89804d8030c8b328e621689",
+      "x264_revision": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee",
+      "build_record": "https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-09-30-13-08",
+      "configure": "--prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-ffbuild-linux-gnu- --arch=x86_64 --target-os=linux --enable-gpl --enable-version3 --disable-debug --enable-iconv --enable-zlib --enable-libxml2 --enable-libsoxr --enable-openssl --enable-libvmaf --enable-libxcb --enable-xlib --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libdav1d --enable-libvorbis --enable-librav1e --enable-librsvg --enable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-avisynth --enable-chromaprint --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribb24 --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librubberband --disable-schannel --enable-sdl2 --enable-libsnappy --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --enable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --disable-whisper --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs='-lgomp -ldl' --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-ffbuild-linux-gnu-gcc --cxx=x86_64-ffbuild-linux-gnu-g++ --ar=x86_64-ffbuild-linux-gnu-gcc-ar --ranlib=x86_64-ffbuild-linux-gnu-gcc-ranlib --nm=x86_64-ffbuild-linux-gnu-gcc-nm --extra-version=20260930"
+    }
+  }
+}

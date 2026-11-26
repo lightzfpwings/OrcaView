@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a65
+
+All 739 regression tests passed on Apple Silicon. The ORCA 6.1.1 water Opt+Freq example contains four optimization cycles, including a small energy increase in cycle 4, followed by a stationary-point evaluation at −76.321268537024 Eh. Its three vibrational modes have frequencies of 1637.65, 3787.02 and 3882.00 cm⁻¹. The tests compare the plotted energies with the printed log lines and check the on-screen atomic displacements against the ORCA vectors after rotation. [Water output](../artifacts/public/validation/ORCA-6.1.1-macOS-arm64/optfreq/job.out) · [Optimization tests](../tests/test_optimization_curve.py) · [Vibration playback tests](../tests/test_normal_mode_dialog.py)
+
+The Apple Silicon application passed strict signature verification on a read-only DMG. After the original output was removed, the packaged application reopened the saved project and exported mode 6 at 1280 × 960 pixels and 25 frames per second. The GIF loops over 25 frames. The H.264 MP4 contains three cycles, and macOS AVFoundation decoded all 75 frames. [Release package checks](../packaging/check_release_extensions.py) · [Export and camera controls](CLI_RESULTS.md#optimization-and-vibrational-modes)
+
 ## 0.1.0a63
 
 All 706 regression tests passed. The macOS interaction tests exercised rotation and translation of one selected molecule in a mixture, copying between documents and undoing a paste. Hydrogen bonds between molecules leave their covalent components independently selectable. [Fragment gestures](../tests/test_design_fragment_drag.py) · [Molecular clipboard](../tests/test_design_fragment_clipboard.py)
