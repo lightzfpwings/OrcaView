@@ -18,6 +18,24 @@ All three packages include Python, Qt, Open Babel and 21 example files. Drawing 
 
 English is built in. The language pack adds German, Japanese, Simplified Chinese and Traditional Chinese. The color pack provides Contrast, Pastel and Grayscale element palettes. [Language pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a63/OrcaView-Extensions-01-Language-0.1.0a63.zip) · [Color pack](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a63/OrcaView-Extensions-02-Color-0.1.0a63.zip) · [Installation and authoring](docs/extensions/README.md)
 
+## Geometry and ORCA input
+
+The **Design** workspace pairs a 2D sketch with a 3D geometry. Add rings or hydrogens, edit bonds and coordinates, and optimize a starting geometry with Open Babel's MMFF94 or UFF force field. Import structures from XYZ, MOL/SDF, PDB and other formats. [Design commands](docs/CLI_DESIGN.md) · [Open Babel force fields](https://openbabel.org/docs/Forcefields/Overview.html)
+
+To position a molecule, select one of its atoms. Hold Alt (Option on macOS) and drag with the left button to rotate it or the right button to move it. Use Ctrl+C and Ctrl+V (⌘C and ⌘V on macOS) to place a separate copy.
+
+Choose **Hydrogen bond** from the single-bond menu and click an explicit hydrogen and its acceptor. **Optimize H-bonds…** applies H···A distance and D–H···A angle restraints to the marked contacts in a neutral singlet. Projects with hydrogen-bond annotations in their history require version 0.1.0a63 or later.
+
+In **Input**, choose a method, basis set, charge and multiplicity, or edit the ORCA input preview and press Tab to apply it. For example, `! MiniPrint NoAutoStart` requests minimal output and disables automatic reuse of a same-name orbital file for a single-point calculation. The corresponding panel controls are `%output → PrintLevel` and `%scf → AutoStart`. [Supported methods and input blocks](docs/ORCA_METHODS.md) · [Native ORCA input examples](examples/native_methods/)
+
+![Water input workspace with calculation settings, molecular geometry and the editable ORCA input.](artifacts/public/input-preview.png)
+
+## Calculation results
+
+The water optimization example shows how the energy changes between geometry steps. Open its ORCA output in **Result** and select **Final single-point energy**. The table lists the ORCA log line for each step, including the final energy of −76.321268537024 Eh at line 2941. [Water optimization input and output](artifacts/public/validation/ORCA-6.1.1-macOS-arm64/optfreq/)
+
+![Water optimization results with step energies, source line numbers and an infrared spectrum preview.](artifacts/public/calculation-results.png)
+
 ## Atomic populations in the hydroxyl radical
 
 Open `Examples/hydroxyl-populations.out`. In **Result**, click **Atomic populations…** and select **Mulliken spin population**. For this unrestricted PBE/def2-SVP doublet, ORCA reports +1.024339 for oxygen and −0.024339 for hydrogen. Their sum is 1.000000. Labels display the signed values and the legend shows the range used to color the atoms. [ORCA input and output](examples/populations/hydroxyl.out)
@@ -26,7 +44,9 @@ Open `Examples/hydroxyl-populations.out`. In **Result**, click **Atomic populati
 
 Switch between Mulliken, Löwdin, Hirshfeld and MBIS partitions when the output contains them. CHELPG supplies fitted charges. Choose red–white–blue, blue–white–red, rainbow or black–white, edit individual colors, or save a preset. Fixed limits and a midpoint let you compare the same quantity across structures. [Population definitions and ORCA log coverage](docs/ORCA_LOG_COVERAGE.md)
 
-From a source checkout with the GUI dependencies installed, these commands export the numerical table and reproduce the figure above.
+![Atomic population controls for hydroxyl, with Mulliken spin selected and a blue–white–red scale centered at zero.](artifacts/public/population-controls.png)
+
+From a source checkout with the GUI dependencies installed, these commands export the numerical table and reproduce the spin population map.
 
 ```sh
 orcaview results examples/populations/hydroxyl.out --dataset mulliken-spin --format csv -o spin.csv
@@ -39,19 +59,11 @@ orcaview render examples/populations/hydroxyl.out spin.png --population mulliken
 
 Open `Examples/water-nmr.out` and choose **NMR chemical shielding**. Both hydrogens in this calculation have an isotropic shielding of 31.130 ppm and contribute to one peak with weight two. To plot chemical shifts, enter a reference shielding for the same element and method. OrcaView plots δ = σref − σ in ppm. The one-dimensional spectrum uses uncoupled sites. **NMR spin–spin coupling** plots signed J values by atom pair in Hz. [Water NMR output](artifacts/public/validation/results-0.1.0a12/nmr/water-shield.out)
 
+![Water proton NMR shielding spectrum with one peak at 31.130 ppm, the selected nucleus and the reference shielding control.](artifacts/public/nmr-spectrum.png)
+
 For IR and Raman, try `Examples/water-raman.out`. For UV/Vis absorption and signed circular dichroism, try `Examples/peroxide-uv-cd.out`. **Plot settings…** controls the axis units, line shape, full width at half maximum and stick overlay. Export the displayed figure as PNG, JPEG, BMP or vector PDF, or save the sticks and sampled curve as CSV. [CLI commands and export formats](docs/CLI_RESULTS.md)
 
 ![Electronic circular dichroism spectrum with signed sticks, Gaussian broadening and line profile controls.](artifacts/public/spectrum-plot.png)
-
-## Geometry and ORCA input
-
-The **Design** workspace pairs a 2D sketch with a 3D geometry. Add rings or hydrogens, edit bonds and coordinates, and optimize a starting geometry with Open Babel's MMFF94 or UFF force field. Import structures from XYZ, MOL/SDF, PDB and other formats. [Design commands](docs/CLI_DESIGN.md) · [Open Babel force fields](https://openbabel.org/docs/Forcefields/Overview.html)
-
-To position a molecule, select one of its atoms. Hold Alt (Option on macOS) and drag with the left button to rotate it or the right button to move it. Use Ctrl+C and Ctrl+V (⌘C and ⌘V on macOS) to place a separate copy.
-
-Choose **Hydrogen bond** from the single-bond menu and click an explicit hydrogen and its acceptor. **Optimize H-bonds…** applies H···A distance and D–H···A angle restraints to the marked contacts in a neutral singlet. Projects with hydrogen-bond annotations in their history require version 0.1.0a63 or later.
-
-In **Input**, choose a method, basis set, charge and multiplicity, or edit the ORCA input preview and press Tab to apply it. For example, `! MiniPrint NoAutoStart` requests minimal output and disables automatic reuse of a same-name orbital file for a single-point calculation. The corresponding panel controls are `%output → PrintLevel` and `%scf → AutoStart`. [Supported methods and input blocks](docs/ORCA_METHODS.md) · [Native ORCA input examples](examples/native_methods/)
 
 ## Source and validation
 

@@ -12,3 +12,9 @@ Use `linux` or `windows` for a single target. Pass `--cache <directory>` to reus
 - **Linux x86-64**. Extract the tarball and launch `./OrcaView` on a graphical desktop. Qt requires glibc 2.28 or newer and desktop libraries including `libxcb-cursor0` and `libxkbcommon-x11-0` on Debian/Ubuntu. Run `./OrcaView --version` to check the launcher. The runtime contains the required third-party notices.
 
 The runtime includes a link to the shared [third-party source and notice bundle](https://github.com/lightzfpwings/OrcaView/releases/download/v0.1.0a43/OrcaView-0.1.0a43-third-party-sources.zip). The app can process structures, prepare input and import results on both platforms. The local ORCA job runner uses POSIX process control.
+
+## README figures
+
+The [gallery workflow](../../.github/workflows/readme-gallery.yml) renders the repository homepage from the current desktop code and example outputs on pushes to `main` and when a release is published. It commits changed PNGs. Before tagging a release, wait for the workflow and include its latest figure commit so that the tag's README also shows that version of the interface.
+
+For a local preview, install the GUI dependencies and run `python tools/render_readme_gallery.py --output /tmp/orcaview-gallery` from the checkout. The figure recipes live in `tools/gallery_*.py`.
