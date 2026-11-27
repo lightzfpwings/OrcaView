@@ -3,6 +3,7 @@
 from array import array
 from dataclasses import dataclass, replace
 from functools import cached_property, lru_cache
+from itertools import combinations_with_replacement, islice, product
 
 import numpy as np
 
@@ -20,14 +21,15 @@ SPACE_METHODS = ("becke", "hirshfeld")
 
 @lru_cache(maxsize=32)
 def _angular_matrix(functions):
-    powers = sorted({powers for f in functions for powers, _ in f})
-    transform = np.array([[dict(f).get(p, 0.) for p in powers] for f in functions])
+    polynomials = [dict(f) for f in functions]
+    powers = sorted(set().union(*polynomials))
+    transform = np.array([[f.get(p, 0.) for p in powers] for f in polynomials])
     return np.array(powers).T, transform
 
 
 def _moments(la, lb, pa, pb, half_inverse):
     """Moments about both centers of the normalized 1-D Gaussian product."""
-    t = np.empty((la+1, lb+1, pa.size))
+    t = np.empty((la+1, lb+1, *pa.shape))
     t[0, 0] = 1.
     for i in range(la):
         t[i+1, 0] = pa*t[i, 0]
@@ -42,37 +44,65 @@ def _moments(la, lb, pa, pb, half_inverse):
     return t
 
 
-def _shell_overlap(a, b):
-    ap, ac = np.asarray(a.primitives).T
-    bp, bc = np.asarray(b.primitives).T
-    exponent = (ap[:, None] + bp).ravel()
-    u = (ap[:, None] / (ap[:, None]+bp)).ravel()
-    v = (bp / (ap[:, None]+bp)).ravel()
-    distance = np.subtract(b.center, a.center)
-    weight = (ac[:, None]*bc).ravel() * (np.pi/exponent)**1.5
-    weight *= np.exp(-exponent*u*v*np.dot(distance, distance))
-    pa, ta = _angular_matrix(a.functions)
-    pb, tb = _angular_matrix(b.functions)
-    product = weight
+class _ShellGroup:
+    """Shells with the same angular functions and number of radial primitives."""
+
+    def __init__(self, members):
+        offsets, shells = zip(*members)
+        shell = shells[0]
+        self.powers, self.transform = _angular_matrix(shell.functions)
+        self.angular = shell.angular
+        self.centers = np.asarray([s.center for s in shells], dtype=float)
+        primitives = np.asarray([s.primitives for s in shells], dtype=float)
+        self.exponents, self.weights = primitives.transpose(2, 0, 1)
+        self.indices = np.asarray(offsets)[:, None] + np.arange(len(shell.functions))
+
+
+def _overlap_blocks(a, b, rows, cols):
+    # Each row is one shell pair, each column one primitive pair within its contraction.
+    ap, bp = a.exponents[rows, :, None], b.exponents[cols, None, :]
+    sums = ap+bp
+    exponent = sums.reshape(len(rows), -1)
+    u, v = (ap/sums).reshape(exponent.shape), (bp/sums).reshape(exponent.shape)
+    distance = b.centers[cols]-a.centers[rows]
+    weight = (a.weights[rows, :, None]*b.weights[cols, None, :]).reshape(exponent.shape)
+    weight *= (np.pi/exponent)**1.5 * np.exp(-exponent*u*v*(distance**2).sum(axis=1)[:, None])
+    half_inverse = .5/exponent
+    integrals = weight
     for axis in range(3):
-        moments = _moments(a.angular, b.angular, distance[axis]*v, -distance[axis]*u, .5/exponent)
-        product = product*moments[pa[axis, :, None], pb[axis]]
-    return ta @ product.sum(axis=-1) @ tb.T
+        delta = distance[:, axis, None]
+        moments = _moments(a.angular, b.angular, delta*v, -delta*u, half_inverse)
+        integrals = integrals*moments[a.powers[axis, :, None], b.powers[axis]]
+    cartesian = np.moveaxis(integrals.sum(axis=-1), -1, 0)
+    return a.transform @ cartesian @ b.transform.T
 
 
 def overlap_matrix(shells, cancel=None):
-    offsets = np.cumsum([0, *(len(s.functions) for s in shells)])
-    overlap = np.empty((offsets[-1], offsets[-1]))
-    for i, a in enumerate(shells):
-        _check_cancel(cancel)
-        rows = slice(offsets[i], offsets[i+1])
-        for j in range(i+1):
-            if j % 32 == 0:
+    """Contract each shell pair once and scatter the blocks into Molden AO order."""
+    _check_cancel(cancel)
+    members = {}
+    offset = 0
+    for shell in shells:
+        members.setdefault((shell.functions, len(shell.primitives)), []).append((offset, shell))
+        offset += len(shell.functions)
+    groups = [_ShellGroup(group) for group in members.values()]
+    overlap = np.empty((offset, offset))
+    for i, a in enumerate(groups):
+        for b in groups[:i+1]:
+            if a is b:
+                pairs = combinations_with_replacement(range(len(a.centers)), 2)
+            else:
+                pairs = product(range(len(a.centers)), range(len(b.centers)))
+            # Bound the Cartesian moment temporaries even for highly contracted g/h shells.
+            terms = a.powers.shape[1]*b.powers.shape[1]*a.exponents.shape[1]*b.exponents.shape[1]
+            batch = max(1, min(1024, 131072//terms))
+            while chunk := list(islice(pairs, batch)):
                 _check_cancel(cancel)
-            cols = slice(offsets[j], offsets[j+1])
-            block = _shell_overlap(a, shells[j])
-            overlap[rows, cols] = block
-            overlap[cols, rows] = block.T
+                rows, cols = np.asarray(chunk).T
+                blocks = _overlap_blocks(a, b, rows, cols)
+                row_ao, col_ao = a.indices[rows], b.indices[cols]
+                overlap[row_ao[:, :, None], col_ao[:, None, :]] = blocks
+                overlap[col_ao[:, :, None], row_ao[:, None, :]] = blocks.swapaxes(1, 2)
     return overlap
 
 
@@ -109,7 +139,7 @@ class OrbitalAnalysis:
         self.source = wave
         self.atoms = np.repeat([s.atom_index for s in wave.shells], [len(s.functions) for s in wave.shells])
         self.angular = np.repeat([s.angular for s in wave.shells], [len(s.functions) for s in wave.shells])
-        self._overlap = self._eigen = self._nao = None
+        self._overlap = self._eigen = self._nao = self._populations = None
 
     def overlap(self, cancel=None):
         if self._overlap is None:
@@ -125,13 +155,27 @@ class OrbitalAnalysis:
             self._eigen = np.sqrt(eig[keep]), vectors[:, keep]
         return self._eigen
 
-    @cached_property
-    def density(self):
+    def _occupied_orbitals(self):
         if not self.source.complete_density:
             raise ValueError("This method needs the complete electron-density orbital set.")
-        occupied = [mo for mo in self.source.orbitals if mo.occupation != 0]
+        return [mo for mo in self.source.orbitals if mo.occupation != 0]
+
+    @cached_property
+    def density(self):
+        occupied = self._occupied_orbitals()
         c = np.array([mo.coefficients for mo in occupied])
-        return (c.T*np.array([mo.occupation for mo in occupied])) @ c
+        density = (c.T*np.array([mo.occupation for mo in occupied])) @ c
+        self._populations = density.diagonal()
+        return density
+
+    def _ao_populations(self, cancel):
+        if self._populations is None:
+            values = np.zeros(len(self.atoms))
+            for mo in self._occupied_orbitals():
+                _check_cancel(cancel)
+                values += mo.occupation*np.square(mo.coefficients)
+            self._populations = values
+        return self._populations
 
     def natural_orbitals(self, cancel=None):
         wave = self.source
@@ -161,13 +205,12 @@ class OrbitalAnalysis:
 
     def composition(self, mo, method, cancel=None):
         _check_cancel(cancel)
+        c = np.asarray(mo.coefficients)
         if method in SPACE_METHODS:
             from .orbital_space import atomic_composition
-            c = np.asarray(mo.coefficients)
             raw = atomic_composition(self.source, c, method, float(c @ self.overlap(cancel) @ c), cancel)
             values = raw[:, None]
         else:
-            c = np.asarray(mo.coefficients)
             if method == "scpa":
                 raw = c*c
             elif method == "mulliken":
@@ -178,7 +221,7 @@ class OrbitalAnalysis:
             elif method in ("stout", "bickelhaupt"):
                 # Allocate each full AO-pair cross term once, using complementary weights.
                 s = self.overlap(cancel)
-                w = c*c if method == "stout" else np.diag(self.density)
+                w = c*c if method == "stout" else self._ao_populations(cancel)
                 raw = np.empty_like(c)
                 for start in range(0, len(c), 128):
                     _check_cancel(cancel)

@@ -188,12 +188,10 @@ class OrbitalViewport(MoleculeViewport):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(Qt.PenStyle.NoPen)
-        for _, sign, corners in sorted(visible):
-            a, b, c = corners[:3]
-            path = occlusion.visible_path((points[a], points[b], points[c]))
-            _paint_triangle(painter, screen, light, self._inks[sign], a, b, c, path)
-            if len(corners) == 4:
-                d = corners[3]
-                path = occlusion.visible_path((points[a], points[c], points[d]))
-                _paint_triangle(painter, screen, light, self._inks[sign], a, c, d, path)
+        visible.sort()
+        for _, sign, corners in visible:
+            a = corners[0]
+            for b, c in zip(corners[1:-1], corners[2:]):
+                path = occlusion.visible_path((points[a], points[b], points[c]))
+                _paint_triangle(painter, screen, light, self._inks[sign], a, b, c, path)
         painter.restore()

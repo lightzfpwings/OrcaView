@@ -1,8 +1,10 @@
 'Domain validation and display bonds without a quantum chemistry program.'
 
+import math
+from random import Random
 import unittest
 
-from orcaview.core.elements import ATOMIC_NUMBERS
+from orcaview.core.elements import ATOMIC_NUMBERS, COVALENT_RADII
 from orcaview.core.geometry import infer_bonds
 from orcaview.core.models import Atom, Bond, CalculationSpec, Molecule
 
@@ -61,6 +63,25 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(infer_bonds(self.water), (Bond(0, 1), Bond(0, 2)))
         isolated = Molecule("distant", (Atom("H", 0, 0, 0), Atom("H", 20, 0, 0)))
         self.assertEqual(infer_bonds(isolated), ())
+
+    def test_bond_cells_preserve_pair_cutoffs_and_input_order(self):
+        rng = Random(32)
+        cutoff = 1.2*(2*COVALENT_RADII["Fe"])
+        atoms = [Atom("Fe", x, 0, 0) for x in
+                 (0., 0., .1, math.nextafter(.1, 1.), -cutoff, math.nextafter(cutoff, math.inf))]
+        atoms += [Atom(symbol, *(rng.uniform(-5, 5) for _ in range(3)))
+                  for symbol in ("H", "Xe", "Fe", "O", "C")*9]
+        molecule = Molecule("mixed atoms", tuple(atoms))
+        for factor in (0., .7, 1.2, 1.6):
+            expected = []
+            for i, a in enumerate(atoms):
+                for j, b in enumerate(atoms[i+1:], i+1):
+                    distance = math.dist((a.x, a.y, a.z), (b.x, b.y, b.z))
+                    radii = COVALENT_RADII.get(a.element, .85) + COVALENT_RADII.get(b.element, .85)
+                    if .1 < distance <= factor*radii:
+                        expected.append(Bond(i, j))
+            with self.subTest(factor=factor):
+                self.assertEqual(infer_bonds(molecule, factor), tuple(expected))
 
     def test_calculation_input_validation(self):
         CalculationSpec().validate()

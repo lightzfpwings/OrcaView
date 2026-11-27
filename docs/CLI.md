@@ -1,6 +1,6 @@
 # OrcaView 命令行与批处理
 
-以下命令适用于 OrcaView 0.1.0a78。在仓库的虚拟环境中使用 `orcaview`，Linux 便携包使用解压目录中的 `./OrcaView`，macOS 应用使用 `/path/to/OrcaView.app/Contents/MacOS/OrcaView`，Windows 便携包使用 `OrcaView.exe`。运行 `orcaview --help` 查看入口，子命令均支持 `--help`。
+以下命令适用于 OrcaView 0.1.0a79。在仓库的虚拟环境中使用 `orcaview`，Linux 便携包使用解压目录中的 `./OrcaView`，macOS 应用使用 `/path/to/OrcaView.app/Contents/MacOS/OrcaView`，Windows 便携包使用 `OrcaView.exe`。运行 `orcaview --help` 查看入口，子命令均支持 `--help`。
 
 ## 新任务的核数和内存
 

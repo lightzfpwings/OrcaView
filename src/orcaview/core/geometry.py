@@ -1,6 +1,7 @@
 """Distance-based display bonds and valence accounting for explicitly drawn bonds."""
 
 import math
+from itertools import product
 from typing import Tuple
 
 from .elements import COVALENT_RADII
@@ -8,6 +9,7 @@ from .models import Bond, Molecule
 
 
 DEFAULT_BOND_DISTANCE_FACTOR = 1.20
+_NEIGHBOR_OFFSETS = tuple(product((-1, 0, 1), repeat=3))
 
 
 def connected_component(bonds, anchor):
@@ -124,12 +126,23 @@ def covalent_bonds(molecule: Molecule) -> Tuple[Bond, ...]:
 
 def infer_bonds(molecule: Molecule, distance_factor: float = DEFAULT_BOND_DISTANCE_FACTOR) -> Tuple[Bond, ...]:
     molecule.validate_structure(allow_empty=True)
-    bonds = []
-    for i, first in enumerate(molecule.atoms):
-        for j in range(i + 1, len(molecule.atoms)):
-            second = molecule.atoms[j]
-            distance = math.sqrt((first.x - second.x) ** 2 + (first.y - second.y) ** 2 + (first.z - second.z) ** 2)
-            cutoff = distance_factor * (COVALENT_RADII.get(first.element, 0.85) + COVALENT_RADII.get(second.element, 0.85))
-            if 0.1 < distance <= cutoff:
-                bonds.append(Bond(i, j))
-    return tuple(bonds)
+    atoms = molecule.atoms
+    radii = [COVALENT_RADII.get(atom.element, .85) for atom in atoms]
+    largest_cutoff = distance_factor * (2*max(radii, default=0.))
+    if not largest_cutoff > .1:
+        return ()
+    # A bonded pair must occupy the same or adjacent cells, including at the cutoff.
+    width = max(1., math.nextafter(largest_cutoff, math.inf))
+    cells = {}
+    by_atom = [[] for _ in atoms]
+    for j, atom in enumerate(atoms):
+        x, y, z = math.floor(atom.x/width), math.floor(atom.y/width), math.floor(atom.z/width)
+        for dx, dy, dz in _NEIGHBOR_OFFSETS:
+            for i in cells.get((x+dx, y+dy, z+dz), ()):
+                other = atoms[i]
+                distance = math.sqrt((other.x-atom.x)**2 + (other.y-atom.y)**2 + (other.z-atom.z)**2)
+                if .1 < distance <= distance_factor*(radii[i]+radii[j]):
+                    by_atom[i].append(Bond(i, j))
+        cells.setdefault((x, y, z), []).append(j)
+    # For each first endpoint the second endpoints arrived in input order.
+    return tuple(bond for row in by_atom for bond in row)

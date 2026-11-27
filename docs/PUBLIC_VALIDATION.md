@@ -1,5 +1,11 @@
 # OrcaView release validation
 
+## 0.1.0a79
+
+On an Apple M4, the Fe–N₄–O Molden benchmark (ORCA orbital 185, isovalue 0.05) generated the standard surface in 165 ms and the best surface in 475 ms. Version a78 took 646 ms and 1,507 ms respectively. Building the 1,437-function AO overlap matrix took 82 ms, down from 4.91 s. These figures are medians of three runs. The maximum change in an overlap matrix element was 3.34 × 10⁻¹⁶ or less.
+
+All four mesh qualities retained their face connectivity. CPU images, Metal images and rasterized vector PDFs matched a78 pixel for pixel at the tested molecular view for standard and best quality. The regression suite includes mixed Cartesian and spherical shell ordering, signed Cube thresholds and bond cutoffs. [Orbital analysis tests](../tests/test_natural_orbitals.py) · [Cube tests](../tests/test_cube_orbitals.py) · [Geometry tests](../tests/test_core.py)
+
 ## 0.1.0a78
 
 **Orbital surfaces.** A synthetic Molden wavefunction combines two compact Gaussians near one another with a distant diffuse fragment. The standard, smooth and best grids resolve the compact lobe to within 0.008 Å of its analytic radius. The test counts two incident faces on every mesh edge and checks that the three settings progressively increase the number of vertices on the lobe. [Gaussian surface tests](../tests/test_molden_orbitals.py) · [Cube surface tests](../tests/test_cube_orbitals.py)

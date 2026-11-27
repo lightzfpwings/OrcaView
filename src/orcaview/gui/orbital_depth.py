@@ -103,6 +103,21 @@ class _Shadow:
             axis_z = self.az+self.dz*t/self.length
         return disk >= 0 and z <= axis_z+math.sqrt(disk)
 
+    def misses_triangle(self, center, points):
+        """Reject a triangle wholly beyond a supporting plane of the downward shadow."""
+        x, y, z = center[0]-self.ax, center[1]-self.ay, center[2]-self.az
+        t = 0.
+        if self.length >= 1e-8:
+            t = min(1., max(0., (x*self.dx+y*self.dy)/self.length**2))
+            if z > t*self.dz:
+                t = min(1., max(0., (x*self.dx+y*self.dy+z*self.dz)/self.norm**2))
+        nx, ny, nz = x-t*self.dx, y-t*self.dy, max(0., z-t*self.dz)
+        # For nz >= 0 the shadow and capsule have the same maximum projection.
+        extent = max(0., nx*self.dx+ny*self.dy+nz*self.dz) + self.r*math.hypot(nx, ny, nz)
+        if nx*x+ny*y+nz*z <= extent:
+            return False
+        return all(nx*(px-self.ax)+ny*(py-self.ay)+nz*(pz-self.az) > extent for px, py, pz in points)
+
     def cut(self, normal, offset):
         """Trace the convex outline using support points of the clipped end balls and cylinder."""
         nx, ny, nz = normal
@@ -183,13 +198,17 @@ class VectorOcclusion:
             return None
         xs, ys, zs = zip(*points)
         x0, x1, y0, y1, z0 = min(xs), max(xs), min(ys), max(ys), min(zs)
-        result = plane = None
+        result = plane = center = None
         for shadow in self._nearby(x0, x1, y0, y1):
             left, top, right, bottom = shadow.bounds
             if x1 <= left or x0 >= right or y1 <= top or y0 >= bottom or z0 >= shadow.front:
                 continue
             if all(shadow.covers(p) for p in points):
                 return QPainterPath()
+            if center is None:
+                center = (sum(xs)/3, sum(ys)/3, sum(zs)/3)
+            if shadow.misses_triangle(center, points):
+                continue
             if plane is None:
                 a, b, c = points
                 ux, uy, uz = (v-w for v, w in zip(b, a))

@@ -2,6 +2,7 @@
 
 from collections import Counter
 from dataclasses import replace
+from itertools import product
 from math import exp, hypot, isclose, log, pi, sqrt
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,7 +13,7 @@ from concurrent.futures import CancelledError
 from orcaview.application.structure_import import read_linked_orbitals, read_structure_file
 from orcaview.core.units import BOHR_IN_ANGSTROM
 from orcaview.io.cube import read_cube
-from orcaview.results.orbital_surface import _interpolator, _surface, make_cube_surface, make_orbital_surface
+from orcaview.results.orbital_surface import _crossing_cells, _interpolator, _surface, make_cube_surface, make_orbital_surface
 
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -29,6 +30,19 @@ def sphere_grid():
 
 
 class CubeOrbitalsTests(unittest.TestCase):
+    def test_crossing_cells_at_signed_thresholds_and_constant_planes(self):
+        planes = (-1., -.5, -.5, 0., .5, .5, 1.)
+        nx, ny, nz = len(planes), 4, 3
+        values = [a for a in planes for _ in range(ny*nz)]
+        values[(2*ny+1)*nz+2] = 1.
+        values[(4*ny+2)*nz] = -1.
+        expected = []
+        for x, y, z in product(range(nx-1), range(ny-1), range(nz-1)):
+            corners = tuple(values[((x+i)*ny+y+j)*nz+z+k] for i, j, k in product((0, 1), repeat=3))
+            if any(min(corners) < iso <= max(corners) for iso in (-.5, .5)):
+                expected.append((x, y, z, corners))
+        self.assertEqual(list(_crossing_cells(values, (nx, ny, nz), .5, None)), expected)
+
     def test_real_orca_water_homo_data_and_phase(self):
         opened = read_structure_file(EXAMPLES / "orbitals/water-homo.cube")
         cube = opened.cube_grid

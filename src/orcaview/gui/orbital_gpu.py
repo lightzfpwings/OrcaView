@@ -39,12 +39,12 @@ struct Capsule {
     @location(1) @interpolate(flat) a: vec4f,
     @location(2) @interpolate(flat) b: vec3f,
 };
-@vertex fn molecule_vs(@location(0) a: vec4f, @location(1) b: vec3f,
+@vertex fn molecule_vs(@location(0) a: vec3f, @location(1) b: vec3f, @location(2) radius: f32,
                        @builtin(vertex_index) corner: u32) -> Capsule {
-    let lo = min(a.xy, b.xy) - a.w;
-    let hi = max(a.xy, b.xy) + a.w;
+    let lo = min(a.xy, b.xy) - radius;
+    let hi = max(a.xy, b.xy) + radius;
     let xy = select(lo, hi, vec2<bool>((corner & 1u) != 0u, (corner & 2u) != 0u));
-    return Capsule(vec4f(xy*scene.screen.xy + vec2f(-1, 1), 0.5, 1), xy, a, b);
+    return Capsule(vec4f(xy*scene.screen.xy + vec2f(-1, 1), 0.5, 1), xy, vec4f(a, radius), b);
 }
 @fragment fn molecule_fs(v: Capsule) -> @builtin(frag_depth) f32 {
     let delta = v.b - v.a.xyz;
@@ -109,8 +109,9 @@ class OrbitalGpu:
             layout="auto",
             vertex={"module": shader, "entry_point": "molecule_vs", "buffers": [{
                 "array_stride": 28, "step_mode": "instance",
-                "attributes": [{"format": "float32x4", "offset": 0, "shader_location": 0},
-                               {"format": "float32x3", "offset": 16, "shader_location": 1}]}]},
+                "attributes": [{"format": "float32x3", "offset": 0, "shader_location": 0},
+                               {"format": "float32x3", "offset": 12, "shader_location": 1},
+                               {"format": "float32", "offset": 24, "shader_location": 2}]}]},
             primitive={"topology": "triangle-strip"},
             depth_stencil={"format": "depth24plus", "depth_write_enabled": True, "depth_compare": "less-equal"},
             multisample={"count": 4},
@@ -193,7 +194,7 @@ class OrbitalGpu:
         if capsules:
             import numpy as np
 
-            data = np.asarray([(ax, ay, az, r, bx, by, bz) for ax, ay, az, bx, by, bz, r in capsules], dtype='f')
+            data = np.asarray(capsules, dtype='f')
             if self.instances is None or self.instances.size < data.nbytes:
                 if self.instances is not None:
                     self.instances.destroy()

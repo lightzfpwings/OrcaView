@@ -4,7 +4,14 @@ from bisect import bisect_left, bisect_right
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
 from functools import lru_cache
+from itertools import product
 import math
+from operator import itemgetter
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from orcaview.core.units import BOHR_IN_ANGSTROM
 from orcaview.core.volume_grid import VolumeGrid
@@ -18,12 +25,8 @@ def _check_cancel(event):
 
 def sample_grid(expansion, axes, cancel=None):
     """Exploit the separability of each Cartesian Gaussian along x, y and z."""
-    try:
-        import numpy as np
-    except ImportError:
-        np = None
     if np is not None:
-        return _sample_array(expansion, axes, cancel, np)
+        return _GaussianSampler(expansion, cancel).sample(axes, cancel).ravel()
     nx, ny, nz = map(len, axes)
     grid = [0.] * (nx*ny*nz)
     for center, primitives, terms in expansion:
@@ -59,29 +62,80 @@ def sample_grid(expansion, axes, cancel=None):
     return grid
 
 
-def _sample_array(expansion, axes, cancel, np):
-    """Accumulate separable primitive products in native loops over bounded slabs."""
-    grid = np.zeros(tuple(map(len, axes)))
-    axes = [np.asarray(axis) for axis in axes]
-    for center, primitives, terms in expansion:
-        relative = [axis-c for axis, c in zip(axes, center)]
-        degrees = [set(power[k] for power, _ in terms) for k in range(3)]
-        for exponent, weight in primitives:
+class _GaussianSampler:
+    """Evaluate separable Gaussian products on both molecular and nuclear grids."""
+
+    def __init__(self, expansion, cancel):
+        nuclei = {}
+        centers, exponents, weights, powers = [], [], [], []
+        for center, primitives, terms in expansion:
             _check_cancel(cancel)
-            radius = math.sqrt(50/exponent)
-            slices = [slice(v.searchsorted(-radius), v.searchsorted(radius, side="right")) for v in relative]
-            block = grid[tuple(slices)]
+            nuclei[tuple(center)] = None
+            for exponent, weight in primitives:
+                for power, coefficient in terms:
+                    centers.append(center)
+                    exponents.append(exponent)
+                    weights.append(weight*coefficient)
+                    powers.append(power)
+        self.nuclei = tuple(nuclei)
+        self.centers = np.asarray(centers, dtype=float).reshape(-1, 3)
+        self.exponents = np.asarray(exponents, dtype=float)
+        self.weights = np.asarray(weights, dtype=float)
+        self.powers = np.asarray(powers, dtype=int).reshape(-1, 3)
+        self.radii = np.sqrt(50/self.exponents)
+        # |x|^p exp(-a*x²) takes its maximum at |x| = sqrt(p/(2a)).
+        self.peaks = np.sqrt(self.powers/(2*self.exponents[:, None]))
+
+    def sample(self, axes, cancel, level=None):
+        _check_cancel(cancel)
+        axes = tuple(np.asarray(axis) for axis in axes)
+        shape = tuple(map(len, axes))
+        if 0 in shape:
+            return np.zeros(shape)
+        lower, upper = (np.array([axis[i] for axis in axes]) for i in (0, -1))
+        nearest = np.maximum(0., np.maximum(lower-self.centers, self.centers-upper))
+        if level is None:
+            # Match the per-axis cutoff of the scalar sampler.
+            active = np.flatnonzero((nearest <= self.radii[:, None]).all(axis=1))
+        else:
+            active = np.flatnonzero(self.exponents*(nearest**2).sum(axis=1) <= 50)
+            centers = self.centers[active]
+            farthest = np.maximum(abs(lower-centers), abs(upper-centers))
+            peak = np.clip(self.peaks[active], nearest[active], farthest)
+            envelope = (peak**self.powers[active]).prod(axis=1)*np.exp(
+                -self.exponents[active]*(peak**2).sum(axis=1))
+            if np.dot(abs(self.weights[active]), envelope) < level:
+                return None
+        field = np.zeros(shape)
+        for first in range(0, len(active), 64):
+            _check_cancel(cancel)
+            ids = active[first:first+64]
+            centers = self.centers[ids]
+            radii = self.radii[ids, None]
+            lo, hi = (centers-radii).min(axis=0), (centers+radii).max(axis=0)
+            bounds = tuple(slice(axis.searchsorted(l), axis.searchsorted(h, side="right"))
+                           for axis, l, h in zip(axes, lo, hi))
+            block = field[bounds]
             if not block.size:
                 continue
-            tables = []
-            for coords, bounds, powers in zip(relative, slices, degrees):
-                v = coords[bounds]
-                gaussian = np.exp(-exponent*v*v)
-                tables.append({p: gaussian*v**p for p in powers})
-            for (px, py, pz), coefficient in terms:
-                xy = (weight*coefficient*tables[0][px][:, None])*tables[1][py]
-                block += xy[:, :, None]*tables[2][pz]
-    return grid.ravel()
+            factors = []
+            for k, (axis, sl) in enumerate(zip(axes, bounds)):
+                delta = axis[sl]-centers[:, k, None]
+                inside = abs(delta) <= radii
+                delta = np.where(inside, delta, 0.)
+                values = np.exp(-self.exponents[ids, None]*delta**2)*delta**self.powers[ids, k, None]
+                factors.append(np.where(inside, values, 0.))
+            x, y, z = factors
+            x *= self.weights[ids, None]
+            nx, ny, nz = block.shape
+            # Bound both the xy products and the matrix result for wide input grids.
+            rows = max(1, 524288//(ny*max(len(ids), nz)))
+            for start in range(0, nx, rows):
+                _check_cancel(cancel)
+                slab = block[start:start+rows]
+                xy = x[:, start:start+rows, None]*y[:, None, :]
+                slab += (xy.reshape(len(ids), -1).T @ z).reshape(slab.shape)
+        return field
 
 
 @dataclass(frozen=True)
@@ -153,23 +207,31 @@ _SADDLES = tuple(tuple(i for i, (a, b, c, d) in enumerate(_FACE_RINGS)
                  for mask in range(256))
 
 
+def _plane_bands(plane, level):
+    # A cell crosses a level exactly when its corners occupy different bands.
+    bands = (plane >= -level).astype(np.uint8)
+    bands += plane >= level
+    anchor = bands[:-1, :-1]
+    mixed = (anchor != bands[1:, :-1]) | (anchor != bands[:-1, 1:]) | (anchor != bands[1:, 1:])
+    return anchor, mixed
+
+
 def _crossing_cells(values, shape, level, cancel):
     nx, ny, nz = shape
     sx, sy = ny*nz, nz
-    try:
-        import numpy as np
-    except ImportError:
-        np = None
     if np is not None:
         field = np.asarray(values).reshape(shape)
+        near, near_mixed = _plane_bands(field[0], level)
         for x in range(nx-1):
             _check_cancel(cancel)
-            slab = field[x:x+2]
-            corners = [slab[a, b:b+ny-1, c:c+nz-1] for a, b, c in _CORNERS]
-            lo, hi = np.minimum.reduce(corners), np.maximum.reduce(corners)
-            ys, zs = np.nonzero(((lo < level) & (level <= hi)) | ((lo < -level) & (-level <= hi)))
-            for y, z in zip(ys.tolist(), zs.tolist()):
-                yield x, y, z, tuple(float(part[y, z]) for part in corners)
+            far, far_mixed = _plane_bands(field[x+1], level)
+            ys, zs = np.nonzero(near_mixed | far_mixed | (near != far))
+            if ys.size:
+                slab = field[x:x+2]
+                corners = [slab[a, b:b+ny-1, c:c+nz-1] for a, b, c in _CORNERS]
+                for y, z in zip(ys.tolist(), zs.tolist()):
+                    yield x, y, z, tuple(float(part[y, z]) for part in corners)
+            near, near_mixed = far, far_mixed
         return
     for x in range(nx-1):
         _check_cancel(cancel)
@@ -192,12 +254,16 @@ def _crossing_cells(values, shape, level, cancel):
 class _SurfaceMesh:
     """Indexed Marching Cubes with consistent face saddles and interpolated field normals."""
 
-    def __init__(self, lattice, sample):
+    def __init__(self, lattice, sample, *, output=None):
         self.lattice, self.sample = lattice, sample
         _, ny, nz = lattice.shape
         self.strides = (ny*nz, nz, 1)
         self.offsets = tuple((x*ny+y)*nz+z for x, y, z in _CORNERS)
-        self.vertices, self.normals, self.faces = [], [], []
+        # Closed local patches use the final mesh's indices and keep their own edge cache.
+        if output is None:
+            self.vertices, self.normals, self.faces = [], [], []
+        else:
+            self.vertices, self.normals, self.faces = output.vertices, output.normals, output.faces
         self.edges = {1: {}, -1: {}}
         self.gradients = {}
         self.clipped = False
@@ -357,81 +423,46 @@ def _enclosed_phases(field, level):
     return phases
 
 
-def _sample_patch(expansion, axes, level, cancel, np):
-    """Contract short, dense Gaussian axes in batches; bound empty patches before multiplying."""
-    products = []
-    bound = 0.
-    for center, primitives, terms in expansion:
-        _check_cancel(cancel)
-        distance2 = sum(max(axis[0]-c, c-axis[-1], 0.)**2 for axis, c in zip(axes, center))
-        active = [(a, w) for a, w in primitives if a*distance2 <= 50]
-        if not active:
-            continue
-        relative = [axis-c for axis, c in zip(axes, center)]
-        powers = [{p[k] for p, _ in terms} for k in range(3)]
-        for exponent, weight in active:
-            tables = []
-            for coords, degrees in zip(relative, powers):
-                arg = exponent*coords**2
-                gaussian = np.where(arg <= 50, np.exp(-arg), 0.)
-                tables.append({p: gaussian*coords**p for p in degrees})
-            for (i, j, k), coefficient in terms:
-                x, y, z = weight*coefficient*tables[0][i], tables[1][j], tables[2][k]
-                if bound < level:
-                    bound += np.abs(x).max()*np.abs(y).max()*np.abs(z).max()
-                products.append((x, y, z))
-    if bound < level:
-        return None
-    nx, ny, nz = map(len, axes)
-    field = np.zeros((nx*ny, nz))
-    for start in range(0, len(products), 64):
-        _check_cancel(cancel)
-        x, y, z = (np.asarray(rows) for rows in zip(*products[start:start+64]))
-        xy = (x[:, :, None]*y[:, None, :]).reshape(len(x), nx*ny)
-        field += xy.T @ z
-    return field.reshape(nx, ny, nz)
-
-
-def _refine_nuclear_lobes(expansion, axes, values, lattice, level, quality, cancel):
-    import numpy as np
-
+def _refine_nuclear_lobes(sampler, axes, lattice, level, quality, cancel):
     step = axes[0][1]-axes[0][0]
     target = SURFACE_QUALITIES[quality].spacing_bohr * .60
     factor = math.ceil(step/target)
-    field = values.reshape(lattice.shape)
+    field = sampler.sample(axes, cancel)
+    base_mesh = _SurfaceMesh(lattice, lambda x, y, z: field[x, y, z])
     # Limit the local spacing by physical size even for widely separated fragments.
     # The local boxes follow coarse grid planes so both meshes agree about ownership.
     masks = {sign: np.zeros(tuple(n-1 for n in lattice.shape), dtype=bool) for sign in (1, -1)}
-    vertices, normals, faces = [], [], []
-    for center in dict.fromkeys(c for c, _, _ in expansion):
+    for center in sampler.nuclei:
         _check_cancel(cancel)
         # A neighboring lobe may intersect a large box, even when a smaller box
         # encloses this nucleus's surface. Choose a separate closed box for each phase.
-        patches = {}
+        candidates = []
+        previous = None
         width = 1.15
         while width > 0:
             bounds = tuple((max(0, bisect_right(axis, c-width)-1), min(len(axis)-1, bisect_left(axis, c+width)))
                            for axis, c in zip(axes, center))
             width -= step/2
-            if bounds in patches or any(b <= a or (b-a)*factor > 72 for a, b in bounds):
+            if bounds == previous or any(b <= a or (b-a)*factor > 72 for a, b in bounds):
                 continue
+            previous = bounds
             cells = tuple(slice(a, b) for a, b in bounds)
             nodes = tuple(slice(a, b+1) for a, b in bounds)
-            phases = _enclosed_phases(field[nodes], level)
-            patches[bounds] = {s for s in phases if not masks[s][cells].all()}
-        candidates = [bounds for bounds, phases in patches.items() if phases]
+            phases = {s for s in _enclosed_phases(field[nodes], level) if not masks[s][cells].all()}
+            if phases:
+                candidates.append((bounds, phases))
         if not candidates:
             continue
-        outer = candidates[0]
+        outer, _ = candidates[0]
         local_axes = [np.linspace(axis[a], axis[b], (b-a)*factor+1) for axis, (a, b) in zip(axes, outer)]
-        fine = _sample_patch(expansion, local_axes, level, cancel, np)
+        fine = sampler.sample(local_axes, cancel, level)
         if fine is None:
             continue
         local = _cartesian_lattice(local_axes)
-        mesh = _SurfaceMesh(local, lambda x, y, z: fine[x, y, z])
+        mesh = _SurfaceMesh(local, lambda x, y, z: fine[x, y, z], output=base_mesh)
         remaining = {1, -1}
-        for bounds in candidates:
-            phases = patches[bounds] & remaining
+        for bounds, phases in candidates:
+            phases = phases & remaining
             if not phases:
                 continue
             start = tuple((a-lo)*factor for (a, b), (lo, _) in zip(bounds, outer))
@@ -449,30 +480,23 @@ def _refine_nuclear_lobes(expansion, axes, values, lattice, level, quality, canc
             remaining -= phases
             if not remaining:
                 break
-        offset = len(vertices)
-        vertices.extend(mesh.vertices)
-        normals.extend(mesh.normals)
-        faces.extend(tuple(i+offset for i in face[:-1]) + (face[-1],) for face in mesh.faces)
-    _, ny, nz = lattice.shape
-    mesh = _SurfaceMesh(lattice, lambda x, y, z: values[(x*ny+y)*nz+z])
-    mesh.vertices, mesh.normals, mesh.faces = vertices, normals, faces
-    for x, y, z, corners in _crossing_cells(values, lattice.shape, level, cancel):
+    for x, y, z, corners in _crossing_cells(field, lattice.shape, level, cancel):
         signs = [s for s in (1, -1) if not masks[s][x, y, z]]
-        mesh.add_cell(x, y, z, corners, level, signs)
-    return mesh.finish()
+        base_mesh.add_cell(x, y, z, corners, level, signs)
+    return base_mesh.finish()
 
 
 def make_orbital_surface(wave, index, level=.05, cancel=None, *, quality="standard"):
     _check_settings(level, quality)
+    _check_cancel(cancel)
     expansion = orbital_expansion(wave.shells, wave.orbitals[index].coefficients)
     axes = _orbital_axes(expansion, level, quality)
     if not axes:
         return OrbitalSurface((), (), False)
     lattice = _cartesian_lattice(axes)
-    values = sample_grid(expansion, axes, cancel)
-    if hasattr(values, "reshape") and axes[0][1]-axes[0][0] > 1.25*SURFACE_QUALITIES[quality].spacing_bohr:
-        return _refine_nuclear_lobes(expansion, axes, values, lattice, level, quality, cancel)
-    return _surface(values, lattice, level, cancel)
+    if np is not None and axes[0][1]-axes[0][0] > 1.25*SURFACE_QUALITIES[quality].spacing_bohr:
+        return _refine_nuclear_lobes(_GaussianSampler(expansion, cancel), axes, lattice, level, quality, cancel)
+    return _surface(sample_grid(expansion, axes, cancel), lattice, level, cancel)
 
 
 def _slope(a, b, estimate=None):
@@ -558,17 +582,18 @@ def make_cube_surface(cube, index, level=.05, cancel=None, *, quality="standard"
     sample = _interpolator(field.values, grid.shape, factor)
     mesh = _SurfaceMesh(fine, sample)
     width = factor+1
-    offsets = tuple((a*width+b)*width+c for a, b, c in _CORNERS)
+    nodes = tuple(product(range(width), repeat=3))
+    # Every native cell uses the same corner indices in its interpolated block.
+    subcells = []
+    for a, b, c in product(range(factor), repeat=3):
+        indices = (((a+i)*width+b+j)*width+c+k for i, j, k in _CORNERS)
+        subcells.append((a, b, c, itemgetter(*indices)))
     for x, y, z, _ in _crossing_cells(field.values, grid.shape, level, cancel):
         # The monotone filter stays within the native cell's eight sample
         # extrema. Only crossing cells need interpolation, even on large grids.
         _check_cancel(cancel)
         fx, fy, fz = x*factor, y*factor, z*factor
-        block = [sample(fx+a, fy+b, fz+c) for a in range(width) for b in range(width) for c in range(width)]
-        for a in range(factor):
-            for b in range(factor):
-                for c in range(factor):
-                    start = (a*width+b)*width+c
-                    corners = tuple(block[start+k] for k in offsets)
-                    mesh.add_cell(fx+a, fy+b, fz+c, corners, level)
+        block = [sample(fx+a, fy+b, fz+c) for a, b, c in nodes]
+        for a, b, c, corners in subcells:
+            mesh.add_cell(fx+a, fy+b, fz+c, corners(block), level)
     return mesh.finish()

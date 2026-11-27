@@ -20,7 +20,7 @@ class OrbitalRaster:
     def __init__(self, mesh, center):
         import numpy as np
 
-        self.mesh, self.origin = mesh, center
+        self.origin = center
         self.vertices = (np.asarray(mesh.vertices)-center).astype("f")
         self.normals = np.asarray(mesh.normals, dtype="f")
         indices = phase_indices(mesh)
@@ -52,6 +52,7 @@ class OrbitalRaster:
             if not len(keep):
                 continue
             area = area[keep]
+            dx1, dx2, dy1, dy2 = dx1[keep], dx2[keep], dy1[keep], dy2[keep]
             xs, ys, tri = xs[keep], ys[keep], tri[keep]
             anchor_x, anchor_y = xs[:, 0], ys[:, 0]
             order = np.argsort(ys, axis=1)
@@ -74,8 +75,8 @@ class OrbitalRaster:
             # Interpolate depth and vertex illumination across each scan line.
             def plane(values):
                 v0, v1, v2 = values[tri].T
-                gx = ((v1-v0)*dy2[keep]-(v2-v0)*dy1[keep])/area
-                gy = (dx1[keep]*(v2-v0)-dx2[keep]*(v1-v0))/area
+                gx = ((v1-v0)*dy2-(v2-v0)*dy1)/area
+                gy = (dx1*(v2-v0)-dx2*(v1-v0))/area
                 return gx, v0-gx*anchor_x-gy*anchor_y, gy
 
             zx, z0, zy = plane(xyz[:, 2])

@@ -1,6 +1,7 @@
 """ORCA orbital identity, natural occupations and numerical decomposition references."""
 
 from concurrent.futures import CancelledError
+import math
 from pathlib import Path
 import struct
 from tempfile import TemporaryDirectory
@@ -9,11 +10,13 @@ import unittest
 from unittest.mock import patch
 
 from orcaview.application.structure_import import open_file_filters, prepare_gbw_open, read_linked_orbitals, read_structure_file
+from orcaview.core.models import Atom
 from orcaview.orca.orbital_files import ORCA_ORBITAL_SUFFIXES, molden_destination, orbital_kind
+from orcaview.results.orbital_basis import GaussianShell
 
 try:
     import numpy as np
-    from orcaview.results.orbital_analysis import CubeOrbitalAnalysis, OrbitalAnalysis
+    from orcaview.results.orbital_analysis import CubeOrbitalAnalysis, OrbitalAnalysis, overlap_matrix
 except ModuleNotFoundError as exc:
     if exc.name != "numpy":
         raise
@@ -87,6 +90,32 @@ class OrbitalFileTests(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "Requires NumPy")
 class CompositionTests(unittest.TestCase):
+    def test_overlap_keeps_ao_order_across_contractions_and_mixed_d_shells(self):
+        atom = Atom("O", .41, .52, -.39)
+        rows = ((.5, .8), (2.1, -.26))
+        spherical, cartesian = (GaussianShell.from_molden(atom, 2, rows, spherical, False)
+                                for spherical in (True, False))
+        contracted = GaussianShell.from_molden(atom, 0, rows, False, False)
+        shells = [GaussianShell.from_molden(Atom("H", i*.17, i%3*.7, i%5*.31), 0,
+                                             ((.4+i*.03, 1.),), False, False) for i in range(48)]
+        shells[1:1] = [spherical, contracted, cartesian]
+        cancel = Event()
+        with patch.object(cancel, "is_set", side_effect=(False, False, True)), self.assertRaises(CancelledError):
+            overlap_matrix(shells, cancel)
+        overlap = overlap_matrix(shells)
+        np.testing.assert_allclose(overlap, overlap.T, atol=2e-14, rtol=0)
+        np.testing.assert_allclose(overlap.diagonal(), 1., atol=2e-14, rtol=0)
+        # The last spherical d and fourth Cartesian d are the same normalized xy function.
+        np.testing.assert_allclose(overlap[5], overlap[10], atol=2e-14, rtol=0)
+        offsets = np.cumsum([0] + [len(shell.functions) for shell in shells])
+        s_shells = [(offset, shell) for offset, shell in zip(offsets, shells) if shell.angular == 0]
+        for i, a in s_shells:
+            for j, b in s_shells:
+                r2 = math.dist(a.center, b.center)**2
+                reference = sum(c*d*(math.pi/(p+q))**1.5 * math.exp(-p*q*r2/(p+q))
+                                for p, c in a.primitives for q, d in b.primitives)
+                self.assertAlmostEqual(overlap[i, j], reference, places=13)
+
     def test_unrestricted_total_density_reproduces_orca_uno(self):
         wave = read_structure_file(EXAMPLES / "OH.molden.input").orbitals
         engine = OrbitalAnalysis(wave)
@@ -131,10 +160,9 @@ class CompositionTests(unittest.TestCase):
         engine = OrbitalAnalysis(wave)
         mo = wave.orbitals[2]
         c = np.asarray(mo.coefficients)
+        populations = sum(o.occupation*np.square(o.coefficients) for o in wave.orbitals)
         for key in ("stout", "bickelhaupt", "scpa"):
-            squares = c**2
-            if key == "bickelhaupt":
-                squares = sum(o.occupation*np.square(o.coefficients) for o in wave.orbitals)
+            squares = populations if key == "bickelhaupt" else c**2
             shares = c**2
             if key != "scpa":
                 s = engine.overlap()
@@ -147,6 +175,10 @@ class CompositionTests(unittest.TestCase):
             expected = np.zeros((2,3))
             np.add.at(expected, (engine.atoms, engine.angular), shares)
             np.testing.assert_allclose(engine.composition(mo, key).percentages, 100*expected/expected.sum(), atol=1e-8)
+        self.assertNotIn("density", vars(engine))
+        before = engine.composition(mo, "bickelhaupt").percentages
+        np.testing.assert_allclose(engine.density.diagonal(), populations, atol=1e-12)
+        np.testing.assert_allclose(engine.composition(mo, "bickelhaupt").percentages, before, atol=1e-12)
 
     def test_cube_atom_shares_follow_the_same_orbital_and_cancellation(self):
         cube = read_structure_file(EXAMPLES / "water-homo.cube").cube_grid

@@ -2,6 +2,7 @@
 
 import math
 from collections import Counter
+from itertools import product
 from pathlib import Path
 import struct
 from tempfile import TemporaryDirectory
@@ -15,6 +16,7 @@ from orcaview.core.units import BOHR_IN_ANGSTROM
 from orcaview.io.molden_orbitals import read_molden_orbitals
 from orcaview.io.quantum_structure import read_quantum_structure
 from orcaview.orca.gbw import file_state
+from orcaview.results import orbital_surface
 from orcaview.results.orbital_basis import orbital_expansion, orbital_value
 from orcaview.results.orbital_surface import make_orbital_surface, sample_grid
 
@@ -28,6 +30,32 @@ def wave_from_bytes(raw):
 
 
 class MoldenNumericsTests(unittest.TestCase):
+    def test_mixed_gaussian_grid_matches_point_evaluation_with_single_pass_input(self):
+        center = (.25, -.5, 1.)
+        expansion = (
+            (center, ((.75, -.3), (4., 2.)), (((0, 1, 2), -.4), ((2, 0, 1), .5))),
+            (center, ((1.25, .1),), (((0, 0, 0), 2.),)),
+            ((-1., 2., .5), ((.25, -.6),), (((3, 1, 0), .3),)),
+        )
+        axes = ((-2., -.25, .25, 1.5), (-1., 0., .5), (1.25,))
+        values = sample_grid(iter(expansion), axes)
+        expected = [orbital_value(expansion, *point) for point in product(*axes)]
+        self.assertEqual(len(values), len(expected))
+        for actual, reference in zip(values, expected):
+            self.assertAlmostEqual(actual, reference, places=13)
+        self.assertEqual(len(sample_grid(iter(expansion), (axes[0], (), axes[2]))), 0)
+
+    @unittest.skipIf(orbital_surface.np is None, "Nuclear refinement requires NumPy")
+    def test_nuclear_patch_keeps_lobes_between_the_nucleus_and_the_walls(self):
+        expansion = (((0., 0., 0.), ((2., 1.),), (((1, 2, 0), -1.),)),)
+        sampler = orbital_surface._GaussianSampler(expansion, None)
+        axes = ((-2., -.5, 0., .5, 2.), (-2., -.7, 0., .7, 2.), (-.5, 0., .5))
+        patch = sampler.sample(axes, None, .05)
+        self.assertIsNotNone(patch)
+        expected = [orbital_value(expansion, *p) for p in product(*axes)]
+        orbital_surface.np.testing.assert_allclose(patch.ravel(), expected, atol=1e-14, rtol=0)
+        self.assertIsNone(sampler.sample(((2., 3.), *axes[1:]), None, .05))
+
     def test_signed_orca_cube_values_for_closed_open_shell_and_high_angular_momentum(self):
         # Six points from each ORCA 6.1.1 %plots Gaussian cube in the example inputs.
         indices = ((13, 15, 15), (16, 14, 17), (17, 17, 11), (19, 18, 17), (15, 19, 16), (15, 15, 16))
