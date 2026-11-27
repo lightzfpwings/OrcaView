@@ -1,6 +1,6 @@
 # OrcaView 当前公开契约
 
-OrcaView `0.1.0a76` 可读写 schema 1–14。写入时按计算设置、文档历史与日志报告选择能完整表示它们的最早项目格式。各版本新增字段见下文。[原始架构基线](history/design/DESIGN.md)
+OrcaView `0.1.0a78` 可读写 schema 1–14。写入时按计算设置、文档历史与日志报告选择能完整表示它们的最早项目格式。各版本新增字段见下文。[原始架构基线](history/design/DESIGN.md)
 
 ## 核心对象
 

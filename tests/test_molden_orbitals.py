@@ -1,6 +1,7 @@
 """Analytic Gaussians, ORCA cube samples and non-destructive GBW conversion."""
 
 import math
+from collections import Counter
 from pathlib import Path
 import struct
 from tempfile import TemporaryDirectory
@@ -111,6 +112,53 @@ Occup= 2
         self.assertEqual(wave_from_bytes(with_ecp).molecule.charge, 0)
         hydroxyl = read_structure_file(EXAMPLES / "OH.molden.input").record.molecule
         self.assertEqual((hydroxyl.charge, hydroxyl.multiplicity), (0, 2))
+
+    def test_compact_lobe_next_to_a_diffuse_fragment_is_resampled_and_closed(self):
+        try:
+            import numpy
+        except ImportError:
+            self.skipTest("Desktop refinement requires NumPy")
+        wave = wave_from_bytes(b"""[Molden Format]
+[Atoms] AU
+He 1 2 .131 .072 .057
+He 2 2 26 1 2
+He 3 2 1.55 .072 .057
+[GTO]
+1 0
+s 1 1.0
+45 1.0
+2 0
+s 1 1.0
+.8 1.0
+3 0
+s 1 1.0
+45 1.0
+[MO]
+Ene= -1
+Spin= Alpha
+Occup= 2
+1 -1
+2 1
+3 -1
+""")
+        peak = (90/math.pi)**.75
+        radius = BOHR_IN_ANGSTROM*math.sqrt(math.log(peak/.05)/45)
+        center = tuple(x*BOHR_IN_ANGSTROM for x in (.131, .072, .057))
+        counts = []
+        for quality in ("standard", "smooth", "fine"):
+            mesh = make_orbital_surface(wave, 0, .05, quality=quality)
+            self.assertFalse(mesh.clipped)
+            indices = {i for face in mesh.faces if face[-1] < 0 for i in face[:-1]
+                       if math.dist(mesh.vertices[i], center) < .32}
+            self.assertGreater(len(indices), 100)
+            counts.append(len(indices))
+            self.assertLess(max(abs(math.dist(mesh.vertices[i], center)-radius) for i in indices), .008)
+            edges = Counter()
+            for face in mesh.faces:
+                ring = face[:-1]
+                edges.update(tuple(sorted((a, b))) for a, b in zip(ring, ring[1:]+ring[:1]))
+            self.assertEqual(set(edges.values()), {2})
+        self.assertTrue(counts[0] < counts[1] < counts[2])
 
 
 class GbwSidecarTests(unittest.TestCase):

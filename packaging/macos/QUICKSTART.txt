@@ -11,7 +11,7 @@ The app starts in English. To install an optional interface language, extract it
 
 Orbitals
 
-Open Examples/Orbitals/OH.uno.molden.input to see natural occupations. Select orbital 2, open Orbital decomposition and choose Natural atomic orbitals (NAO). Group by atom and angular momentum to see the oxygen p contribution. OH.unso.molden.input contains signed spin occupations. Opening an original ORCA .uno, .unso or .qro file offers to convert it next to the source.
+Open Examples/Orbitals/OH.uno.molden.input to see natural occupations. Select orbital 2, open Orbital decomposition below the list and choose Natural atomic orbitals (NAO). Group by atom and angular momentum to see the oxygen p contribution in the table on the right. OH.unso.molden.input contains signed spin occupations. Opening an original ORCA .uno, .unso or .qro file offers to convert it next to the source.
 
 Workspaces and molecule design
 

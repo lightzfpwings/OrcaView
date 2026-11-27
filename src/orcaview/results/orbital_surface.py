@@ -240,10 +240,10 @@ class _SurfaceMesh:
                 self.clipped = True
         return edges[key]
 
-    def add_cell(self, x, y, z, values, level):
+    def add_cell(self, x, y, z, values, level, signs=(1, -1)):
         low, high = min(values), max(values)
         base = x*self.strides[0] + y*self.strides[1] + z
-        for sign in (1, -1):
+        for sign in signs:
             iso = sign*level
             if not low < iso <= high:
                 continue
@@ -339,17 +339,140 @@ def _check_settings(level, quality):
         raise ValueError("Unknown surface quality.")
 
 
+def _cartesian_lattice(axes):
+    origin = tuple(axis[0]*BOHR_IN_ANGSTROM for axis in axes)
+    steps = tuple(tuple((axis[1]-axis[0])*BOHR_IN_ANGSTROM if j == k else 0. for j in range(3))
+                  for k, axis in enumerate(axes))
+    return VolumeGrid(tuple(map(len, axes)), origin, steps)
+
+
+def _enclosed_phases(field, level):
+    """A phase below threshold on all six walls can be remeshed without a seam."""
+    walls = (field[0], field[-1], field[:, 0], field[:, -1], field[:, :, 0], field[:, :, -1])
+    phases = set()
+    if all(w.max() < level for w in walls):
+        phases.add(1)
+    if all(w.min() > -level for w in walls):
+        phases.add(-1)
+    return phases
+
+
+def _sample_patch(expansion, axes, level, cancel, np):
+    """Contract short, dense Gaussian axes in batches; bound empty patches before multiplying."""
+    products = []
+    bound = 0.
+    for center, primitives, terms in expansion:
+        _check_cancel(cancel)
+        distance2 = sum(max(axis[0]-c, c-axis[-1], 0.)**2 for axis, c in zip(axes, center))
+        active = [(a, w) for a, w in primitives if a*distance2 <= 50]
+        if not active:
+            continue
+        relative = [axis-c for axis, c in zip(axes, center)]
+        powers = [{p[k] for p, _ in terms} for k in range(3)]
+        for exponent, weight in active:
+            tables = []
+            for coords, degrees in zip(relative, powers):
+                arg = exponent*coords**2
+                gaussian = np.where(arg <= 50, np.exp(-arg), 0.)
+                tables.append({p: gaussian*coords**p for p in degrees})
+            for (i, j, k), coefficient in terms:
+                x, y, z = weight*coefficient*tables[0][i], tables[1][j], tables[2][k]
+                if bound < level:
+                    bound += np.abs(x).max()*np.abs(y).max()*np.abs(z).max()
+                products.append((x, y, z))
+    if bound < level:
+        return None
+    nx, ny, nz = map(len, axes)
+    field = np.zeros((nx*ny, nz))
+    for start in range(0, len(products), 64):
+        _check_cancel(cancel)
+        x, y, z = (np.asarray(rows) for rows in zip(*products[start:start+64]))
+        xy = (x[:, :, None]*y[:, None, :]).reshape(len(x), nx*ny)
+        field += xy.T @ z
+    return field.reshape(nx, ny, nz)
+
+
+def _refine_nuclear_lobes(expansion, axes, values, lattice, level, quality, cancel):
+    import numpy as np
+
+    step = axes[0][1]-axes[0][0]
+    target = SURFACE_QUALITIES[quality].spacing_bohr * .60
+    factor = math.ceil(step/target)
+    field = values.reshape(lattice.shape)
+    # Limit the local spacing by physical size even for widely separated fragments.
+    # The local boxes follow coarse grid planes so both meshes agree about ownership.
+    masks = {sign: np.zeros(tuple(n-1 for n in lattice.shape), dtype=bool) for sign in (1, -1)}
+    vertices, normals, faces = [], [], []
+    for center in dict.fromkeys(c for c, _, _ in expansion):
+        _check_cancel(cancel)
+        # A neighboring lobe may intersect a large box, even when a smaller box
+        # encloses this nucleus's surface. Choose a separate closed box for each phase.
+        patches = {}
+        width = 1.15
+        while width > 0:
+            bounds = tuple((max(0, bisect_right(axis, c-width)-1), min(len(axis)-1, bisect_left(axis, c+width)))
+                           for axis, c in zip(axes, center))
+            width -= step/2
+            if bounds in patches or any(b <= a or (b-a)*factor > 72 for a, b in bounds):
+                continue
+            cells = tuple(slice(a, b) for a, b in bounds)
+            nodes = tuple(slice(a, b+1) for a, b in bounds)
+            phases = _enclosed_phases(field[nodes], level)
+            patches[bounds] = {s for s in phases if not masks[s][cells].all()}
+        candidates = [bounds for bounds, phases in patches.items() if phases]
+        if not candidates:
+            continue
+        outer = candidates[0]
+        local_axes = [np.linspace(axis[a], axis[b], (b-a)*factor+1) for axis, (a, b) in zip(axes, outer)]
+        fine = _sample_patch(expansion, local_axes, level, cancel, np)
+        if fine is None:
+            continue
+        local = _cartesian_lattice(local_axes)
+        mesh = _SurfaceMesh(local, lambda x, y, z: fine[x, y, z])
+        remaining = {1, -1}
+        for bounds in candidates:
+            phases = patches[bounds] & remaining
+            if not phases:
+                continue
+            start = tuple((a-lo)*factor for (a, b), (lo, _) in zip(bounds, outer))
+            nodes = tuple(slice(k, k+(b-a)*factor+1) for k, (a, b) in zip(start, bounds))
+            patch = fine[nodes]
+            phases &= _enclosed_phases(patch, level)
+            if not phases:
+                continue
+            for x, y, z, corners in _crossing_cells(patch, patch.shape, level, cancel):
+                cell = (bounds[0][0]+x//factor, bounds[1][0]+y//factor, bounds[2][0]+z//factor)
+                signs = [s for s in phases if not masks[s][cell]]
+                mesh.add_cell(start[0]+x, start[1]+y, start[2]+z, corners, level, signs)
+            for s in phases:
+                masks[s][tuple(slice(a, b) for a, b in bounds)] = True
+            remaining -= phases
+            if not remaining:
+                break
+        offset = len(vertices)
+        vertices.extend(mesh.vertices)
+        normals.extend(mesh.normals)
+        faces.extend(tuple(i+offset for i in face[:-1]) + (face[-1],) for face in mesh.faces)
+    _, ny, nz = lattice.shape
+    mesh = _SurfaceMesh(lattice, lambda x, y, z: values[(x*ny+y)*nz+z])
+    mesh.vertices, mesh.normals, mesh.faces = vertices, normals, faces
+    for x, y, z, corners in _crossing_cells(values, lattice.shape, level, cancel):
+        signs = [s for s in (1, -1) if not masks[s][x, y, z]]
+        mesh.add_cell(x, y, z, corners, level, signs)
+    return mesh.finish()
+
+
 def make_orbital_surface(wave, index, level=.05, cancel=None, *, quality="standard"):
     _check_settings(level, quality)
     expansion = orbital_expansion(wave.shells, wave.orbitals[index].coefficients)
     axes = _orbital_axes(expansion, level, quality)
     if not axes:
         return OrbitalSurface((), (), False)
-    origin = tuple(axis[0]*BOHR_IN_ANGSTROM for axis in axes)
-    steps = tuple(tuple((axis[1]-axis[0])*BOHR_IN_ANGSTROM if j == k else 0. for j in range(3))
-                  for k, axis in enumerate(axes))
-    lattice = VolumeGrid(tuple(map(len, axes)), origin, steps)
-    return _surface(sample_grid(expansion, axes, cancel), lattice, level, cancel)
+    lattice = _cartesian_lattice(axes)
+    values = sample_grid(expansion, axes, cancel)
+    if hasattr(values, "reshape") and axes[0][1]-axes[0][0] > 1.25*SURFACE_QUALITIES[quality].spacing_bohr:
+        return _refine_nuclear_lobes(expansion, axes, values, lattice, level, quality, cancel)
+    return _surface(values, lattice, level, cancel)
 
 
 def _slope(a, b, estimate=None):

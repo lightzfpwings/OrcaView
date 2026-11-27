@@ -148,7 +148,43 @@ class OrbitalWorkspaceTests(unittest.TestCase):
         self.assertFalse(self.target.exists())
         self.assertFalse(list(self.root.glob(".orcaview-*")))
 
-    def test_natural_occupations_and_sidebar_follow_the_selected_orbital(self):
+    def test_decomposition_controls_below_list_and_results_right_of_surface(self):
+        self.open(self.example.parent / "OH.uno.molden.input")
+        self.finish_open()
+        panel = self.w.orbital_panel
+        panel.finish_for_capture()
+        analysis = panel.decomposition
+
+        def bounds(widget):
+            return QRect(widget.mapTo(panel, QPoint()), widget.size())
+
+        for width, height in ((1120, 780), (1440, 980)):
+            with self.subTest(width=width):
+                self.w.resize(width, height)
+                self.app.processEvents()
+                self.assertFalse(analysis.table.isVisible())
+                analysis.button.click()
+                analysis.group.setCurrentIndex(analysis.group.findData("both"))
+                analysis.finish(wait=True)
+                self.app.processEvents()
+                orbitals, surface, result = map(bounds, (panel.table, panel.viewport, analysis.table))
+                for control in (analysis.button, analysis.method, analysis.group):
+                    self.assertTrue(control.isVisible())
+                    self.assertGreater(bounds(control).top(), orbitals.bottom())
+                    self.assertLess(bounds(control).right(), surface.left())
+                for widget in (analysis.table, analysis.status):
+                    self.assertTrue(widget.isVisible())
+                    self.assertGreater(bounds(widget).left(), surface.right())
+                    self.assertTrue(panel.rect().contains(bounds(widget)))
+                self.assertEqual(analysis.table.horizontalScrollBar().maximum(), 0)
+                analysis.button.click()
+                self.app.processEvents()
+                self.assertFalse(analysis.method.isVisible())
+                self.assertFalse(analysis.table.isVisible())
+                self.assertFalse(analysis.status.isVisible())
+                self.assertGreaterEqual(bounds(panel.viewport).right(), result.right())
+
+    def test_natural_occupations_and_contributions_follow_the_selected_orbital(self):
         self.open(self.example.parent / "OH.uno.molden.input")
         self.finish_open()
         panel = self.w.orbital_panel
@@ -156,36 +192,43 @@ class OrbitalWorkspaceTests(unittest.TestCase):
         self.assertEqual(panel.wave.kind, "uno")
         self.assertEqual(panel.table.horizontalHeaderItem(1).text(), "Natural occupation")
         self.assertEqual(panel.table.currentRow(), 4)
-        sidebar = panel.decomposition
-        sidebar.button.click()
-        sidebar.method.setCurrentIndex(sidebar.method.findData("nao"))
-        sidebar.group.setCurrentIndex(sidebar.group.findData("both"))
+        analysis = panel.decomposition
+        analysis.button.click()
+        analysis.method.setCurrentIndex(analysis.method.findData("nao"))
+        analysis.group.setCurrentIndex(analysis.group.findData("both"))
         panel.table.setCurrentCell(2, 0)
-        sidebar.finish(wait=True)
-        self.assertEqual(sidebar.table.columnCount(), 3)
-        self.assertEqual(sidebar.table.rowCount(), 5)
-        self.assertEqual(sidebar.table.item(1, 0).text(), "0 O")
-        self.assertEqual(sidebar.table.item(1, 1).text(), "p")
-        self.assertEqual(sidebar.table.item(1, 2).text(), "69.570")
-        self.assertIn("Orbital 2", sidebar.status.text())
-        sidebar.method.setCurrentIndex(sidebar.method.findData("becke"))
-        sidebar.finish(wait=True)
-        self.assertFalse(sidebar.group.isEnabled())
-        self.assertEqual(sidebar.table.rowCount(), 2)
-        sidebar.method.setCurrentIndex(sidebar.method.findData("mulliken"))
-        self.assertEqual(sidebar.group.currentData(), "both")
+        analysis.finish(wait=True)
+        self.assertEqual(analysis.table.columnCount(), 3)
+        self.assertEqual(analysis.table.rowCount(), 5)
+        self.assertEqual(analysis.table.item(1, 0).text(), "0 O")
+        self.assertEqual(analysis.table.item(1, 1).text(), "p")
+        self.assertEqual(analysis.table.item(1, 2).text(), "69.570")
+        self.assertIn("Orbital 2", analysis.status.text())
+        self.w.workspace_tabs.setCurrentWidget(self.w.input_page)
+        self.assertFalse(analysis.table.isVisible())
+        self.w.workspace_tabs.setCurrentWidget(panel)
+        self.assertTrue(analysis.table.isVisible())
+        self.assertEqual(analysis.table.item(1, 2).text(), "69.570")
+        analysis.method.setCurrentIndex(analysis.method.findData("becke"))
+        analysis.finish(wait=True)
+        self.assertFalse(analysis.group.isEnabled())
+        self.assertEqual(analysis.table.rowCount(), 2)
+        analysis.method.setCurrentIndex(analysis.method.findData("mulliken"))
+        self.assertEqual(analysis.group.currentData(), "both")
         self.open(self.example.parent / "OH.unso.molden.input")
         self.finish_open()
         panel.finish_for_capture()
-        self.assertFalse(sidebar.button.isChecked())
+        self.assertFalse(analysis.button.isChecked())
+        self.assertFalse(analysis.table.isVisible())
+        self.assertEqual(analysis.table.rowCount(), 0)
         self.assertEqual(panel.table.horizontalHeaderItem(1).text(), "Spin occupation")
         occupied = panel.table.rowCount()-1
         panel.table.setCurrentCell(occupied, 0)
         self.assertLess(float(panel.table.item(occupied, 1).text()), 0)
-        self.assertFalse(sidebar.method.model().item(sidebar.method.findData("bickelhaupt")).isEnabled())
-        sidebar.button.click()
-        sidebar.finish(wait=True)
-        self.assertIn(f"Orbital {occupied}", sidebar.status.text())
+        self.assertFalse(analysis.method.model().item(analysis.method.findData("bickelhaupt")).isEnabled())
+        analysis.button.click()
+        analysis.finish(wait=True)
+        self.assertIn(f"Orbital {occupied}", analysis.status.text())
         project = self.root / "spin-density.oview.json"
         save_project(self.w.session, project)
         self.w._open_project_path(project)
@@ -209,15 +252,18 @@ class OrbitalWorkspaceTests(unittest.TestCase):
         self.open(self.example.parent / "water-homo.cube")
         self.finish_open()
         panel.finish_for_capture()
-        sidebar = panel.decomposition
-        sidebar.button.click()
-        self.assertTrue(sidebar.amplitude.isVisible())
-        self.assertIsNone(sidebar.future)
-        self.assertFalse(sidebar.method.model().item(sidebar.method.findData("lowdin")).isEnabled())
-        sidebar.amplitude.click()
-        sidebar.finish(wait=True)
-        self.assertEqual(sidebar.table.rowCount(), 3)
-        self.assertIn("Total within grid 100.00%", sidebar.status.text())
+        analysis = panel.decomposition
+        analysis.button.click()
+        self.assertTrue(analysis.amplitude.isVisible())
+        self.assertIsNone(analysis.future)
+        self.assertTrue(analysis.status.isVisible())
+        self.assertIn("Select orbital amplitude", analysis.status.text())
+        self.assertEqual(analysis.table.rowCount(), 0)
+        self.assertFalse(analysis.method.model().item(analysis.method.findData("lowdin")).isEnabled())
+        analysis.amplitude.click()
+        analysis.finish(wait=True)
+        self.assertEqual(analysis.table.rowCount(), 3)
+        self.assertIn("Total within grid 100.00%", analysis.status.text())
 
     def test_declining_discard_keeps_existing_molden_and_document(self):
         self.target.write_bytes(b"pre-existing Molden")
@@ -493,6 +539,42 @@ class OrbitalWorkspaceTests(unittest.TestCase):
                         color = image.pixelColor(x, y)
                         self.assertEqual(color.alpha(), 204, (x, y))
                         self.assertEqual(color.red() > color.blue(), (x < 80) == (direction == 1))
+
+    def test_atom_and_inclined_stick_occlude_only_the_far_side_of_an_orbital(self):
+        from PySide6.QtGui import QPainter
+        from orcaview.gui.orbital_gpu import create_renderer
+        from orcaview.gui.orbital_raster import OrbitalRaster
+        from orcaview.results.orbital_surface import OrbitalSurface
+
+        viewport = self.w.orbital_panel.viewport
+        axes = ((1., 0., 0.), (0., 1., 0.), (0., 0., 1.))
+        center = (0., 0., 0.)
+        mesh = OrbitalSurface(((-3, -1.5, .5), (3, -1.5, .5), (3, 1.5, .5), (-3, 1.5, .5)),
+                              ((0, 1, 2, 3, -1),), False, ((0., 0., 1.),)*4)
+        viewport.set_surface(mesh)
+        caps = ((44., 50., 2., 44., 50., 2., 18.), (66., 50., -14., 126., 50., 14., 5.))
+        # All triangle corners lie outside the occluders. The shallow end of the
+        # stick is behind the plane, while its other end rises through it.
+        expected = {(44, 50): False, (58, 50): False, (63, 50): True, (44, 30): True,
+                    (76, 50): True, (118, 50): False, (118, 58): True, (126, 50): False}
+        raster = OrbitalRaster(mesh, center)
+        gpu = create_renderer()
+        if gpu:
+            self.addCleanup(gpu.close)
+        for dpr in (1., 2.):
+            camera = (axes, 20., 80., 50., 160, 100, dpr)
+            vector = QImage(int(160*dpr), int(100*dpr), QImage.Format.Format_ARGB32_Premultiplied)
+            vector.fill(Qt.GlobalColor.transparent)
+            with QPainter(vector) as painter:
+                painter.scale(dpr, dpr)
+                viewport._draw_surface(painter, 20., 80., 50., axes, caps)
+            images = [vector, raster.render(center, *camera, viewport._rgba_table, caps)]
+            if gpu:
+                images.append(gpu.render(mesh, center, 4., *camera, viewport._phase_rgba, caps))
+            for image in images:
+                for (x, y), visible in expected.items():
+                    self.assertEqual(image.pixelColor(int(x*dpr), int(y*dpr)).alpha(), 204 if visible else 0,
+                                     (x, y, dpr))
 
     def test_atomless_cube_can_switch_scalar_fields_and_export(self):
         path = self.root / "two fields.cube"

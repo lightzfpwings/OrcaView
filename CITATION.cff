@@ -4,8 +4,8 @@ type: software
 title: OrcaView
 authors:
   - name: "lightzfpwings and OrcaView contributors"
-version: 0.1.0a76
+version: 0.1.0a78
 date-released: "2026-11-27"
 repository-code: "https://github.com/lightzfpwings/OrcaView"
-url: "https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a76"
+url: "https://github.com/lightzfpwings/OrcaView/releases/tag/v0.1.0a78"
 license: MIT

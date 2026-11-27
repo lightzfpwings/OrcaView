@@ -14,9 +14,15 @@ Open an ORCA orbital file, then choose **Convert and open**. OrcaView reads real
 
 Select an orbital to draw both phases of its wavefunction. The orbital and atom indices in this panel start at zero, following ORCA. The sign of an isosurface represents orbital phase. The sign of an UNSO occupation is a separate property of the spin density. An UNSO file alone supplies no total electronic charge. Check the charge and multiplicity before reusing that geometry for an ORCA input. Within a subspace of equal occupation, several choices of natural orbitals give the same density.
 
+## Viewing an isosurface
+
+**Standard** is the default surface quality. For Molden files, when the molecular grid is too coarse near a nucleus, OrcaView evaluates the Gaussian basis on finer local grids around enclosed lobes. Cube files use their supplied samples and monotone interpolation. Changing quality or phase colors changes the display. Occupations and decomposition percentages come from the selected orbital.
+
+The atom spheres and bonds obscure the parts of an isosurface behind them. Rotating the model or changing atom size can reveal a lobe. A discrete GPU is preferred when available. The CPU renderer and the vector PDF export use the same molecular depth geometry.
+
 ## Orbital decomposition
 
-Expand **Orbital decomposition** below the orbital list. Selecting another orbital updates the contributions and the surface together. Each percentage is the share of the selected orbital under the chosen method. The value is independent of the isovalue used to draw the surface.
+Expand **Orbital decomposition** at the bottom left, below the orbital list. Choose a method and grouping there. The **Orbital contributions** table opens to the right of the isosurface. Drag the divider to adjust its width or close **Orbital decomposition** to give the surface the full viewing area. Selecting another orbital updates both the table and the surface. Each percentage is the share of the selected orbital under the chosen method, independent of the isovalue used to draw the surface.
 
 | Methods | Definition and grouping |
 | --- | --- |

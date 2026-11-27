@@ -3,6 +3,7 @@
 from array import array
 
 from PySide6.QtGui import QImage
+from .orbital_depth import depth_buffer
 
 
 def phase_indices(mesh):
@@ -27,7 +28,7 @@ class OrbitalRaster:
         indices[1].extend(indices[-1])
         self.triangles = np.frombuffer(indices[1], dtype="uint32").reshape(-1, 3)
 
-    def render(self, center, axes, scale, ox, oy, width, height, dpr, palette):
+    def render(self, center, axes, scale, ox, oy, width, height, dpr, palette, capsules=()):
         import numpy as np
 
         w, h = max(1, round(width*dpr)), max(1, round(height*dpr))
@@ -36,7 +37,7 @@ class OrbitalRaster:
         x = (ox+xyz[:, 0]*scale)*dpr-.5
         y = (oy-xyz[:, 1]*scale)*dpr-.5
         light = self.normals @ (camera @ np.array([-.35, .46, .81], dtype="f"))
-        depth = np.full(w*h, -np.inf, dtype="f")
+        depth = depth_buffer(capsules, w, h, dpr, scale)
         image = np.zeros((w*h, 4), dtype="uint8")
         colors = np.asarray(palette, dtype="uint8")
         # Bound temporaries for overlapping surfaces and close-up views.

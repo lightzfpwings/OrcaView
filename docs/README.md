@@ -3,7 +3,7 @@
 | Task | Guide |
 | --- | --- |
 | Install or update the desktop app | [Downloads and supported platforms](../README.md#install) |
-| Open ORCA orbital files, view occupations and decompose an orbital | [Orbitals](ORBITALS.md) |
+| View orbital surfaces, occupations and contributions | [Orbital files](ORBITALS.md) · [Isosurfaces](ORBITALS.md#viewing-an-isosurface) · [Decomposition](ORBITALS.md#orbital-decomposition) |
 | Prepare inputs and run batches | [CLI commands](CLI.md) · [ORCA methods and basis sets](ORCA_METHODS.md) |
 | Edit molecular geometry | [Design operations](CLI_DESIGN.md) |
 | Inspect calculation results and export spectra or vibrations | [Results and exports](CLI_RESULTS.md) · [ORCA log coverage](ORCA_LOG_COVERAGE.md) |

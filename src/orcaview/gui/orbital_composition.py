@@ -1,4 +1,4 @@
-"""Show the selected orbital's atom and angular-momentum contributions in the sidebar."""
+"""Control orbital decomposition and display the selected orbital's contributions."""
 
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from threading import Event
@@ -21,8 +21,9 @@ except ModuleNotFoundError as exc:
 
 
 class OrbitalDecomposition(QWidget):
-    def __init__(self):
+    def __init__(self, results_pane):
         super().__init__()
+        self.results_pane = results_pane
         self.engine = self.mo = self.result = self.future = self._cancel = None
         self._ao_group = "atom"
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="orcaview-composition")
@@ -45,6 +46,7 @@ class OrbitalDecomposition(QWidget):
         self.amplitude.hide()
         inner.addWidget(self.amplitude)
         form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.method = QComboBox()
         self.method.setAccessibleName(tr("Method"))
         for key, label in METHODS.items():
@@ -57,22 +59,30 @@ class OrbitalDecomposition(QWidget):
             self.group.addItem(tr(label), key)
         form.addRow(tr("Group by"), self.group)
         inner.addLayout(form)
+        layout.addWidget(self.details)
+
+        results = QVBoxLayout(results_pane)
+        results.setContentsMargins(8, 0, 0, 0)
+        heading = QLabel(tr("Orbital contributions"))
+        heading.setObjectName("heading")
+        results.addWidget(heading)
+        self.status = QLabel()
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.status.setWordWrap(True)
+        results.addWidget(self.status)
         self.table = QTableWidget()
         self.table.setAccessibleName(tr("Orbital contributions"))
+        heading.setBuddy(self.table)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setAlternatingRowColors(True)
         self.table.setMinimumHeight(65)
-        inner.addWidget(self.table)
-        self.status = QLabel()
-        self.status.setTextFormat(Qt.TextFormat.PlainText)
-        self.status.setWordWrap(True)
-        inner.addWidget(self.status)
-        layout.addWidget(self.details)
+        results.addWidget(self.table, 1)
         self.details.hide()
-        self.button.toggled.connect(self._toggle)
+        self.results_pane.hide()
+        self.button.toggled.connect(self._start)
         self.amplitude.toggled.connect(self._start)
         self.method.currentIndexChanged.connect(self._update_method)
         self.group.currentIndexChanged.connect(self._group_changed)
@@ -85,6 +95,7 @@ class OrbitalDecomposition(QWidget):
             self.future.cancel()
         self.future = self._cancel = self.result = None
         self.table.setRowCount(0)
+        self.table.setColumnCount(0)
         self.status.clear()
 
     def shutdown(self):
@@ -119,10 +130,6 @@ class OrbitalDecomposition(QWidget):
                     self.method.setCurrentIndex(self.method.findData("becke") if is_cube else 0)
         self._update_method()
 
-    def _toggle(self, visible):
-        self.details.setVisible(visible)
-        self._start()
-
     def _update_method(self):
         real_space = self.method.currentData() in SPACE_METHODS
         with QSignalBlocker(self.group):
@@ -138,14 +145,18 @@ class OrbitalDecomposition(QWidget):
 
     def _start(self):
         self._stop()
-        if self.button.isChecked() and self.mo is not None and self.engine is not None:
-            if isinstance(self.mo, CubeField) and not self.amplitude.isChecked():
-                self.status.setText(tr("Select orbital amplitude for a molecular-orbital Cube field."))
-                return
-            self.status.setText(tr("Calculating orbital contributions…"))
-            self._cancel = Event()
-            self.future = self._pool.submit(self.engine.composition, self.mo, self.method.currentData(), self._cancel)
-            self._timer.start()
+        active = self.button.isChecked() and self.mo is not None and self.engine is not None
+        self.details.setVisible(active)
+        self.results_pane.setVisible(active)
+        if not active:
+            return
+        if isinstance(self.mo, CubeField) and not self.amplitude.isChecked():
+            self.status.setText(tr("Select orbital amplitude for a molecular-orbital Cube field."))
+            return
+        self.status.setText(tr("Calculating orbital contributions…"))
+        self._cancel = Event()
+        self.future = self._pool.submit(self.engine.composition, self.mo, self.method.currentData(), self._cancel)
+        self._timer.start()
 
     def finish(self, *, wait=False):
         if self.future is None or (not wait and not self.future.done()):

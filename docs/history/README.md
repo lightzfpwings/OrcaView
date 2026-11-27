@@ -4,6 +4,7 @@ The November 2026 prototype documents record the requirements, experiments and a
 
 | Historical record | Contents |
 | --- | --- |
+| [Orbital validation in 0.1.0a76](validation-a76.md) | ORCA conversion, PySCF decomposition benchmarks and desktop package checks. |
 | [Validation through 0.1.0a75](validation-a24-a75.md) | Release and preview checks from a24 through a75, with their original version and platform scope. |
 | [Architecture](design/DESIGN.md) · [Roadmap](design/ROADMAP.md) | Geometry and document contracts, the proposed workspaces and staged implementation plan. |
 | [GaussView comparison](design/GAUSSVIEW6_ALIGNMENT.md) | Interaction requirements and their original priorities. |

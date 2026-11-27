@@ -7,6 +7,7 @@ import os
 from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPolygonF
 
+from orcaview.gui.orbital_depth import VectorOcclusion, molecular_capsules
 from orcaview.gui.viewport import MoleculeViewport
 from orcaview.i18n import tr
 
@@ -14,7 +15,9 @@ from orcaview.i18n import tr
 PHASE_COLORS = {1: "#447cc1", -1: "#dc754b"}
 
 
-def _paint_triangle(painter, screen, light, inks, a, b, c):
+def _paint_triangle(painter, screen, light, inks, a, b, c, path=None):
+    if path is not None and path.isEmpty():
+        return
     p, q, r = screen[a], screen[b], screen[c]
     low, high = min(light[a], light[b], light[c]), max(light[a], light[b], light[c])
     if high-low <= 3:
@@ -35,7 +38,10 @@ def _paint_triangle(painter, screen, light, inks, a, b, c):
         gradient.setColorAt(0., inks[low])
         gradient.setColorAt(1., inks[high])
         painter.setBrush(gradient)
-    painter.drawPolygon(QPolygonF((p, q, r)))
+    if path is None:
+        painter.drawPolygon(QPolygonF((p, q, r)))
+    else:
+        painter.drawPath(path)
 
 
 class OrbitalViewport(MoleculeViewport):
@@ -108,23 +114,25 @@ class OrbitalViewport(MoleculeViewport):
             return
         axes = tuple(self.transform(*a) for a in ((1, 0, 0), (0, 1, 0), (0, 0, 1)))
         ox, oy = self.width()/2 + self._pan.x(), self.height()/2 + self._pan.y()
+        bonds = () if self.appearance.model == "space-filling" else self.visual_bonds
+        capsules = molecular_capsules(projected, scale, bonds, self._stick_half_width)
         if painter.device() is not self:
             # The image-export QPicture retains scalable geometry and the current colors.
-            self._draw_surface(painter, scale, ox, oy, axes)
+            self._draw_surface(painter, scale, ox, oy, axes, capsules)
             return
         # Supersample the complete transparent layer. Antialiasing individual
         # translucent polygons would create seams on every shared interior edge.
         dpr = self.devicePixelRatioF()
-        key = (axes, scale, ox, oy, self.width(), self.height(), dpr)
+        key = (axes, scale, ox, oy, self.width(), self.height(), dpr, self._center, capsules)
         if key != self._layer_key:
-            self._layer = self._surface_layer(axes, scale, ox, oy, dpr)
+            self._layer = self._surface_layer(axes, scale, ox, oy, dpr, capsules)
             self._layer_key = key
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.drawImage(self.rect(), self._layer)
         painter.restore()
 
-    def _surface_layer(self, axes, scale, ox, oy, dpr):
+    def _surface_layer(self, axes, scale, ox, oy, dpr, capsules=()):
         if self._probe_gpu:
             self._probe_gpu = False
             if os.environ.get("ORCAVIEW_ORBITAL_RENDERER", "").lower() != "cpu":
@@ -135,7 +143,7 @@ class OrbitalViewport(MoleculeViewport):
         if self._gpu is not None:
             try:
                 return self._gpu.render(self.surface, self._center, self._surface_radius, axes, scale, ox, oy,
-                                        self.width(), self.height(), dpr, self._phase_rgba)
+                                        self.width(), self.height(), dpr, self._phase_rgba, capsules)
             except (self._gpu.wgpu.GPUError, RuntimeError, OSError, MemoryError, ValueError) as exc:
                 logging.getLogger(__name__).warning("Using the CPU orbital renderer: %s", exc)
                 self.release_renderer()
@@ -146,7 +154,7 @@ class OrbitalViewport(MoleculeViewport):
             if self._raster is None:
                 self._raster = OrbitalRaster(self.surface, self._center)
             return self._raster.render(self._center, axes, scale, ox, oy, self.width(), self.height(),
-                                       max(1.25, dpr), self._rgba_table)
+                                       max(1.25, dpr), self._rgba_table, capsules)
         except ImportError:
             pass  # A minimal Qt install can still paint and export the complete mesh.
         factor = max(2., dpr)
@@ -155,10 +163,11 @@ class OrbitalViewport(MoleculeViewport):
         layer.fill(Qt.GlobalColor.transparent)
         with QPainter(layer) as painter:
             painter.scale(factor, factor)
-            self._draw_surface(painter, scale, ox, oy, axes)
+            self._draw_surface(painter, scale, ox, oy, axes, capsules)
         return layer
 
-    def _draw_surface(self, painter, scale, ox, oy, axes):
+    def _draw_surface(self, painter, scale, ox, oy, axes, capsules=()):
+        occlusion = VectorOcclusion(capsules)
         cx, cy, cz = self._center
         (xx, xy, xz), (yx, yy, yz), (zx, zy, zz) = axes
         lx, ly, lz = (-.35*u + .46*v + .81*w for u, v, w in axes)
@@ -168,6 +177,7 @@ class OrbitalViewport(MoleculeViewport):
             x, y, z = px-cx, py-cy, pz-cz
             screen.append(QPointF(ox+scale*(xx*x+yx*y+zx*z), oy-scale*(xy*x+yy*y+zy*z)))
             depths.append(xz*x+yz*y+zz*z)
+        points = [(p.x(), p.y(), z*scale) for p, z in zip(screen, depths)]
         visible = []
         for face in self.surface.faces:
             corners = face[:-1]
@@ -180,7 +190,10 @@ class OrbitalViewport(MoleculeViewport):
         painter.setPen(Qt.PenStyle.NoPen)
         for _, sign, corners in sorted(visible):
             a, b, c = corners[:3]
-            _paint_triangle(painter, screen, light, self._inks[sign], a, b, c)
+            path = occlusion.visible_path((points[a], points[b], points[c]))
+            _paint_triangle(painter, screen, light, self._inks[sign], a, b, c, path)
             if len(corners) == 4:
-                _paint_triangle(painter, screen, light, self._inks[sign], a, c, corners[3])
+                d = corners[3]
+                path = occlusion.visible_path((points[a], points[c], points[d]))
+                _paint_triangle(painter, screen, light, self._inks[sign], a, c, d, path)
         painter.restore()

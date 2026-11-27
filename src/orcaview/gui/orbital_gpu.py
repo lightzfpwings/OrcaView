@@ -13,6 +13,7 @@ _LOG = logging.getLogger(__name__)
 _SHADER = """
 struct Scene {
     x: vec4f, y: vec4f, z: vec4f, light: vec4f, positive: vec4f, negative: vec4f,
+    screen: vec4f,
 };
 @group(0) @binding(0) var<uniform> scene: Scene;
 struct Vertex {
@@ -30,6 +31,38 @@ struct Vertex {
     let t = clamp(dot(normalize(v.normal), scene.light.xyz), 0.0, 1.0);
     let rgb = min(vec3f(1.0), v.color*(0.52 + 0.48*t) + vec3f(42.0/255.0*t*t));
     return vec4f(rgb*0.8, 0.8);
+}
+
+struct Capsule {
+    @builtin(position) position: vec4f,
+    @location(0) @interpolate(linear, sample) xy: vec2f,
+    @location(1) @interpolate(flat) a: vec4f,
+    @location(2) @interpolate(flat) b: vec3f,
+};
+@vertex fn molecule_vs(@location(0) a: vec4f, @location(1) b: vec3f,
+                       @builtin(vertex_index) corner: u32) -> Capsule {
+    let lo = min(a.xy, b.xy) - a.w;
+    let hi = max(a.xy, b.xy) + a.w;
+    let xy = select(lo, hi, vec2<bool>((corner & 1u) != 0u, (corner & 2u) != 0u));
+    return Capsule(vec4f(xy*scene.screen.xy + vec2f(-1, 1), 0.5, 1), xy, a, b);
+}
+@fragment fn molecule_fs(v: Capsule) -> @builtin(frag_depth) f32 {
+    let delta = v.b - v.a.xyz;
+    let offset = v.xy - v.a.xy;
+    let len = length(delta.xy);
+    var disk = v.a.w*v.a.w-dot(offset, offset);
+    var z = max(v.a.z, v.b.z);
+    if len > 0.000001 {
+        let axis = delta.xy/len;
+        let along = dot(offset, axis);
+        let across = dot(offset, vec2f(axis.y, -axis.x));
+        let span = v.a.w*v.a.w-across*across;
+        let t = clamp(along+delta.z/length(delta)*sqrt(max(0.0, span)), 0.0, len);
+        disk = span-(along-t)*(along-t);
+        z = v.a.z+delta.z*t/len;
+    }
+    if disk < 0.0 { discard; }
+    return clamp(0.5+(z+sqrt(disk))*scene.screen.z, 0.0, 1.0);
 }
 """
 
@@ -72,9 +105,24 @@ class OrbitalGpu:
             depth_stencil={"format": "depth24plus", "depth_write_enabled": True, "depth_compare": "less-equal"},
             multisample={"count": 4},
             fragment={"module": shader, "entry_point": "fs", "targets": [{"format": "rgba8unorm"}]})
-        self.uniform = device.create_buffer(size=96, usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
+        self.molecule_pipeline = device.create_render_pipeline(
+            layout="auto",
+            vertex={"module": shader, "entry_point": "molecule_vs", "buffers": [{
+                "array_stride": 28, "step_mode": "instance",
+                "attributes": [{"format": "float32x4", "offset": 0, "shader_location": 0},
+                               {"format": "float32x3", "offset": 16, "shader_location": 1}]}]},
+            primitive={"topology": "triangle-strip"},
+            depth_stencil={"format": "depth24plus", "depth_write_enabled": True, "depth_compare": "less-equal"},
+            multisample={"count": 4},
+            fragment={"module": shader, "entry_point": "molecule_fs", "targets": [
+                {"format": "rgba8unorm", "write_mask": 0}]})
+        self.uniform = device.create_buffer(size=112, usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
+        uniform_binding = [{"binding": 0, "resource": {"buffer": self.uniform}}]
         self.bindings = device.create_bind_group(layout=self.pipeline.get_bind_group_layout(0),
-            entries=[{"binding": 0, "resource": {"buffer": self.uniform, "offset": 0, "size": 96}}])
+                                                 entries=uniform_binding)
+        self.molecule_bindings = device.create_bind_group(layout=self.molecule_pipeline.get_bind_group_layout(0),
+                                                          entries=uniform_binding)
+        self.instances = None
         self.mesh = self.vertex = self.index = None
         self.targets = ()
         self.size = None
@@ -91,6 +139,9 @@ class OrbitalGpu:
             texture.destroy()
         self.targets = ()
         self.uniform.destroy()
+        if self.instances is not None:
+            self.instances.destroy()
+            self.instances = None
 
     def _upload(self, mesh, center):
         import numpy as np
@@ -119,7 +170,7 @@ class OrbitalGpu:
         self.resolved, self.msaa, self.depth = (t.create_view() for t in self.targets)
         self.size = size
 
-    def render(self, mesh, center, radius, axes, scale, ox, oy, width, height, dpr, colors):
+    def render(self, mesh, center, radius, axes, scale, ox, oy, width, height, dpr, colors, capsules=()):
         if mesh is not self.mesh:
             self._upload(mesh, center)
         size = (max(1, round(width*dpr)), max(1, round(height*dpr)), 1)
@@ -136,13 +187,29 @@ class OrbitalGpu:
         scene.append(0.)
         scene.extend(colors[1])
         scene.extend(colors[-1])
+        scene.extend((2/width, -2/height, -.48/(scale*max(radius, 1e-8)), 0.))
         queue = self.device.queue
-        queue.write_buffer(self.uniform, 0, struct.pack("<24f", *scene))
+        queue.write_buffer(self.uniform, 0, struct.pack("<28f", *scene))
+        if capsules:
+            import numpy as np
+
+            data = np.asarray([(ax, ay, az, r, bx, by, bz) for ax, ay, az, bx, by, bz, r in capsules], dtype='f')
+            if self.instances is None or self.instances.size < data.nbytes:
+                if self.instances is not None:
+                    self.instances.destroy()
+                self.instances = self.device.create_buffer(size=data.nbytes, usage=self.wgpu.BufferUsage.VERTEX |
+                                                          self.wgpu.BufferUsage.COPY_DST)
+            queue.write_buffer(self.instances, 0, data)
         encoder = self.device.create_command_encoder()
         draw = encoder.begin_render_pass(color_attachments=[{
             "view": self.msaa, "resolve_target": self.resolved, "clear_value": (0, 0, 0, 0),
             "load_op": "clear", "store_op": "discard"}], depth_stencil_attachment={
                 "view": self.depth, "depth_clear_value": 1., "depth_load_op": "clear", "depth_store_op": "discard"})
+        if capsules:
+            draw.set_pipeline(self.molecule_pipeline)
+            draw.set_bind_group(0, self.molecule_bindings)
+            draw.set_vertex_buffer(0, self.instances)
+            draw.draw(4, len(capsules))
         draw.set_pipeline(self.pipeline)
         draw.set_bind_group(0, self.bindings)
         draw.set_vertex_buffer(0, self.vertex)
