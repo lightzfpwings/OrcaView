@@ -2,13 +2,15 @@
 
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from dataclasses import replace
 import math
+import os
 from pathlib import Path
 import sys
 from threading import Event
 
-from PySide6.QtCore import QSignalBlocker, QSize, Qt, QTimer
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QCompleter, QDialog, QDockWidget, QFileDialog, QFrame,
@@ -138,6 +140,8 @@ def demo_benzene():
 
 
 class MainWindow(QMainWindow):
+    closing = Signal()
+
     def __init__(self, *, appearance_store=None):
         super().__init__()
         self.appearance_store = AppearanceStore() if appearance_store is None else appearance_store
@@ -1516,6 +1520,7 @@ class MainWindow(QMainWindow):
             self.orbital_panel.shutdown()
             self._cancel_read()
             self._reader.shutdown(wait=False, cancel_futures=True)
+            self.closing.emit()
             event.accept()
         else:
             event.ignore()
@@ -1546,5 +1551,10 @@ def launch(screenshot=None, *, configure=None):
         if not output.commit():
             raise OSError(output.errorString())
         return 0
-    window.show()
-    return app.exec()
+    taskbar = nullcontext()
+    if app.platformName() == "windows" and (launcher := os.environ.get("ORCAVIEW_PORTABLE_EXE")):
+        from .windows_taskbar import portable_taskbar
+        taskbar = portable_taskbar(window, launcher)
+    with taskbar:
+        window.show()
+        return app.exec()

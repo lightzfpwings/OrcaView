@@ -1,5 +1,11 @@
 # OrcaView release validation
 
+## 0.1.0a80
+
+The Windows launcher embeds ten sizes of the OrcaView icon, from 16 to 256 pixels. The Windows package check asks the Shell to extract each size and compares its pixels with the corresponding icon file. It also reads the display name from the launcher's string resource. [Package checks](../packaging/check_release_extensions.py)
+
+The native Windows window tests read the small and large icon handles and the taskbar properties for the permanent portable launcher. They also exercise closing the window and opening it when the Shell property store is unavailable. [Taskbar tests](../tests/test_windows_taskbar.py)
+
 ## 0.1.0a79
 
 On an Apple M4, the Fe–N₄–O Molden benchmark (ORCA orbital 185, isovalue 0.05) generated the standard surface in 165 ms and the best surface in 475 ms. Version a78 took 646 ms and 1,507 ms respectively. Building the 1,437-function AO overlap matrix took 82 ms, down from 4.91 s. These figures are medians of three runs. The maximum change in an overlap matrix element was 3.34 × 10⁻¹⁶ or less.

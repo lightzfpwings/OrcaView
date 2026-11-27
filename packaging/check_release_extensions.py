@@ -18,6 +18,51 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from orcaview.application.updates import _version_key
 
 
+def check_windows_icon(binary):
+    """Compare the shell's executable icon with the independent multi-size artwork."""
+    import ctypes
+    from ctypes import wintypes
+
+    class IconInfo(ctypes.Structure):
+        _fields_ = [("icon", wintypes.BOOL), ("hot_x", wintypes.DWORD), ("hot_y", wintypes.DWORD),
+                    ("mask", wintypes.HBITMAP), ("color", wintypes.HBITMAP)]
+
+    shell, user, gdi = ctypes.windll.shell32, ctypes.windll.user32, ctypes.windll.gdi32
+    user.GetDC.restype = wintypes.HDC
+    dc = wintypes.HDC(user.GetDC(None))
+
+    def pixels(path, size):
+        icon = wintypes.HICON()
+        info = IconInfo()
+        try:
+            result = shell.SHDefExtractIconW(str(path), 0, 0, ctypes.byref(icon), None, size)
+            assert result == 0 and icon.value, f"No {size}px application icon in {path}"
+            assert user.GetIconInfo(icon, ctypes.byref(info)) and info.color, path
+            header = ctypes.create_string_buffer(struct.pack("<IiiHHIIiiII", 40, size, -size, 1, 32,
+                                                              0, 0, 0, 0, 0, 0))
+            data = ctypes.create_string_buffer(size * size * 4)
+            rows = gdi.GetDIBits(dc, wintypes.HBITMAP(info.color), 0, size, data, header, 0)
+            assert rows == size, f"Could not read {size}px application icon in {path}"
+            return data.raw
+        finally:
+            if info.color:
+                gdi.DeleteObject(wintypes.HBITMAP(info.color))
+            if info.mask:
+                gdi.DeleteObject(wintypes.HBITMAP(info.mask))
+            if icon.value:
+                user.DestroyIcon(icon)
+
+    try:
+        artwork = Path(__file__).resolve().parent / "desktop" / "OrcaView.ico"
+        for size in (16, 20, 24, 32, 40, 48, 64, 96, 128, 256):
+            assert pixels(binary, size) == pixels(artwork, size), f"Application icon mismatch at {size}px"
+        label = ctypes.create_unicode_buffer(128)
+        result = ctypes.windll.shlwapi.SHLoadIndirectString(f"@{binary},-1", label, len(label), None)
+        assert result == 0 and label.value == "OrcaView", "Missing taskbar relaunch name"
+    finally:
+        user.ReleaseDC(None, dc)
+
+
 @contextmanager
 def open_package(assets, prefix, work):
     if sys.platform == "darwin":
@@ -36,6 +81,7 @@ def open_package(assets, prefix, work):
         with ZipFile(assets / (prefix + "-Windows-x64-portable.zip")) as archive:
             assert {path.split("/")[0] for path in archive.namelist()} == {"OrcaView.exe", "LICENSE", "Examples"}
             archive.extractall(work)
+        check_windows_icon(work / "OrcaView.exe")
         yield work / "OrcaView.exe", work / "Examples"
     elif sys.platform.startswith("linux"):
         name = prefix + "-Linux-x86_64"

@@ -109,10 +109,14 @@ def windows_package(bundle, archive, version):
     go = shutil.which("go")
     if not go:
         raise RuntimeError("Install Go 1.23 or later to compile the Windows launcher.")
-    env = dict(os.environ, CGO_ENABLED="0", GOOS="windows", GOARCH="amd64", GOAMD64="v1", GOTOOLCHAIN="local")
+    env = dict(os.environ, CGO_ENABLED="0", GOOS="windows", GOARCH="amd64", GOAMD64="v1",
+               GOTOOLCHAIN="local", GO111MODULE="on", GOWORK="off")
     executable = bundle / "OrcaView.exe"
+    # Building a Go package includes its Windows resource object; building a .go file skips it.
+    if not (HERE / "resources_windows_amd64.syso").is_file():
+        raise FileNotFoundError("Windows launcher icon resources are missing.")
     subprocess.run([go, "build", "-trimpath", "-buildvcs=false", "-ldflags=-s -w -H=windowsgui -buildid=",
-                    "-o", str(executable), str(HERE / "launcher_windows.go")], env=env, check=True)
+                    "-o", str(executable.resolve()), "."], cwd=HERE, env=env, check=True)
     goroot = Path(subprocess.check_output([go, "env", "GOROOT"], env=env, text=True).strip())
     licenses = bundle / "python/ThirdParty"
     shutil.copyfile(goroot / "LICENSE", licenses / "Go-LICENSE.txt")

@@ -8,6 +8,13 @@ python3.13 packaging/desktop/build.py both
 
 Use `linux` or `windows` for a single target. Pass `--cache <directory>` to reuse verified downloads. Finished packages are in `dist/<platform>/<version>/`. Each package includes an English interface and examples in `Examples/`. Open the OH UNO or UNSO wavefunction in `Examples/Orbitals/` to view natural occupations and use **Orbital decomposition**. The water HOMO Cube in the same directory supports Becke and Hirshfeld atomic shares when selected as an orbital amplitude. [Orbital guide](../../docs/ORBITALS.md) The bundled FFmpeg executable exports vibrational modes from `water-opt-freq.out` as animated GIF or H.264 MP4.
 
+The Go launcher links the checked-in `resources_windows_amd64.syso`. It contains the application's icon group and display name for Windows Explorer and the taskbar. When changing `src/orcaview/gui/assets/orcaview.png`, regenerate both `OrcaView.ico` and the resource object with Pillow 13.0.0 and `go-winres` v0.3.3. Add the directory containing the installed `go-winres` executable to PATH before running the generator.
+
+```shell
+go install github.com/tc-hib/go-winres@v0.3.3
+python packaging/desktop/generate_windows_icon.py
+```
+
 Build both optional extensions with `python packaging/build_extension_kit.py` from an environment with Qt 6.8.3. Run `python packaging/build_encoder_sources.py` to assemble the FFmpeg source materials in `dist/sources/<version>/`. Once all three platform builds, the extensions and the source archive are present, run `python packaging/stage_release.py` to collect the downloads and their SHA-256 manifest.
 
 - **Windows x64**. Extract the ZIP into a dedicated folder. Its contents are `OrcaView.exe`, `LICENSE` and `Examples`. Double-click the EXE or run `.\OrcaView.exe --version`. Each launch expands the embedded runtime into a private temporary directory and removes it on normal exit.
