@@ -232,9 +232,11 @@ def _configure_window(window, args, *, already_open=False):
     selected_result = args.dataset is not None or args.snapshot is not None
     if selected_result and (not args.input or args.workspace not in (None, "result")):
         raise ValueError("To select a result, open an input file in the Result workspace")
+    from orcaview.orca.orbital_files import ORCA_ORBITAL_SUFFIXES
+
     if args.input and not already_open:
         path = Path(args.input)
-        if path.suffix.lower() == ".gbw" and not args.screenshot:
+        if path.suffix.lower() in ORCA_ORBITAL_SUFFIXES and not args.screenshot:
             from PySide6.QtCore import QTimer
             QTimer.singleShot(0, lambda: window.open_gbw(path, lambda: _configure_window(window, args, already_open=True)))
             return

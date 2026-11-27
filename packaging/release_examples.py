@@ -11,6 +11,8 @@ def install_examples(root: Path, destination: Path):
     logs = root / "artifacts/public/validation/results-0.1.0a12"
     files = {
         "Orbitals/water-homo.cube": examples / "orbitals/water-homo.cube",
+        "Orbitals/OH.uno.molden.input": examples / "orbitals/OH.uno.molden.input",
+        "Orbitals/OH.unso.molden.input": examples / "orbitals/OH.unso.molden.input",
         "water.xyz": examples / "water.xyz",
         "benzene.xyz": examples / "benzene.xyz",
         "water-sp.out": examples / "m5_orca/water-sp.out",

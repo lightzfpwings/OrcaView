@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 from orcaview.i18n import tr
 from orcaview.orca.gbw import file_state
+from orcaview.orca.orbital_files import molden_destination
 from orcaview.preferences import read_preferences, write_preferences
 
 
@@ -18,7 +19,7 @@ class GbwOpenDialog(QDialog):
     def __init__(self, path, parent):
         super().__init__(parent)
         self.setWindowTitle(tr("Open ORCA wavefunction"))
-        self.destination = path.with_suffix(".molden.input")
+        self.destination = molden_destination(path)
         self.expected = file_state(self.destination)
         self.converter = None
         self.choice = None

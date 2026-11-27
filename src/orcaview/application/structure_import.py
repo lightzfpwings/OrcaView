@@ -23,11 +23,12 @@ from orcaview.io.quantum_structure import QUANTUM_FORMATS, read_quantum_structur
 from orcaview.io.structure_record import PeriodicStructureError, StructureRecord
 from orcaview.orca.gbw import file_state, publish_molden, run_converter
 from orcaview.orca.gbw_molden import has_builtin_layout
+from orcaview.orca.orbital_files import ORCA_ORBITAL_SUFFIXES, molden_destination, orbital_kind
 from orcaview.preferences import read_preferences
 
 
 _EXTRA_FORMATS = {".qcin": "qchem-input", ".in": "qchem-input", ".input": "quantum-input", ".nw": "nwchem-input",
-                  ".nwi": "nwchem-input", ".gbw": "orca-gbw", ".cube": "gaussian-cube", ".cub": "gaussian-cube"}
+                  ".nwi": "nwchem-input", **dict.fromkeys(ORCA_ORBITAL_SUFFIXES, "orca-gbw"), ".cube": "gaussian-cube", ".cub": "gaussian-cube"}
 _FORMATS = {**BABEL_FORMATS, **QUANTUM_FORMATS, **_EXTRA_FORMATS}
 _WAVEFUNCTION = {"molden", "gaussian-fchk", "wfn", "wfx", "mwfn", "orca-gbw"}
 
@@ -137,10 +138,17 @@ def find_converter(*, desktop=True):
     return None
 
 
+def _convert_orbital_file(path, raw, work, converter, cancel):
+    kind = orbital_kind(path)
+    if kind == "mo":
+        return run_converter(raw, work, converter, cancel)
+    return run_converter(raw, work, converter, cancel, kind=kind)
+
+
 def _opened_gbw(path, raw, *, remove_periodicity=False, cancel=None):
     with TemporaryDirectory(prefix="orcaview-gbw-") as directory:
         converter = None if has_builtin_layout(raw) else find_converter(desktop=False)
-        output = run_converter(raw, Path(directory), converter, cancel)
+        output = _convert_orbital_file(path, raw, Path(directory), converter, cancel)
         molden = output.read_bytes()
         record = read_quantum_structure(output, molden, remove_periodicity=remove_periodicity)
     record = replace(record, molecule=replace(record.molecule, name=path.stem))
@@ -150,7 +158,7 @@ def _opened_gbw(path, raw, *, remove_periodicity=False, cancel=None):
 def _opened_molden(path, raw, record, *, source=None):
     source = source or ArtifactRef.from_bytes(raw, "molden", str(path))
     try:
-        orbitals = read_molden_orbitals(raw, record.molecule) if not record.removed_periodicity else None
+        orbitals = read_molden_orbitals(raw, record.molecule, kind=orbital_kind(path)) if not record.removed_periodicity else None
     except (ValueError, ArithmeticError) as exc:
         # A geometry-only import still works when the orbital dialect is unsupported.
         return OpenedStructure(record, source, orbital_error=str(exc))
@@ -182,13 +190,13 @@ class PreparedMolden:
 def prepare_gbw_open(path, converter, expected, cancel=None):
     """Stage and validate a sidecar. Only the accepted GUI open request publishes it."""
     path = Path(path).absolute()
-    target = path.with_suffix(".molden.input")
+    target = molden_destination(path)
     initial = file_state(path, follow_links=True)
     raw = path.read_bytes()
     gbw = ArtifactRef.from_bytes(raw, "orca-gbw", str(path))
     folder = TemporaryDirectory(prefix=".orcaview-gbw-", dir=target.parent)
     try:
-        output = run_converter(raw, Path(folder.name), converter, cancel)
+        output = _convert_orbital_file(path, raw, Path(folder.name), converter, cancel)
         if cancel is not None and cancel.is_set():
             raise CancelledError()
         molden = output.read_bytes()
@@ -231,7 +239,7 @@ def read_linked_orbitals(source, project_path=None, cancel=None):
             raise ValueError(opened.orbital_error or "The converter output contains no molecular orbitals.")
         return opened.orbitals
     molecule = read_quantum_structure(path, raw, format_id="molden").molecule
-    wave = read_molden_orbitals(raw, molecule)
+    wave = read_molden_orbitals(raw, molecule, kind=orbital_kind(source.path_hint))
     if wave is None:
         raise ValueError("This Molden file contains no molecular orbitals.")
     return wave

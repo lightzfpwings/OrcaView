@@ -9,14 +9,18 @@ from tempfile import TemporaryFile
 from time import monotonic
 
 from orcaview.orca.gbw_molden import write_gbw_molden
+from orcaview.orca.orbital_files import ORCA_ORBITAL_SUFFIXES
 
 
-def run_converter(raw, work, converter, cancel=None):
+def run_converter(raw, work, converter, cancel=None, *, kind="mo"):
     if converter is None:
-        return write_gbw_molden(raw, work / "wave.molden.input", cancel)
-    (work / "wave.gbw").write_bytes(raw)
+        return write_gbw_molden(raw, work / "wave.molden.input", cancel, kind=kind)
+    extension = next(ext for ext, role in ORCA_ORBITAL_SUFFIXES.items() if role == kind)
+    source = work / ("wave" + extension)
+    source.write_bytes(raw)
+    args = ["wave", "-molden"] if kind == "mo" else [source.name, "wave.molden.input", "-molden", "-anyorbs"]
     with TemporaryFile() as log:
-        with subprocess.Popen([str(converter), "wave", "-molden"], cwd=work, stdin=subprocess.DEVNULL,
+        with subprocess.Popen([str(converter), *args], cwd=work, stdin=subprocess.DEVNULL,
                               stdout=log, stderr=subprocess.STDOUT) as process:
             deadline = monotonic() + 120
             try:
@@ -39,6 +43,10 @@ def run_converter(raw, work, converter, cancel=None):
             detail = log.read().decode(errors="replace").strip()
             message = "orca_2mkl could not convert the GBW. Check that the ORCA version matches the file."
             raise ValueError(message + ("\n" + detail if detail else ""))
+    if kind != "mo":
+        # The official Molden title omits the set type. Keep it even if the sidecar is renamed.
+        with output.open("ab") as stream:
+            stream.write(f"\n[OrcaView Orbital Set]\n{kind}\n".encode("ascii"))
     return output
 
 

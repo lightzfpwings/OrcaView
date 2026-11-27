@@ -1,4 +1,4 @@
-! UHF def2-SVP TightSCF
+! UHF def2-SVP TightSCF UNO UCO
 %plots Format Gaussian_Cube
  Dim1 32
  Dim2 32

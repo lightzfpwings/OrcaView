@@ -66,9 +66,14 @@ class GaussianShell:
     center: tuple
     primitives: tuple
     functions: tuple
+    atom_index: int = 0
+
+    @property
+    def angular(self):
+        return sum(self.functions[0][0][0])
 
     @classmethod
-    def from_molden(cls, atom, l, rows, spherical, orca):
+    def from_molden(cls, atom, l, rows, spherical, orca, *, atom_index=0):
         # ORCA writes primitive normalization into the contraction coefficients.
         # Remove its exponent dependence, then normalize the radial contraction by
         # its analytic overlap. Angular normalization is relative to x^l.
@@ -81,7 +86,7 @@ class GaussianShell:
         scale = (2 / math.pi)**.75 * 2**l / math.sqrt(_odd_factorial(l)*norm2)
         primitives = tuple((a, scale * c * a**power) for a, c in weights)
         center = tuple(v / BOHR_IN_ANGSTROM for v in (atom.x, atom.y, atom.z))
-        return cls(center, primitives, angular_functions(l, spherical, orca))
+        return cls(center, primitives, angular_functions(l, spherical, orca), atom_index)
 
 
 def orbital_expansion(shells, coefficients):

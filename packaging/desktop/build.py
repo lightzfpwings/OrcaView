@@ -150,7 +150,7 @@ def install_app(site):
             py_compile.compile(str(path), str(dest.with_suffix(".pyc")),
                                "orcaview/" + path.relative_to(source).as_posix(),
                                doraise=True, invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
-        elif path.suffix in {".json", ".png", ".svg"}:
+        elif path.suffix in {".json", ".png", ".svg"} or path.parent == source / "results/data":
             shutil.copyfile(path, dest)
 
 

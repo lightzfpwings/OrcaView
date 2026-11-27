@@ -64,6 +64,7 @@ from orcaview.gui.workspace_columns import WorkspaceColumns
 from orcaview.gui.workspace_transition import WorkspaceTabs, WorkspaceTransition
 from orcaview.io.xyz import parse_xyz
 from orcaview.orca.input import render_input
+from orcaview.orca.orbital_files import ORCA_ORBITAL_SUFFIXES
 from orcaview.results import OrcaImportError
 
 
@@ -1220,7 +1221,7 @@ class MainWindow(QMainWindow):
                 self._open_project_path(filename)
             elif path.suffix.lower() in (".out", ".log"):
                 self._start_read(path, read_native_session)
-            elif path.suffix.lower() == ".gbw":
+            elif path.suffix.lower() in ORCA_ORBITAL_SUFFIXES:
                 self.open_gbw(path)
             elif path.suffix.lower() in (".cube", ".cub"):
                 self._read_cancel = Event()

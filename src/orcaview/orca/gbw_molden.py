@@ -102,7 +102,7 @@ def _write_mos(out, data, sets, size, order, cancel):
         pos = occ+24*size
 
 
-def write_gbw_molden(raw, output, cancel=None):
+def write_gbw_molden(raw, output, cancel=None, *, kind="mo"):
     if not has_builtin_layout(raw):
         raise ValueError(_UNSUPPORTED)
     _check_cancel(cancel)
@@ -125,6 +125,8 @@ def write_gbw_molden(raw, output, cancel=None):
             order = _write_basis(out, basis, len(atoms), size, cancel)
             out.write("[5D]\n[7F]\n[9G]\n[11H]\n[MO]\n")
             _write_mos(out, orbitals, sets, size, order, cancel)
+            if kind != "mo":
+                out.write(f"\n[OrcaView Orbital Set]\n{kind}\n")
     except struct.error as exc:
         raise ValueError("Incomplete GBW wavefunction.") from exc
     return output

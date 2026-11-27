@@ -13,10 +13,12 @@ from PySide6.QtWidgets import (
 )
 
 from orcaview.application.structure_import import read_linked_orbitals
+from orcaview.gui.orbital_composition import CubeOrbitalAnalysis, OrbitalAnalysis, OrbitalDecomposition
 from orcaview.gui.orbital_viewport import OrbitalViewport, PHASE_COLORS
 from orcaview.i18n import diagnostic_text, tr
 from orcaview.io.cube import CubeData
 from orcaview.io.molden_orbitals import MoldenOrbitals
+from orcaview.orca.orbital_files import ORBITAL_SET_LABELS
 from orcaview.preferences import read_preferences, write_preferences
 from orcaview.results.orbital_surface import SURFACE_QUALITIES, make_cube_surface, make_orbital_surface
 
@@ -92,6 +94,8 @@ class OrbitalPanel(QWidget):
         super().__init__(parent)
         self.source = self.wave = self.future = self._cancel = None
         self._requested = None
+        self._source_wave = self._natural = self._engine = None
+        self._deriving = False
         self._surfaces = {}
         self._rows = []
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="orcaview-orbitals")
@@ -108,6 +112,12 @@ class OrbitalPanel(QWidget):
         sidebar = QWidget()
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(0, 0, 8, 0)
+        set_row = QHBoxLayout()
+        self.representation = QComboBox()
+        self.representation.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.representation_label = _label(tr("Orbital set"), self.representation, set_row)
+        set_row.setStretch(1, 1)
+        side.addLayout(set_row)
         spin_row = QHBoxLayout()
         self.spin = QComboBox()
         self.spin_label = _label(tr("Spin"), self.spin, spin_row)
@@ -128,6 +138,8 @@ class OrbitalPanel(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setStretchLastSection(True)
         side.addWidget(self.table, 1)
+        self.decomposition = OrbitalDecomposition()
+        side.addWidget(self.decomposition)
         panes.addWidget(sidebar)
         scene = QWidget()
         right = QVBoxLayout(scene)
@@ -191,6 +203,7 @@ class OrbitalPanel(QWidget):
         elif all(QColor.isValidColorName(color) for color in saved_pair):
             self._custom_colors = tuple(QColor(color).name() for color in saved_pair)
         self._show_colors()
+        self.representation.currentIndexChanged.connect(self._change_representation)
         self.spin.currentIndexChanged.connect(self._fill_table)
         self.table.currentCellChanged.connect(self._select_row)
         self.level.valueChanged.connect(self._request_surface)
@@ -251,10 +264,12 @@ class OrbitalPanel(QWidget):
         if self.future:
             self.future.cancel()
         self.future = self._cancel = self._requested = None
+        self._deriving = False
 
     def shutdown(self):
         self._stop_request()
         self._surfaces.clear()
+        self.decomposition.shutdown()
         self.viewport.release_renderer()
         self._pool.shutdown(wait=False, cancel_futures=True)
 
@@ -262,6 +277,11 @@ class OrbitalPanel(QWidget):
         self._stop_request()
         self._surfaces.clear()
         self.source, self.wave = source, wave
+        self._source_wave = self._natural = self._engine = None
+        self.decomposition.button.setChecked(False)
+        self.decomposition.set_orbital(None, None)
+        with QSignalBlocker(self.representation):
+            self.representation.clear()
         self._rows = []
         with QSignalBlocker(self.table), QSignalBlocker(self.spin):
             self.table.setRowCount(0)
@@ -292,6 +312,8 @@ class OrbitalPanel(QWidget):
         self.viewport.rotate_view("x", 20.)
         self.viewport.rotate_view("y", -25.)
         is_cube = isinstance(self.wave, CubeData)
+        self.representation.setVisible(not is_cube)
+        self.representation_label.setVisible(not is_cube)
         self.spin.setVisible(not is_cube)
         self.spin_label.setVisible(not is_cube)
         self.level_unit.setVisible(not is_cube)
@@ -299,6 +321,7 @@ class OrbitalPanel(QWidget):
         self.color_buttons[1].setText(tr("Positive surface") if is_cube else tr("Positive phase"))
         self.color_buttons[-1].setText(tr("Negative surface") if is_cube else tr("Negative phase"))
         if is_cube:
+            self._engine = CubeOrbitalAnalysis(self.wave) if CubeOrbitalAnalysis and self.wave.molecule.atoms else None
             self.viewport.set_grid_center(self.wave.grid)
             dims = " × ".join(map(str, self.wave.grid.shape))
             self.grid_info.setText(tr("Grid · {dimensions}", dimensions=dims))
@@ -308,29 +331,79 @@ class OrbitalPanel(QWidget):
             self.table.setHorizontalHeaderLabels([tr("Cube field")])
             self.level_label.setText(tr("Isovalue"))
         else:
-            self.table.setAccessibleName(tr("Molecular orbitals"))
-            self.table.setColumnCount(4)
-            self.table.setHorizontalHeaderLabels([tr("Orbital"), tr("Energy (Ha)"), tr("Occ."), tr("Sym.")])
-            self.table.horizontalHeaderItem(0).setToolTip(tr("ORCA orbital numbers start at zero within each spin."))
+            self._source_wave = self.wave
+            self._engine = OrbitalAnalysis(self.wave) if OrbitalAnalysis is not None else None
             self.level_label.setText(tr("Isovalue |ψ|"))
             with QSignalBlocker(self.level):
                 self.level.setDecimals(3)
                 self.level.setRange(.001, 10.)
                 self.level.setSingleStep(.005)
                 self.level.setValue(.05)
-            self._frontiers = self.wave.frontiers()
-            occupied = [i for i, label in self._frontiers.items() if label == "HOMO"]
-            default = (max(occupied, key=lambda i: self.wave.orbitals[i].energy) if occupied
-                       else min(range(len(self.wave.orbitals)), key=lambda i: self.wave.orbitals[i].energy))
-            with QSignalBlocker(self.spin):
-                self.spin.clear()
-                for spin in sorted({mo.spin for mo in self.wave.orbitals}):
-                    self.spin.addItem(tr("Alpha") if spin == "Alpha" else tr("Beta"), spin)
-                self.spin.setCurrentIndex(self.spin.findData(self.wave.orbitals[default].spin))
+            with QSignalBlocker(self.representation):
+                self.representation.clear()
+                kind = self.wave.kind
+                self.representation.addItem(tr(ORBITAL_SET_LABELS[kind]), "file")
+                if self._engine and self.wave.complete_density and kind not in ("uno", "unso", "natural"):
+                    label = "Natural orbitals (QRO density)" if kind == "qro" else "Natural orbitals (total density)"
+                    self.representation.addItem(tr(label), "natural")
+                    if kind in ("qro", "uco", "localized"):
+                        self.representation.setCurrentIndex(1)
+            self._change_representation()
+            return
+        self._fill_table()
+
+    def _change_representation(self):
+        if self._source_wave is None:
+            return
+        self._stop_request()
+        self._surfaces.clear()
+        self._rows = []
+        with QSignalBlocker(self.table):
+            self.table.setRowCount(0)
+        self.decomposition.set_orbital(None, None)
+        self.viewport.set_surface(None)
+        self.representation.setToolTip(self.representation.currentText())
+        if self.representation.currentData() == "natural":
+            if self._source_wave.kind == "qro":
+                self.representation.setToolTip(tr("These occupations describe the QRO density. Open the UNO file for the original unrestricted density."))
+            if self._natural is None:
+                self.status.setText(tr("Calculating natural orbitals…"))
+                self._cancel = Event()
+                self._deriving = True
+                self.spin.setEnabled(False)
+                self.future = self._pool.submit(self._engine.natural_orbitals, self._cancel)
+                self._timer.start()
+                return
+            self.wave = self._natural
+        else:
+            self.wave = self._source_wave
+        self._configure_orbitals()
+
+    def _configure_orbitals(self):
+        kind = self.wave.kind
+        self.spin.setEnabled(True)
+        self.table.setAccessibleName(tr(ORBITAL_SET_LABELS[kind]))
+        occupancy = {"unso": "Spin occupation", "uno": "Natural occupation", "natural": "Natural occupation"}
+        columns = ["Orbital", "Energy (Ha)", "Occ.", "Sym."] if kind in ("mo", "qro") else [
+            "Orbital", occupancy.get(kind, "Occ."), "Sym."]
+        self.table.setColumnCount(len(columns))
+        self.table.setHorizontalHeaderLabels([tr(t) for t in columns])
+        self.table.horizontalHeaderItem(0).setToolTip(tr("ORCA orbital numbers start at zero within each spin."))
+        self._frontiers = self.wave.frontiers()
+        spins = sorted({mo.spin for mo in self.wave.orbitals})
+        self.spin.setVisible(len(spins) > 1 or kind == "mo")
+        self.spin_label.setVisible(not self.spin.isHidden())
+        occupied = [self.wave.orbitals[i] for i, label in self._frontiers.items() if label == "HOMO"]
+        default_spin = max(occupied, key=lambda mo: mo.energy).spin if occupied else spins[0]
+        with QSignalBlocker(self.spin):
+            self.spin.clear()
+            for spin in spins:
+                self.spin.addItem(tr("Alpha") if spin == "Alpha" else tr("Beta"), spin)
+            self.spin.setCurrentIndex(self.spin.findData(default_spin))
         self._fill_table()
 
     def _fill_table(self):
-        if self.wave is None:
+        if self.wave is None or self._deriving:
             return
         if isinstance(self.wave, CubeData):
             self._rows = list(range(len(self.wave.fields)))
@@ -342,9 +415,20 @@ class OrbitalPanel(QWidget):
             for index in self._rows:
                 mo = self.wave.orbitals[index]
                 name = f"{mo.number}  {self._frontiers.get(index, '')}".strip()
-                cells.append((name, f"{mo.energy:.6f}", f"{mo.occupation:g}", mo.symmetry))
+                if self.wave.kind in ("mo", "qro"):
+                    cells.append((name, f"{mo.energy:.6f}", f"{mo.occupation:g}", mo.symmetry))
+                else:
+                    cells.append((name, f"{mo.occupation:.8g}", mo.symmetry))
             default = next((r for r, i in enumerate(self._rows) if self._frontiers.get(i) == "HOMO"),
                            next((r for r, i in enumerate(self._rows) if self._frontiers.get(i) == "LUMO"), 0))
+            if self.wave.kind == "unso":
+                default = max(range(len(cells)), key=lambda r: abs(self.wave.orbitals[self._rows[r]].occupation))
+            elif self.wave.kind in ("natural", "uno"):
+                # Highlight the most fractionally occupied spatial orbital. Break closed-shell ties at the frontier.
+                default = min(range(len(cells)), key=lambda r: (abs(self.wave.orbitals[self._rows[r]].occupation-1),
+                              -self.wave.orbitals[self._rows[r]].occupation, -r))
+            elif self.wave.kind in ("uco", "qro", "localized"):
+                default = max((r for r,i in enumerate(self._rows) if self.wave.orbitals[i].occupation > .5), default=0)
         with QSignalBlocker(self.table):
             self.table.setRowCount(len(cells))
             for row, values in enumerate(cells):
@@ -355,8 +439,12 @@ class OrbitalPanel(QWidget):
 
     def _select_row(self):
         row = self.table.currentRow()
-        if isinstance(self.wave, CubeData) and 0 <= row < len(self._rows):
+        if not 0 <= row < len(self._rows):
+            self.decomposition.set_orbital(None, None)
+            return
+        if isinstance(self.wave, CubeData):
             field = self.wave.fields[self._rows[row]]
+            mo = field
             level = field.initial_isovalue()
             digits = min(323, max(3, 3-math.floor(math.log10(level))))
             with QSignalBlocker(self.level):
@@ -364,6 +452,9 @@ class OrbitalPanel(QWidget):
                 self.level.setRange(10.**-digits, max(level, abs(field.minimum), abs(field.maximum)))
                 self.level.setSingleStep(max(10.**-digits, level/10))
                 self.level.setValue(level)
+        else:
+            mo = self.wave.orbitals[self._rows[row]]
+        self.decomposition.set_orbital(self._engine, mo)
         self._request_surface()
 
     def _request_surface(self):
@@ -393,15 +484,25 @@ class OrbitalPanel(QWidget):
             return
         self._timer.stop()
         future, self.future = self.future, None
+        deriving, self._deriving = self._deriving, False
         try:
             result = future.result()
-        except (ValueError, OSError, ArithmeticError, CancelledError) as exc:
+        except (ValueError, OSError, ArithmeticError, RuntimeError, MemoryError, CancelledError) as exc:
+            if deriving:
+                self.representation.setCurrentIndex(0)
+                self.representation.setToolTip(diagnostic_text(exc))
+                self.representation.setItemData(1, diagnostic_text(exc), Qt.ItemDataRole.ToolTipRole)
+                self.status.setText(diagnostic_text(exc))
+                return
             self.status.setText(diagnostic_text(exc))
             self._requested = None
             if self.wave is None:
                 self.availability_changed.emit(False, self.status.text())
             return
-        if isinstance(result, (MoldenOrbitals, CubeData)):
+        if deriving:
+            self.wave = self._natural = result
+            self._configure_orbitals()
+        elif isinstance(result, (MoldenOrbitals, CubeData)):
             self.wave = result
             self.status.clear()
             self.availability_changed.emit(True, "")
