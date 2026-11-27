@@ -124,3 +124,11 @@ jobs:
           python -m unittest discover -s tests -p 'test_*backbone*.py' -v
           python -m unittest discover -s tests -p test_design_biopolymer_zoom.py -v
           python -m unittest discover -s tests -p test_biopolymer_sequence.py -v
+      - name: Test Molden and Cube orbitals, colors and surface quality controls
+        if: hashFiles('tests/test_orbital_workspace.py') != ''
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
+        run: |
+          python -m unittest discover -s tests -p 'test_*orbitals.py' -v
+          python -m unittest discover -s tests -p test_orbital_workspace.py -v

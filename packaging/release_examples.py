@@ -10,6 +10,7 @@ def install_examples(root: Path, destination: Path):
     examples = root / "examples"
     logs = root / "artifacts/public/validation/results-0.1.0a12"
     files = {
+        "Orbitals/water-homo.cube": examples / "orbitals/water-homo.cube",
         "water.xyz": examples / "water.xyz",
         "benzene.xyz": examples / "benzene.xyz",
         "water-sp.out": examples / "m5_orca/water-sp.out",
@@ -21,6 +22,10 @@ def install_examples(root: Path, destination: Path):
     }
     for name in ("water.gjf", "ethanol-2d.mol", "crystal.cif"):
         files[f"Structure-import/{name}"] = examples / "structure_import" / name
+    for molecule in ("water", "OH"):
+        for suffix in (".inp", ".molden.input"):
+            name = molecule + suffix
+            files[f"Orbitals/{name}"] = examples / "orbitals" / name
     native = examples / "native_methods"
     for source in sorted(native.rglob("*")):
         if source.suffix in (".inp", ".xyz") and source.is_file():

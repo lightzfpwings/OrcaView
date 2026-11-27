@@ -44,6 +44,8 @@ class Session:
         self._origin = _origin
         self.legacy_project_path = legacy_project_path
         self.log_report = log_report
+        self.molden_orbitals = None  # loaded coefficients; projects retain the verified source reference
+        self.cube_grid = None
         if tracked_document is None:
             self._molecule = molecule if molecule is not None else parse_xyz(DEMO_XYZ, name="Water")
         else:

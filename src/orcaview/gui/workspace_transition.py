@@ -16,6 +16,13 @@ class WorkspaceTabs(QTabWidget):
         bar.currentChanged.connect(self._changing)
         self.setTabBar(bar)
 
+    def setCurrentIndex(self, index):
+        if self.isTabEnabled(index):
+            super().setCurrentIndex(index)
+
+    def setCurrentWidget(self, widget):
+        self.setCurrentIndex(self.indexOf(widget))
+
     def _changing(self, index):
         self.about_to_switch.emit(self.currentWidget(), self.widget(index))
 

@@ -6,6 +6,7 @@ from dataclasses import replace
 import math
 from pathlib import Path
 import sys
+from threading import Event
 
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QIcon
@@ -22,7 +23,9 @@ from orcaview.gui import typography
 from orcaview.i18n import diagnostic_text, tr
 from orcaview.application.project import load_project, save_project
 from orcaview.application.session import Session
-from orcaview.application.structure_import import OpenedStructure, PeriodicFile, open_file_filters, read_structure_file
+from orcaview.application.structure_import import (
+    OpenedStructure, PeriodicFile, PreparedMolden, open_file_filters, prepare_gbw_open, read_structure_file,
+)
 from orcaview.core.integrals import (
     auxiliary_options, basis_options, grid_options, integral_options, scalar_options,
 )
@@ -40,11 +43,13 @@ from orcaview.gui.design_panel import DesignPanel
 from orcaview.gui.file_dialogs import document_directory, set_document_directory, suggested_file
 from orcaview.gui.foundation_demo import build_foundation_demo
 from orcaview.gui.foundation_panel import FoundationPanel
+from orcaview.gui.gbw_dialog import GbwOpenDialog
 from orcaview.gui.inspector_controls import apply_inspector_control_style
 from orcaview.gui.inspector_form import InspectorForm, InspectorLabel, InspectorScrollArea
 from orcaview.gui.language_settings import LanguageDialog, load_interface_language
 from orcaview.gui.manual import ManualDialog
 from orcaview.gui.native_input import edit_native_input
+from orcaview.gui.orbital_panel import OrbitalPanel
 from orcaview.gui.preview_tabs import InputPreview, PreviewTabBar
 from orcaview.gui.project_navigation import ProjectNavigationTree
 from orcaview.gui.result_demo import build_result_demo
@@ -100,6 +105,7 @@ QTabWidget#workspaceTabs::pane { border: none; border-top: 1px solid #DDD5CB; }
 QTabWidget#workspaceTabs::tab-bar { alignment: left; }
 QTabBar::tab { background: #FAF7F2; padding: 9px 22px; color: #70635F; }
 QTabBar#workspaceTabBar::tab { padding: 7px 16px $workspace_tab_bottom; }
+QTabBar#workspaceTabBar::tab:disabled { color: #908d89; }
 QTabBar::tab:selected { background: #FFFDF9; color: #904359; border-top: 2px solid #904359; }
 QTabWidget#inputOutputTabs::pane { border: none; background: #FFFDF9; }
 QTabWidget#inputOutputTabs::tab-bar { alignment: left; }
@@ -142,6 +148,8 @@ class MainWindow(QMainWindow):
         self._workspace_version = 0
         self._reader = ThreadPoolExecutor(max_workers=1, thread_name_prefix="orcaview-import")
         self._read_future = None
+        self._after_open = None
+        self._read_cancel = None
         self._update_dialog = None
         self._pending_result = None
         self._read_timer = QTimer(self)
@@ -177,11 +185,17 @@ class MainWindow(QMainWindow):
         self.design_panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.workspace_tabs.addTab(self.design_panel, tr("Design"))
         self.foundation_panel = FoundationPanel()
-        self._viewports = (self.viewport, self.design_panel.viewport, self.foundation_panel.viewport)
+        self.orbital_panel = OrbitalPanel(self.workspace_tabs)
+        self.orbital_panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._viewports = (self.viewport, self.design_panel.viewport, self.foundation_panel.viewport,
+                           self.orbital_panel.viewport)
         self._apply_appearance(self.appearance_store.load())
         # Let the splitters inside the results page adapt to each animation frame.
         self.foundation_panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.workspace_tabs.addTab(self.foundation_panel, tr("Result"))
+        orbital_index = self.workspace_tabs.addTab(self.orbital_panel, "Orbitals")
+        self.workspace_tabs.setTabEnabled(orbital_index, False)
+        self.orbital_panel.availability_changed.connect(self._orbital_availability_changed)
         self.setCentralWidget(self.workspace_tabs)
         self._create_tree()
         self._create_inspector()
@@ -196,6 +210,7 @@ class MainWindow(QMainWindow):
         self.viewport.selection_changed.connect(self._selection_changed)
         for viewport in self._viewports:
             viewport.selection_changed.connect(self._update_structure_image_action)
+        self.orbital_panel.viewport.surface_changed.connect(self._update_structure_image_action)
         self.workspace_tabs.currentChanged.connect(self._update_structure_image_action)
         self._create_status_bar(versions)
         self._load_controls()
@@ -748,9 +763,32 @@ class MainWindow(QMainWindow):
         self.foundation_panel.set_log_report(self.session.log_report, standalone=report_only,
                                              opened_path=opened_path or project_path)
         self._update_title()
+        self._set_orbital_source(project_path)
         source = project_path or opened_path or self.session.source_path
         if source:
             set_document_directory(self, source)
+
+    def _set_orbital_source(self, project_path):
+        origin = self.session.document.records()[0][0].provenance
+        parameters = dict(origin.parameters)
+        formats = {"molecular_orbitals": "molden", "cube_fields": "gaussian-cube"}
+        supported = {fmt for key, fmt in formats.items() if key in parameters}
+        source = next((a for a in origin.parents if a.format in supported and a.sha256 and a.path_hint), None)
+        self.orbital_panel.set_source(source, self.session.molden_orbitals or self.session.cube_grid, project_path)
+
+    def _orbital_availability_changed(self, available, detail):
+        tabs, panel = self.workspace_tabs, self.orbital_panel
+        index = tabs.indexOf(panel)
+        if not available and tabs.currentWidget() is panel:
+            tabs.setCurrentWidget(self.input_page if self.session.molecule.atoms else self.design_panel)
+        tabs.setTabEnabled(index, available)
+        tabs.setTabToolTip(index, panel.title.text() if available else
+                           (detail or tr("Open a Molden wavefunction or a Cube file.")))
+        if available and tabs.currentWidget() is panel:
+            panel.activate()
+        if detail and panel.future is None:
+            self.log.appendPlainText(detail)
+            self.statusBar().showMessage(detail, 8000)
 
     def _refresh_input_geometry(self, molecule, *, keep_view=False):
         has_atoms = bool(molecule.atoms)
@@ -765,9 +803,10 @@ class MainWindow(QMainWindow):
         self.inspector_dock.widget().setEnabled(has_atoms)
         self.tabs.setEnabled(has_atoms)
         self.tree.setEnabled(has_atoms)
-        self.view_toolbar.setEnabled(has_atoms)
-        for action in (self.export_action, self.native_editor_action, self.fit_action,
-                       self.labels_action, self.find_method_action):
+        has_view = has_atoms or self.workspace_tabs.currentWidget() is self.orbital_panel
+        self.view_toolbar.setEnabled(has_view)
+        self.fit_action.setEnabled(has_view)
+        for action in (self.export_action, self.native_editor_action, self.labels_action, self.find_method_action):
             action.setEnabled(has_atoms)
         self.viewport.set_molecule(molecule, keep_view=keep_view)
         if not has_atoms:
@@ -846,6 +885,12 @@ class MainWindow(QMainWindow):
         if previous is self.input_page and not self._work_docks_hidden:
             self._structure_bottom_visible = not self.bottom_dock.isHidden()
         self._set_workspace_docks(page)
+        has_view = bool(self.session.molecule.atoms) or page is self.orbital_panel
+        self.view_toolbar.setEnabled(has_view)
+        self.fit_action.setEnabled(has_view)
+        if page is self.orbital_panel:
+            page.activate()
+            return
         if page is self.design_panel:
             self.design_panel.set_document(self.session.document)
             return
@@ -872,7 +917,7 @@ class MainWindow(QMainWindow):
             self.foundation_panel.set_document(self.session.document)
 
     def _set_workspace_docks(self, page):
-        hidden = page is self.design_panel or not self.session.molecule.atoms
+        hidden = page in (self.design_panel, self.orbital_panel) or not self.session.molecule.atoms
         self.bottom_dock.setVisible(not hidden and page is self.input_page and self._structure_bottom_visible)
         if hidden == self._work_docks_hidden:
             return
@@ -893,6 +938,8 @@ class MainWindow(QMainWindow):
             return self.design_panel.viewport
         if page is self.foundation_panel:
             return self.foundation_panel.viewport
+        if page is self.orbital_panel:
+            return self.orbital_panel.viewport
         return self.viewport
 
     def _fit_active_view(self):
@@ -902,6 +949,10 @@ class MainWindow(QMainWindow):
         page = self.workspace_tabs.currentWidget()
         if page is self.foundation_panel and self.foundation_panel.geometry_pane.isHidden():
             return []
+        if page is self.orbital_panel:
+            surface = self.orbital_panel.viewport.surface
+            if surface is None or not surface.faces:
+                return []
         views = [(tr("3D view"), self._active_viewport())]
         if page is self.design_panel:
             views.insert(0, (tr("2D sketch"), self.design_panel.canvas))
@@ -1165,6 +1216,11 @@ class MainWindow(QMainWindow):
                 self._open_project_path(filename)
             elif path.suffix.lower() in (".out", ".log"):
                 self._start_read(path, read_native_session)
+            elif path.suffix.lower() == ".gbw":
+                self.open_gbw(path)
+            elif path.suffix.lower() in (".cube", ".cub"):
+                self._read_cancel = Event()
+                self._start_read(path, read_structure_file, None, self._read_cancel)
             elif path.suffix.lower() == ".xyz" and path.stat().st_size <= 64 * 1024:
                 # The native single-frame reader needs no external conversion.
                 result = read_structure_file(path)
@@ -1176,6 +1232,18 @@ class MainWindow(QMainWindow):
             self._error(exc)
 
     open_xyz = open_file
+
+    def open_gbw(self, path, after_open=None):
+        dialog = GbwOpenDialog(path, self)
+        if dialog.exec():
+            if dialog.choice == "existing":
+                self._start_read(dialog.destination, read_structure_file, after_open=after_open)
+            elif dialog.choice == "convert":
+                self._read_cancel = Event()
+                self._start_read(path, prepare_gbw_open, dialog.converter, dialog.expected, self._read_cancel,
+                                 after_open=after_open)
+                self.statusBar().showMessage(tr("Converting {path.name} to Molden…", path=path))
+        dialog.deleteLater()
 
     def open_project(self):
         path, _ = QFileDialog.getOpenFileName(self, tr("Open project"), str(document_directory(self)),
@@ -1291,8 +1359,9 @@ class MainWindow(QMainWindow):
     def _read_context(self):
         return self._workspace_version, self.session.document.records()
 
-    def _start_read(self, path, reader, *args):
+    def _start_read(self, path, reader, *args, after_open=None):
         self._read_origin = self._read_context()
+        self._after_open = after_open
         self._read_path = path
         self.open_file_action.setEnabled(False)
         self.import_action.setEnabled(False)
@@ -1319,7 +1388,9 @@ class MainWindow(QMainWindow):
                 self.cancel_read_button.setText(tr("Discard open request"))
                 self.statusBar().showMessage(tr("{path.name} is ready to open once the current operation is complete.", path=path))
             else:
-                if isinstance(result, (Session, OpenedStructure)) and not self._guard_discard():
+                if isinstance(result, (Session, OpenedStructure, PreparedMolden)) and not self._guard_discard():
+                    if isinstance(result, PreparedMolden):
+                        result.folder.cleanup()
                     self._reset_reader()
                 else:
                     self._display_read_result(path, result)
@@ -1339,12 +1410,20 @@ class MainWindow(QMainWindow):
         if self._pending_result is None:
             return
         path, result = self._pending_result
-        if isinstance(result, (Session, OpenedStructure)) and not self._guard_discard():
+        if isinstance(result, (Session, OpenedStructure, PreparedMolden)) and not self._guard_discard():
             return
         self._display_read_result(path, result)
 
     def _display_read_result(self, path, result):
+        after_open = self._after_open
         self._reset_reader()
+        if isinstance(result, PreparedMolden):
+            path = result.destination
+            try:
+                result = result.publish()
+            except (ValueError, OSError) as exc:
+                self._error(exc)
+                return
         if isinstance(result, PeriodicFile):
             dialog = QMessageBox(QMessageBox.Icon.Question, tr("Periodic structure"),
                                  tr("{path.name} contains a periodic structure. Remove periodicity and display a finite structure?", path=path),
@@ -1354,15 +1433,24 @@ class MainWindow(QMainWindow):
             dialog.setDefaultButton(QMessageBox.StandardButton.No)
             if dialog.exec() == QMessageBox.StandardButton.Yes:
                 reader = read_native_session if path.suffix.lower() in (".out", ".log") else read_structure_file
-                self._start_read(path, reader, result)
+                self._start_read(path, reader, result, after_open=after_open)
             else:
                 self.statusBar().showMessage(tr("Periodic structures are unsupported."), 8000)
                 QMessageBox.information(self, tr("Periodic structure"), tr("Periodic structures are unsupported."))
         elif isinstance(result, OpenedStructure):
             self.session = result.session(self.session.calculation)
             self._load_controls(opened_path=path)
-            self.workspace_tabs.setCurrentWidget(self.input_page)
-            if result.record.generated_3d:
+            has_field = result.orbitals or result.cube_grid
+            self.workspace_tabs.setCurrentWidget(self.orbital_panel if has_field else self.input_page)
+            if result.orbitals:
+                message = tr("Loaded {count} molecular orbitals from {name}.",
+                             count=len(result.orbitals.orbitals), name=path.name)
+            elif result.cube_grid:
+                message = tr("Loaded {count} Cube fields from {name}.", count=len(result.cube_grid.fields), name=path.name)
+            elif result.orbital_error:
+                message = tr("Geometry loaded. Molecular orbitals could not be read: {reason}",
+                             reason=diagnostic_text(result.orbital_error))
+            elif result.record.generated_3d:
                 message = tr("Generated a 3D conformer for {path.name} with Open Babel.", path=path)
             elif result.record.removed_periodicity:
                 message = tr("Removed periodicity from {path.name}. Displaying a finite structure.", path=path)
@@ -1370,6 +1458,8 @@ class MainWindow(QMainWindow):
                 message = tr("Loaded molecular structure from {path.name}.", path=path)
             self.log.appendPlainText(message)
             self.statusBar().showMessage(message, 8000)
+            if after_open:
+                after_open()
         elif isinstance(result, Session):
             self._show_native_result(path, result)
         elif isinstance(result, SummaryView):
@@ -1379,6 +1469,8 @@ class MainWindow(QMainWindow):
 
     def _reset_reader(self):
         self._read_timer.stop()
+        self._after_open = None
+        self._read_cancel = None
         self._read_origin = None
         self._read_future = None
         self._pending_result = None
@@ -1389,11 +1481,24 @@ class MainWindow(QMainWindow):
         self.summary_action.setEnabled(True)
 
     def _cancel_read(self):
+        if self._read_cancel is not None:
+            self._read_cancel.set()
         if self._read_future is not None:
             # A reader already parsing may finish independently. Its result is discarded.
-            self._read_future.cancel()
+            future = self._read_future
+            if not future.cancel():
+                future.add_done_callback(self._discard_prepared_molden)
+        if self._pending_result and isinstance(self._pending_result[1], PreparedMolden):
+            self._pending_result[1].folder.cleanup()
         self._reset_reader()
         self.statusBar().showMessage(tr("Opening canceled."), 8000)
+
+    @staticmethod
+    def _discard_prepared_molden(future):
+        if not future.cancelled() and future.exception() is None:
+            result = future.result()
+            if isinstance(result, PreparedMolden):
+                result.folder.cleanup()
 
     def closeEvent(self, event):
         if self._guard_discard():
@@ -1403,6 +1508,7 @@ class MainWindow(QMainWindow):
                     return
                 self._update_dialog.reject()
             self.design_panel.discard_pending_job()
+            self.orbital_panel.shutdown()
             self._cancel_read()
             self._reader.shutdown(wait=False, cancel_futures=True)
             event.accept()

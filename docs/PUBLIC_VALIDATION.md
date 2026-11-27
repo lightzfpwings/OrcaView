@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a73
+
+ORCA 6.1.1 produced water and hydroxyl GBW files and six reference Cube grids. The matching ORCA converter wrote the Molden wavefunctions. OrcaView evaluated the signed orbital amplitudes at all 196,608 grid points. The largest absolute difference from the printed Cube values was 4.38 × 10⁻⁶. The comparison includes occupied and virtual orbitals and both spin channels of the hydroxyl radical. [Water calculation](../examples/orbitals/water.inp) · [Hydroxyl calculation](../examples/orbitals/OH.inp) · [Orbital numerical tests](../tests/test_molden_orbitals.py)
+
+All 807 regression tests passed on Apple Silicon. The app on the read-only macOS disk image produced distinct positive and negative surfaces at all four quality levels for both a Molden file and a Cube file. The native macOS dropdown also passed row visibility and selection checks. [Cube and surface tests](../tests/test_cube_orbitals.py) · [Orbitals workspace tests](../tests/test_orbital_workspace.py)
+
 ## 0.1.0a70
 
 All 785 regression tests passed on Apple Silicon. In the Design workspace, scrolling over the 1BNA DNA duplex (486 atoms) and the 1CRN protein (327 atoms) brought each 2D and 3D view to eight times its fitted scale. The atom under the pointer remained selectable at maximum zoom. Fitting each view restored its original scale and the generated ORCA input matched its contents before zooming. [Zoom and pointer tests](../tests/test_design_biopolymer_zoom.py)

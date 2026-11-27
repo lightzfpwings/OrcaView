@@ -1,0 +1,13 @@
+! UHF def2-SVP TightSCF
+%plots Format Gaussian_Cube
+ Dim1 32
+ Dim2 32
+ Dim3 32
+ MO("OH-4-0.cube", 4, 0);
+ MO("OH-3-1.cube", 3, 1);
+ MO("OH-4-1.cube", 4, 1);
+end
+* xyz 0 2
+O 0 0 0
+H 0 0 0.97
+*

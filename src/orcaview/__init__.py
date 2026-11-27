@@ -1,6 +1,6 @@
 """OrcaView is a modular desktop workbench for ORCA."""
 
-__version__ = "0.1.0a70"
+__version__ = "0.1.0a73"
 ARCHITECTURE_VERSION = "prototype-1"
 LEGACY_PROJECT_SCHEMA_VERSION = 1
 DOCUMENT_PROJECT_SCHEMA_VERSION = 2

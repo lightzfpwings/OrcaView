@@ -119,6 +119,14 @@ def check(assets, version):
                 return result.stdout
 
             assert run("--version").strip() == version
+            if _version_key(version) >= _version_key("0.1.0a73"):
+                for name in ("OH.molden.input", "water-homo.cube"):
+                    image = work / (name + ".png")
+                    run("gui", examples / "Orbitals" / name, "--workspace", "orbitals",
+                        "--window-size", "1120", "780", "--screenshot", image)
+                    data = image.read_bytes()
+                    assert data[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", data[16:24]) == (1120, 780), name
+                print("Rendered the bundled hydroxyl Molden and water HOMO Cube in the Orbitals workspace.")
             if _version_key(version) >= _version_key("0.1.0a70"):
                 # Exercise the bundled native PDB reader and the two packaged renderers offline.
                 pdb = work / "glycine.pdb"

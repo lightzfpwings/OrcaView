@@ -45,7 +45,7 @@ def _view_options(parser):
 
 def add_gui_options(gui):
     gui.add_argument("input", type=Path, nargs="?", help="Structure, project or ORCA output to open")
-    gui.add_argument("--workspace", choices=("input", "design", "result"))
+    gui.add_argument("--workspace", choices=("input", "design", "result", "orbitals"))
     gui.add_argument("--screenshot", type=Path, help="Write a desktop screenshot offscreen, then exit")
     gui.add_argument("--window-size", type=int, nargs=2, metavar=("WIDTH", "HEIGHT"))
     gui.add_argument("--bottom-tab", choices=("input", "summary", "log"))
@@ -224,15 +224,20 @@ def _camera(view, args):
     view.update()
 
 
-def _configure_window(window, args):
+def _configure_window(window, args, *, already_open=False):
     from orcaview.cli_io import load_session
 
-    page = {"input": window.input_page, "design": window.design_panel, "result": window.foundation_panel}
+    page = {"input": window.input_page, "design": window.design_panel, "result": window.foundation_panel,
+            "orbitals": window.orbital_panel}
     selected_result = args.dataset is not None or args.snapshot is not None
     if selected_result and (not args.input or args.workspace not in (None, "result")):
         raise ValueError("To select a result, open an input file in the Result workspace")
-    if args.input:
+    if args.input and not already_open:
         path = Path(args.input)
+        if path.suffix.lower() == ".gbw" and not args.screenshot:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: window.open_gbw(path, lambda: _configure_window(window, args, already_open=True)))
+            return
         session = load_session(path, finite=args.finite, calculation=window.default_calculation)
         project = str(path) if path.suffix.lower() == ".json" else None
         if project is None and session.log_report is not None and not session.molecule.atoms:
@@ -247,7 +252,10 @@ def _configure_window(window, args):
             else:
                 window.session = session
                 window._load_controls(project_path=project, opened_path=path)
-                window.workspace_tabs.setCurrentWidget(window.input_page if session.molecule.atoms else window.design_panel)
+                if (session.molden_orbitals or session.cube_grid) and args.workspace is None:
+                    window.workspace_tabs.setCurrentWidget(window.orbital_panel)
+                else:
+                    window.workspace_tabs.setCurrentWidget(window.input_page if session.molecule.atoms else window.design_panel)
     if selected_result:
         window.workspace_tabs.setCurrentWidget(page["result"])
         result = window.foundation_panel
@@ -256,7 +264,14 @@ def _configure_window(window, args):
         else:
             result.view_geometry(_snapshot(window.session.document, args.snapshot).ref)
     elif args.workspace is not None:
+        if args.workspace == "orbitals":
+            window.orbital_panel.finish_loading()
+            if window.orbital_panel.wave is None:
+                raise ValueError(window.orbital_panel.status.text() or "Open a Molden wavefunction or a Cube file.")
         window.workspace_tabs.setCurrentWidget(page[args.workspace])
+    if args.screenshot and window.workspace_tabs.currentWidget() is window.orbital_panel:
+        window.orbital_panel.finish_for_capture()
+        window.statusBar().clearMessage()
     _layout(window, args)
     settings, colors = _appearance(args, window.appearance_store)
     window.appearance = settings
