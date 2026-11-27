@@ -1,8 +1,10 @@
 # M6 K0 来源、构建与依赖审查
 
+这里保存 2026 年 11 月对 Multiwfn 上游实现的研究与核验工具。OrcaView 0.1.0a76 的八种轨道成分分析均使用应用内置算法。[当前轨道分析](../docs/ORBITALS.md)
+
 ## 来源与本机验证
 
-对照程序固定为 Multiwfn `2026.11.12`。2026-11-12 的项目审查从官方站点取得 `Multiwfn_2026.11.12_src_Linux.zip`，核对大小 `3,635,867` 字节、SHA-256 `f41897accb99d0a7bc1d156ef6a387075f6b2f21acdac0f775db3dccb8424503`、78 个目录条目、根目录 `Multiwfn_2026.11.12_src_Linux/`，以及源码中的版本标记。直接使用日期固定的文件，同名或 `latest` 下载均需通过哈希验证。本次只记录上游来源并使用本项目原有审查证据补充构建清单。 [官方下载页](http://sobereva.com/multiwfn/download.html) · [固定源码包](http://sobereva.com/multiwfn/misc/Multiwfn_2026.11.12_src_Linux.zip) · [2026-11-12 原审查](../docs/research/MULTIWFN_SOURCE_REVIEW.md)
+对照程序固定为 Multiwfn `2026.11.12`。2026-11-12 的项目审查从官方站点取得 `Multiwfn_2026.11.12_src_Linux.zip`，核对大小 `3,635,867` 字节、SHA-256 `f41897accb99d0a7bc1d156ef6a387075f6b2f21acdac0f775db3dccb8424503`、78 个目录条目、根目录 `Multiwfn_2026.11.12_src_Linux/`，以及源码中的版本标记。直接使用日期固定的文件，同名或 `latest` 下载均需通过哈希验证。本次只记录上游来源并使用本项目原有审查证据补充构建清单。 [官方下载页](http://sobereva.com/multiwfn/download.html) · [固定源码包](http://sobereva.com/multiwfn/misc/Multiwfn_2026.11.12_src_Linux.zip) · [2026-11-12 原审查](../docs/history/design/research/MULTIWFN_SOURCE_REVIEW.md)
 
 2026-11-19 本机 `uname -sm` 为 `Darwin arm64`。项目、旧临时缓存和已检查的下载路径均未找到固定 ZIP；`ifort`、`ifx`、`gfortran`、`flang`、Docker 和 Podman 均未在 `PATH` 找到，`/opt/intel` 不存在。默认环境用 `curl` 请求固定 HTTPS/HTTP 路径均退出 `6`（DNS），允许网络后 HTTPS 退出 `35`（TLS 握手失败），HTTP 退出 `52`（服务器空响应）。网页检索也未取得固定 ZIP。本轮在这些条件下完成来源核对流程和静态审查；固定 ZIP 重新验哈希、原版 noGUI 构建、真实原版数值对照以及派生库链接均尚无本轮证据。
 
@@ -52,7 +54,7 @@ ldd Multiwfn_noGUI | tee "$ov_build_dir/runtime.log"
 
 ## 计算闭包与第三方清单
 
-以下是基于已登记源码的过渡依赖图，行号相对同一固定 ZIP 目录。这里列出保留、需拆分和暂缓的路径，最终闭包须以派生库编译、符号审查和入口故障测试验证。 [上游证据位置](../docs/MULTIWFN_ENGINE_DESIGN.md)
+以下是基于已登记源码的过渡依赖图，行号相对同一固定 ZIP 目录。这里列出保留、需拆分和暂缓的路径，最终闭包须以派生库编译、符号审查和入口故障测试验证。 [上游证据位置](../docs/history/design/MULTIWFN_ENGINE_DESIGN.md)
 
 | 入口或依赖 | 采用范围与核对项 |
 |---|---|

@@ -1,16 +1,13 @@
-"""Run the regression archive and the checkout's new or updated tests."""
+"""Run the regression suite from this checkout with isolated default preferences."""
 
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
-from zipfile import ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ARCHIVE = ROOT / "artifacts" / "public" / "OrcaView-verification-0.1.0a44.zip"
 
 
 def main():
@@ -19,15 +16,9 @@ def main():
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
     with TemporaryDirectory(prefix="orcaview-tests-") as temp:
-        work = Path(temp)
-        with ZipFile(ARCHIVE) as archive:
-            archive.extractall(work)
-        if (ROOT / "tests").is_dir():
-            shutil.copytree(ROOT / "tests", work / "tests", dirs_exist_ok=True,
-                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        shutil.copytree(ROOT / "examples", work / "examples")
+        env.setdefault("ORCAVIEW_CONFIG_DIR", temp)
         command = [sys.executable, "-m", "unittest", "discover", "-s", "tests", *sys.argv[1:]]
-        return subprocess.run(command, env=env, cwd=work).returncode
+        return subprocess.run(command, env=env, cwd=ROOT).returncode
 
 
 if __name__ == "__main__":

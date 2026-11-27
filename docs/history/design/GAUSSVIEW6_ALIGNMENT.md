@@ -33,7 +33,7 @@ ORCA 的实现依据另行使用其官方手册：几何优化 §4.1、Surface S
 | 输入准备 | 四个方法、三个 def2 基组、四类任务、电子态/资源设置、只读预览与导出 | `core/models.py:11–12,102–127`；`orca/input.py:6–19` |
 | 保存与文档 | 单文档/单设置；项目保存结构、设置与来源提示；不保存结果、历史或视图 | `application/session.py:19–25`；`application/project.py:14–78` |
 | 结果摘要 | 单作业结束/SCF/优化证据和末次能量；未关联当前分子，也未持久化 | `orca/output.py:19–86`；`gui/main_window.py:374–388` |
-| 尚未实现 | 真实运行、完整轨迹、振动、谱、MO/Cube/ESP、内部 Multiwfn 计算 | 见 [当前契约](CONTRACTS.md)与[路线图](ROADMAP.md) |
+| 尚未实现 | 真实运行、完整轨迹、振动、谱、MO/Cube/ESP、内部 Multiwfn 计算 | 见 [当前契约](../../CONTRACTS.md)与[路线图](ROADMAP.md) |
 
 代码导航均相对 `src/orcaview/`。模型能够保存显式键记录不等于 GUI 已有键编辑；项目文件的“原子替换式保存”指文件写入方式，不是替换化学原子的功能。
 

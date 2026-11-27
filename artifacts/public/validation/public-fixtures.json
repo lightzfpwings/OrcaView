@@ -6,52 +6,62 @@
     {
       "path": "artifacts/validation/ORCA-6.1.1-macOS-arm64/compound-wb97m2/job.out",
       "original_sha256": "957f5beb2c4d1d0b012d13db6f5ed4b6cae0e780fbeb8b5b4b7ce0f5b6f0790d",
-      "public_sha256": "d2e6a40530b151d05164adc70cf271bcd35e853ae2a4e4f315571a20d76ef6b6"
+      "public_sha256": "d2e6a40530b151d05164adc70cf271bcd35e853ae2a4e4f315571a20d76ef6b6",
+      "public_path": "artifacts/public/validation/ORCA-6.1.1-macOS-arm64/compound-wb97m2/job.out"
     },
     {
       "path": "artifacts/validation/ORCA-6.1.1-macOS-arm64/eom/job.out",
       "original_sha256": "7890d5a2264a75e74852f099a68d11bfd422c5296e3be7fe9d4211d197d88d20",
-      "public_sha256": "3c4265baf21b965bc4e52156f3035aedde733f39ecebbd59f17168af2107e7dc"
+      "public_sha256": "3c4265baf21b965bc4e52156f3035aedde733f39ecebbd59f17168af2107e7dc",
+      "public_path": "artifacts/public/validation/ORCA-6.1.1-macOS-arm64/eom/job.out"
     },
     {
       "path": "artifacts/validation/ORCA-6.1.1-macOS-arm64/optfreq/job.out",
       "original_sha256": "d7b1fed20fb9277ed463bb13ba19d29f710b9cb77e1379b4c1c0e0aa9016cff1",
-      "public_sha256": "f0d7b381b83c78f78de831e0cdf9f98227c428d027d08bb458000ef3ad4542d5"
+      "public_sha256": "f0d7b381b83c78f78de831e0cdf9f98227c428d027d08bb458000ef3ad4542d5",
+      "public_path": "artifacts/public/validation/ORCA-6.1.1-macOS-arm64/optfreq/job.out"
     },
     {
       "path": "artifacts/validation/ORCA-6.1.1-macOS-arm64/pal4/job.out",
       "original_sha256": "cecc045ba8a973c85d1649d3632d0294401b439f297d91cc839d6f6735def7db",
-      "public_sha256": "077826531478e4ddae1beff4350e3405087159fefb1f12e57b9bc36172e3d787"
+      "public_sha256": "077826531478e4ddae1beff4350e3405087159fefb1f12e57b9bc36172e3d787",
+      "public_path": "artifacts/public/validation/ORCA-6.1.1-macOS-arm64/pal4/job.out"
     },
     {
       "path": "artifacts/validation/ORCA-6.1.1-macOS-arm64/rimp2/job.out",
       "original_sha256": "58816be08ae996901720953f4745552fad5ce2d0356cdae487a5526644bfce5c",
-      "public_sha256": "4db0e7bc00c5545d4630ce049f51315b51c1bc66f7341d15f4a8e775a7037c98"
+      "public_sha256": "4db0e7bc00c5545d4630ce049f51315b51c1bc66f7341d15f4a8e775a7037c98",
+      "public_path": "artifacts/public/validation/ORCA-6.1.1-macOS-arm64/rimp2/job.out"
     },
     {
       "path": "artifacts/validation/ORCA-6.1.1-macOS-arm64/smd/job.out",
       "original_sha256": "64b33c9f50ff1b6fac9ebe53cb126e61ff15a20828528d2d68d06f0fa761c5b0",
-      "public_sha256": "b714ec43763eadc1a9e576667345e1cfe1eb0817ac02096d9aad9adf09ff06ff"
+      "public_sha256": "b714ec43763eadc1a9e576667345e1cfe1eb0817ac02096d9aad9adf09ff06ff",
+      "public_path": "artifacts/public/validation/ORCA-6.1.1-macOS-arm64/smd/job.out"
     },
     {
       "path": "artifacts/validation/results-0.1.0a12/nmr/water-shield.out",
       "original_sha256": "78bfb6f1ac573ea6275feaab0524500c599699521484715711abb874477e8c0c",
-      "public_sha256": "b6964c10580dd62d4e4563523d4d37c1bf887683c2ba3001fcf5784e6065725a"
+      "public_sha256": "b6964c10580dd62d4e4563523d4d37c1bf887683c2ba3001fcf5784e6065725a",
+      "public_path": "artifacts/public/validation/results-0.1.0a12/nmr/water-shield.out"
     },
     {
       "path": "artifacts/validation/results-0.1.0a12/raman/water.out",
       "original_sha256": "adf863737fc3150164249cb42e2ee419f6169bb21597203489d6ebe5b17755b4",
-      "public_sha256": "d4444b317a486def7bd7a8e55840962f1ed4f3c853ae3159fa0aaf9f9a060df1"
+      "public_sha256": "d4444b317a486def7bd7a8e55840962f1ed4f3c853ae3159fa0aaf9f9a060df1",
+      "public_path": "artifacts/public/validation/results-0.1.0a12/raman/water.out"
     },
     {
       "path": "artifacts/validation/results-0.1.0a12/tdcd/peroxide.out",
       "original_sha256": "1784fe95255ab49aad45eafb5d3c47b406c95da186f40b0f50cd9e5c6eac251f",
-      "public_sha256": "65b0f3d0609a5fb8e2e8f6b22da562b893a7feb13ddb6f7ca9b03de74b3361ae"
+      "public_sha256": "65b0f3d0609a5fb8e2e8f6b22da562b893a7feb13ddb6f7ca9b03de74b3361ae",
+      "public_path": "artifacts/public/validation/results-0.1.0a12/tdcd/peroxide.out"
     },
     {
       "path": "artifacts/validation/results-grid-0.1.0a22/water-hirshfeld.out",
       "original_sha256": "d2333391d177cb652fa74812990d36993334ff5c72f175dcf6f79a64839c1b89",
-      "public_sha256": "72e54798ea33a80f385e016abc304bd319811430f3fea5b37776f4324a9f3967"
+      "public_sha256": "72e54798ea33a80f385e016abc304bd319811430f3fea5b37776f4324a9f3967",
+      "public_path": "artifacts/public/validation/results-grid-0.1.0a22/water-hirshfeld.out"
     }
   ]
 }

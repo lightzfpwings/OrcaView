@@ -55,7 +55,7 @@ class OpenFileWindowTests(unittest.TestCase):
 
     def test_results_and_spectra_follow_open_file_and_saved_project(self):
         root = Path(__file__).resolve().parents[1]
-        nmr = root / "artifacts/validation/results-0.1.0a12/nmr"
+        nmr = root / "artifacts/public/validation/results-0.1.0a12/nmr"
         project = Path(self.work.name) / "NMR.oview.json"
         panel = self.window.foundation_panel
 

@@ -1,0 +1,24 @@
+{
+  "content_digest": "e1eec7946942e4d36055926ac7c4906fe4aa269eb89286276fad935ad65de82d",
+  "encoding": "utf-8",
+  "files": [
+    {
+      "relative_path": "job.inp",
+      "role": "main_input",
+      "sha256": "9972c23074dbd45620ba884baf4a9376ae5f212fd73d33304b5011bae999915b",
+      "size_bytes": 269
+    }
+  ],
+  "geometry_content_hash": "b4093bffefdc77bce8398dc643604e9e23b2f15868c17e61471cb045f5fa423e",
+  "geometry_ref": {
+    "contract_version": 1,
+    "document_id": "bf0a13e6df7644ff9d909b93b0cdd454",
+    "frame_id": null,
+    "revision": 1,
+    "snapshot_id": "78fba451234045d1b17ec226abb23f23"
+  },
+  "input_snapshot_version": 1,
+  "manifest_version": 1,
+  "snapshot_digest": "21834cd4c8ab4645d8a613cf862ab8fc0881247266be8fef584e0f6522a06304",
+  "target_orca_version": "6.1.1"
+}

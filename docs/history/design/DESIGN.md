@@ -148,7 +148,7 @@ flowchart TD
 
 ## 7. 当前契约与未来稳定契约
 
-当前 `Atom`、`Bond`、`Molecule`、`CalculationSpec` 为 frozen dataclass；原子及键集合使用 tuple。`Session` 是可变的应用会话，`OutputSummary` 是有限文本摘要。2026-11-19的M1首批已实现 `MoleculeDocument`、`GeometryRef/GeometrySnapshot/SelectionContext`、来源、公共结果载荷和事件/资源对象，并通过独立验收。精确字段和API见 [当前契约](CONTRACTS.md)；G0跨模块仍是提案。下表保留完整设计方向，不能据此推断所有扩展已实现，当前公开版本的验证范围见[发行验证记录](PUBLIC_VALIDATION.md)。
+当前 `Atom`、`Bond`、`Molecule`、`CalculationSpec` 为 frozen dataclass；原子及键集合使用 tuple。`Session` 是可变的应用会话，`OutputSummary` 是有限文本摘要。2026-11-19的M1首批已实现 `MoleculeDocument`、`GeometryRef/GeometrySnapshot/SelectionContext`、来源、公共结果载荷和事件/资源对象，并通过独立验收。精确字段和API见 [当前契约](../../CONTRACTS.md)；G0跨模块仍是提案。下表保留完整设计方向，不能据此推断所有扩展已实现，当前公开版本的验证范围见[发行验证记录](../../PUBLIC_VALIDATION.md)。
 
 | 目标契约 | 最小字段与规则 | 对当前原型的迁移 |
 |---|---|---|

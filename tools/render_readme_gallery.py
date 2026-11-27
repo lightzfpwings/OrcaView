@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "artifacts" / "public"
+ASSETS = ROOT / "docs" / "images"
 
 
 def render(output):

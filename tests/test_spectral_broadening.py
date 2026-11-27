@@ -11,11 +11,7 @@ from orcaview.results.nmr import coupling_pairs, plot_source, shielding_elements
 class PrintedSticksTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        artifacts = Path(__file__).resolve().parents[1] / "artifacts"
-        validation = artifacts / "public/validation"
-        if not validation.is_dir():
-            validation = artifacts / "validation"
-        cls.fixtures = validation / "results-0.1.0a12"
+        cls.fixtures = Path(__file__).resolve().parents[1] / "artifacts/public/validation/results-0.1.0a12"
 
     def test_real_ir_raman_keep_their_own_intensities_on_wavenumber_axis(self):
         ir, raman = parse_log_spectra((self.fixtures / "raman/water.out").read_text())

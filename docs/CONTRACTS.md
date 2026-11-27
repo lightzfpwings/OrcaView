@@ -1,6 +1,6 @@
 # OrcaView 当前公开契约
 
-OrcaView `0.1.0a70` 可读写 schema 1–14。写入时按计算设置、文档历史与日志报告选择能完整表示它们的最早项目格式。各版本新增字段见下文。[原始架构基线](DESIGN.md)
+OrcaView `0.1.0a76` 可读写 schema 1–14。写入时按计算设置、文档历史与日志报告选择能完整表示它们的最早项目格式。各版本新增字段见下文。[原始架构基线](history/design/DESIGN.md)
 
 ## 核心对象
 
@@ -19,7 +19,7 @@ schema 4 的计算记录在 schema 3 字段上增加 `integral_approximation, au
 
 schema 5 在计算记录中增加 `block_options` 数组，按 `{"block":"scf","key":"MaxIter","value":250}` 保存每个手动值。内层路径例如 `casscf.CI`，值使用 JSON 原生数值、布尔值或枚举字符串。仅允许目录中与当前方法、作业和近似匹配的字段。同一字段重复赋值、类型错误和已知冲突会拒绝加载或导出。恢复全部默认后，再次保存会选用能表示其余设置的最早格式。
 
-现有任务为 `SP, OPT, FREQ, OPT_FREQ`。默认设置为 `B3LYP / def2-SVP / SP / 4 cores / 1000 MB per core`。各方法选用适用的任务子集。频率任务按方法写出 `Freq` 或 `NumFreq`。
+现有任务为 `SP, OPT, FREQ, OPT_FREQ, OPT_TS, IRC`。默认设置为 `B3LYP / def2-SVP / SP / 16 cores / 4096 MB per core`。各方法选用适用的任务子集。频率任务按方法写出 `Freq` 或 `NumFreq`。
 
 ## 文件和应用服务
 

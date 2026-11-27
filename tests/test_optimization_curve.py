@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import unittest
 
-import orcaview
 from orcaview.core.provenance import ArtifactRef
 from orcaview.orca.log_report import parse_log_report
 from orcaview.results.optimization import optimization_runs
@@ -22,12 +21,8 @@ def runs(text):
 
 
 def validation_log(path):
-    relative = Path("artifacts/public/validation") / path
-    # run_tests.py assembles tests in a temporary directory while importing the checkout.
-    for root in (Path(__file__).resolve().parents[1], Path(orcaview.__file__).resolve().parents[2]):
-        if (root / relative).is_file():
-            return (root / relative).read_text(encoding="utf-8")
-    raise FileNotFoundError(relative)
+    fixture = Path(__file__).resolve().parents[1] / "artifacts/public/validation" / path
+    return fixture.read_text(encoding="utf-8")
 
 
 def water_log():

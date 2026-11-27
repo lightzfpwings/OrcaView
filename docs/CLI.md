@@ -1,10 +1,10 @@
 # OrcaView 命令行与批处理
 
-以下命令适用于 0.1.0a49 起的本地试用版。在仓库的虚拟环境中使用 `orcaview`，Linux 便携包使用解压目录中的 `./OrcaView`，macOS 应用使用 `/path/to/OrcaView.app/Contents/MacOS/OrcaView`，Windows 便携包使用 `OrcaView.exe`。运行 `orcaview --help` 查看入口，子命令均支持 `--help`。
+以下命令适用于 OrcaView 0.1.0a76。在仓库的虚拟环境中使用 `orcaview`，Linux 便携包使用解压目录中的 `./OrcaView`，macOS 应用使用 `/path/to/OrcaView.app/Contents/MacOS/OrcaView`，Windows 便携包使用 `OrcaView.exe`。运行 `orcaview --help` 查看入口，子命令均支持 `--help`。
 
 ## 新任务的核数和内存
 
-从 0.1.0a51 起，桌面和命令行新建计算都默认使用 **16 核、每个 ORCA 进程 4096 MB**。生成的输入中对应 `nprocs 16` 和 `%maxcore 4096`。例如，`orcaview preview molecule.xyz --cores 8` 使用 8 核、每进程 4096 MB。也可以单独指定 `--maxcore`。打开已有项目时沿用保存的核数和内存，`--reset-calculation` 可恢复全部计算选项的默认值。
+桌面和命令行新建计算都默认使用 **16 核、每个 ORCA 进程 4096 MB**。生成的输入中对应 `nprocs 16` 和 `%maxcore 4096`。例如，`orcaview preview molecule.xyz --cores 8` 使用 8 核、每进程 4096 MB。也可以单独指定 `--maxcore`。打开已有项目时沿用保存的核数和内存，`--reset-calculation` 可恢复全部计算选项的默认值。
 
 `orcaview resources` 以 JSON 输出当前节点的 CPU 上限和可用内存。`target` 对应新任务的固定默认值，`recommended` 显示按该节点资源算出的建议值。建议按可用内存的 75% 估算，在 Linux 上还会计入 CPU 亲和性、可读取的 cgroup 配额和 Slurm 的本节点分配。[ORCA 内存设置说明](https://www.faccts.de/docs/orca/6.1/manual/contents/quickstartguide/troubleshooting.html#out-of-memory-oom)
 
@@ -13,6 +13,10 @@
 数据、项目、计算、设置和光谱数据导出可在终端运行。无桌面会话、图形后端不可用或显式设定 `ORCAVIEW_HEADLESS=1` 时，`gui` 跳过显示并以状态 0 退出。在 SSH、调度器或持续集成任务中可以显式设置这个环境变量。
 
 `render`、`spectrum --format png` 和 `gui --screenshot` 在独立进程中使用软件离屏渲染，成功时安静退出。桌面包自带 Qt 离屏插件；源码安装可使用项目的 `gui` 依赖。生成图片需要可加载的离屏后端及系统运行库，缺少时命令返回非零并写入标准错误。渲染超时以秒为单位，由 `ORCAVIEW_RENDER_TIMEOUT` 指定，默认为 300。结果数据与设置可在完全没有 Qt 的安装中使用。读取 MOL/SDF、3D 优化等原本依赖 Open Babel 的操作仍需要对应的化学引擎。
+
+## 从命令行查看轨道
+
+运行 `orcaview gui job.uno`，确认转换后即可查看自然占据数和等值面。要直接生成图片，可运行 `orcaview gui job.uno --workspace orbitals --screenshot uno.png`。桌面包中附有 OH 的 UNO、UNSO 两个示例和水分子的 HOMO Cube 文件。[轨道文件及分解方法](ORBITALS.md)
 
 ## 常用入口
 

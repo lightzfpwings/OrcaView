@@ -1,3 +1,6 @@
 # Keep the original ORCA output bytes so linked examples have the same SHA-256 on every platform.
 examples/orbitals/*.molden.input -text -whitespace
 examples/orbitals/*.cube -text -whitespace
+# Preserve published ORCA fixture digests and the legacy input snapshot manifest.
+artifacts/public/validation/** -text
+tests/fixtures/legacy-inline-a25/* -text
