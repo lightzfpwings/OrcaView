@@ -24,6 +24,31 @@
       "name": "imageio_ffmpeg-0.8.1-py3-none-manylinux_2_28_x86_64.whl",
       "url": "https://files.pythonhosted.org/packages/de/0f/49292fbef69ee10ebcf97bb741602521caafcc6966d5fa1a2b868cc15655/imageio_ffmpeg-0.8.1-py3-none-manylinux_2_28_x86_64.whl",
       "sha256": "050d6850601c3b3890bd2b28306f3b842b3daea390a561101174375a1c460bda"
+    },
+    {
+      "name": "numpy-2.5.5-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/40/d6/68dd5a83914bbcaf32b3165993f7955979916708cb0156d1e28231e18803/numpy-2.5.5-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "824025655df929268bfe6b47ed91a00d14209a6f760847cf150be446829e1ce4"
+    },
+    {
+      "name": "wgpu-0.33.0-py3-none-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/2b/c6/67fcf94c78fd6006529887b43ca99e6ecbdbfb6df100cd4d85b4627402ac/wgpu-0.33.0-py3-none-manylinux_2_28_x86_64.whl",
+      "sha256": "5e13ce9f94350f7c70de9edb0fd2843dd38f474fac5aaaca01611ef6dc011c96"
+    },
+    {
+      "name": "cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/95/95/86342356ff5953b3fb06f7ef7c5bee212d45e770abc7218d451b9148313c/cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "a931079504ecc49efed7744c476a5c343a92fabf66dec2db95edb1b2fdc770e2"
+    },
+    {
+      "name": "pycparser-3.12-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b6/ae/315bbeee126a769cbde43cf4908acb4b40408d8bf8bbf334dd7368d8dadf/pycparser-3.12-py3-none-any.whl",
+      "sha256": "a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e"
+    },
+    {
+      "name": "rendercanvas-3.0.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b7/c9/809e3c95a16597395a32e3efad3221d77fa36106473b290a95aa1f0306d1/rendercanvas-3.0.1-py3-none-any.whl",
+      "sha256": "b574258ebe54e120304ba20702fee6d825a9ad701afa0c247b367d988d8cb40b"
     }
   ],
   "windows": [
@@ -51,6 +76,31 @@
       "name": "imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl",
       "url": "https://files.pythonhosted.org/packages/82/0c/a1d49f3dd2688bd750b4986f8e271ad11f8e729a896070ea25f587b44da8/imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl",
       "sha256": "f27ca4cb85e2d4946deedbce1a81245dfd942a2bcf94b53676fb3956aa95bf1b"
+    },
+    {
+      "name": "numpy-2.5.5-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/45/74/bb9161943fb65caf24e4bb04c788f5c7815e6cb78ac595e7f46781033c82/numpy-2.5.5-cp313-cp313-win_amd64.whl",
+      "sha256": "e0608d1585557b68dcb6a70a41654f7536567960afad79d91752d2863b242b68"
+    },
+    {
+      "name": "wgpu-0.33.0-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/c8/b0/92c91610b14158f53b2b4cb213ace4fd017fd87822c96c2ec46936709617/wgpu-0.33.0-py3-none-win_amd64.whl",
+      "sha256": "8f17bd24115d74657234eacd5410d7cc1e6b6366ef9ff515e99d7463e17e8895"
+    },
+    {
+      "name": "cffi-2.1.1-cp313-cp313-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/60/a6/8b149b2c3f2e11aaa1618ef64500b45f50f22c57a977a4dff1aff1f91042/cffi-2.1.1-cp313-cp313-win_amd64.whl",
+      "sha256": "1aa5645c30469b09530c4ebca77ebf8f17618293c58f8549cb1a543a50236e7d"
+    },
+    {
+      "name": "pycparser-3.12-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b6/ae/315bbeee126a769cbde43cf4908acb4b40408d8bf8bbf334dd7368d8dadf/pycparser-3.12-py3-none-any.whl",
+      "sha256": "a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e"
+    },
+    {
+      "name": "rendercanvas-3.0.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b7/c9/809e3c95a16597395a32e3efad3221d77fa36106473b290a95aa1f0306d1/rendercanvas-3.0.1-py3-none-any.whl",
+      "sha256": "b574258ebe54e120304ba20702fee6d825a9ad701afa0c247b367d988d8cb40b"
     }
   ],
   "shared": [

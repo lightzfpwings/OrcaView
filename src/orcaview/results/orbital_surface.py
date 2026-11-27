@@ -18,6 +18,12 @@ def _check_cancel(event):
 
 def sample_grid(expansion, axes, cancel=None):
     """Exploit the separability of each Cartesian Gaussian along x, y and z."""
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is not None:
+        return _sample_array(expansion, axes, cancel, np)
     nx, ny, nz = map(len, axes)
     grid = [0.] * (nx*ny*nz)
     for center, primitives, terms in expansion:
@@ -53,6 +59,31 @@ def sample_grid(expansion, axes, cancel=None):
     return grid
 
 
+def _sample_array(expansion, axes, cancel, np):
+    """Accumulate separable primitive products in native loops over bounded slabs."""
+    grid = np.zeros(tuple(map(len, axes)))
+    axes = [np.asarray(axis) for axis in axes]
+    for center, primitives, terms in expansion:
+        relative = [axis-c for axis, c in zip(axes, center)]
+        degrees = [set(power[k] for power, _ in terms) for k in range(3)]
+        for exponent, weight in primitives:
+            _check_cancel(cancel)
+            radius = math.sqrt(50/exponent)
+            slices = [slice(v.searchsorted(-radius), v.searchsorted(radius, side="right")) for v in relative]
+            block = grid[tuple(slices)]
+            if not block.size:
+                continue
+            tables = []
+            for coords, bounds, powers in zip(relative, slices, degrees):
+                v = coords[bounds]
+                gaussian = np.exp(-exponent*v*v)
+                tables.append({p: gaussian*v**p for p in powers})
+            for (px, py, pz), coefficient in terms:
+                xy = (weight*coefficient*tables[0][px][:, None])*tables[1][py]
+                block += xy[:, :, None]*tables[2][pz]
+    return grid.ravel()
+
+
 @dataclass(frozen=True)
 class OrbitalSurface:
     vertices: tuple  # Cartesian angstroms
@@ -62,8 +93,10 @@ class OrbitalSurface:
 
 
 _CORNERS = tuple((x, y, z) for x in (0, 1) for y in (0, 1) for z in (0, 1))
-_TETRAHEDRA = ((0, 4, 6, 7), (0, 6, 2, 7), (0, 2, 3, 7),
-               (0, 3, 1, 7), (0, 1, 5, 7), (0, 5, 4, 7))
+# Face rings are oriented out of the cell. Opposite faces share a diagonal
+# even when the bilinear saddle lies exactly on the requested level.
+_FACE_RINGS = ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1),
+               (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3))
 
 
 @dataclass(frozen=True)
@@ -77,43 +110,67 @@ class SurfaceQuality:
 
 # Display order is shared with the viewer. "fine" is the saved key for the highest setting.
 SURFACE_QUALITIES = {
-    "coarse": SurfaceQuality("Coarse", 52, .25, 24, 1),
-    "standard": SurfaceQuality("Standard", 76, .17, 36, 2),
-    "smooth": SurfaceQuality("Smooth", 100, .12, 48, 3),
-    "fine": SurfaceQuality("Best", 128, .09, 64, 4),
+    "coarse": SurfaceQuality("Coarse", 52, .25, 24, 2),
+    "standard": SurfaceQuality("Standard", 76, .17, 36, 3),
+    "smooth": SurfaceQuality("Smooth", 100, .12, 48, 4),
+    "fine": SurfaceQuality("Best", 128, .09, 64, 5),
 }
 
 
-def _cut_polygons(mask):
-    """Precompute outward polygon order; all cells share the same face diagonals."""
-    polygons = []
-    for tetra in _TETRAHEDRA:
-        inside = [k for k in tetra if mask & (1 << k)]
-        outside = [k for k in tetra if not mask & (1 << k)]
-        if not inside or not outside:
-            continue
-        if len(inside) == 2:
-            a, b = inside
-            c, d = outside
-            edges = [(a, c), (a, d), (b, d), (b, c)]
-        else:
-            edges = [(a, b) for a in inside for b in outside]
-        mid = [tuple((x+y)/2 for x, y in zip(_CORNERS[a], _CORNERS[b])) for a, b in edges[:3]]
-        u, v = (tuple(y-x for x, y in zip(mid[0], point)) for point in mid[1:])
-        normal = (u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0])
-        outward = (b-a for a, b in zip(_CORNERS[inside[0]], _CORNERS[outside[0]]))
-        if sum(a*b for a, b in zip(normal, outward)) < 0:
-            edges.reverse()
-        polygons.append(tuple((min(a, b), max(a, b)) for a, b in edges))
-    return tuple(polygons)
+@lru_cache(maxsize=1024)
+def _contours(mask, diagonals=0):
+    """Join face crossings into cell contours, using a shared edge at every seam."""
+    links = {}
+    for i, ring in enumerate(_FACE_RINGS):
+        cuts = []
+        for j, a in enumerate(ring):
+            b = ring[(j+1) % 4]
+            inside = bool(mask & (1 << a))
+            if inside != bool(mask & (1 << b)):
+                cuts.append(((min(a, b), max(a, b)), inside))
+        if len(cuts) == 4 and not diagonals & (1 << i):
+            cuts = cuts[1:]+cuts[:1]
+        for (u, outgoing), (v, _) in zip(cuts[::2], cuts[1::2]):
+            if outgoing:
+                links[v] = u
+            else:
+                links[u] = v
+    loops = []
+    while links:
+        first = edge = next(iter(links))
+        loop = []
+        while True:
+            loop.append(edge)
+            edge = links.pop(edge)
+            if edge == first:
+                break
+        loops.append(tuple(loop))
+    return tuple(loops)
 
 
-_CASES = tuple(_cut_polygons(mask) for mask in range(256))
+_SADDLES = tuple(tuple(i for i, (a, b, c, d) in enumerate(_FACE_RINGS)
+                       if (mask >> a & 1) == (mask >> c & 1) != (mask >> b & 1) == (mask >> d & 1))
+                 for mask in range(256))
 
 
 def _crossing_cells(values, shape, level, cancel):
     nx, ny, nz = shape
     sx, sy = ny*nz, nz
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is not None:
+        field = np.asarray(values).reshape(shape)
+        for x in range(nx-1):
+            _check_cancel(cancel)
+            slab = field[x:x+2]
+            corners = [slab[a, b:b+ny-1, c:c+nz-1] for a, b, c in _CORNERS]
+            lo, hi = np.minimum.reduce(corners), np.maximum.reduce(corners)
+            ys, zs = np.nonzero(((lo < level) & (level <= hi)) | ((lo < -level) & (-level <= hi)))
+            for y, z in zip(ys.tolist(), zs.tolist()):
+                yield x, y, z, tuple(float(part[y, z]) for part in corners)
+        return
     for x in range(nx-1):
         _check_cancel(cancel)
         for y in range(ny-1):
@@ -133,7 +190,7 @@ def _crossing_cells(values, shape, level, cancel):
 
 
 class _SurfaceMesh:
-    """Neighboring tetrahedra share their intersections and oriented field normals."""
+    """Indexed Marching Cubes with consistent face saddles and interpolated field normals."""
 
     def __init__(self, lattice, sample):
         self.lattice, self.sample = lattice, sample
@@ -163,6 +220,15 @@ class _SurfaceMesh:
         if key not in edges:
             start = tuple(a+b for a, b in zip(cell, _CORNERS[m]))
             end = tuple(a+b for a, b in zip(cell, _CORNERS[n]))
+            if 0 < t < 1:
+                axis = {4: 0, 2: 1, 1: 2}[n-m]
+                delta = float(values[n]-values[m])
+                left, right = list(start), list(end)
+                left[axis] -= 1
+                right[axis] += 1
+                a = _slope(values[m]-self.sample(*left), delta)/delta if left[axis] >= 0 else 1.
+                b = _slope(delta, self.sample(*right)-values[n])/delta if right[axis] < self.lattice.shape[axis] else 1.
+                t = _hermite_crossing(t, a, b)
             point = tuple(u+(v-u)*t for u, v in zip(start, end))
             normals = zip(self._gradient(i, start), self._gradient(j, end))
             g = tuple(-sign*(u+(v-u)*t) for u, v in normals)
@@ -184,14 +250,28 @@ class _SurfaceMesh:
             mask = sum(1 << k for k, val in enumerate(values) if val >= iso)
             if sign < 0:
                 mask ^= 255
-            for polygon in _CASES[mask]:
+            diagonals = 0
+            for k in _SADDLES[mask]:
+                a, b, c, d = (values[v]-iso for v in _FACE_RINGS[k])
+                if a*c >= b*d:
+                    diagonals |= 1 << k
+            for polygon in _contours(mask, diagonals):
                 indices = [self._vertex((x, y, z), base, values, a, b, iso, sign) for a, b in polygon]
                 # An exact vertex-level crossing can collapse two edges to one point.
                 face = tuple(dict.fromkeys(indices))
                 if len(face) >= 3:
                     if self.lattice.determinant < 0:
                         face = face[::-1]
-                    self.faces.append((*face, sign))
+                    if len(face) <= 4:
+                        self.faces.append((*face, sign))
+                    else:
+                        # A center fan follows the entire contour of a nonplanar cell.
+                        center = len(self.vertices)
+                        self.vertices.append(tuple(sum(v)/len(face) for v in zip(*(self.vertices[i] for i in face))))
+                        normal = tuple(sum(v) for v in zip(*(self.normals[i] for i in face)))
+                        length = math.hypot(*normal) or 1.
+                        self.normals.append(tuple(v/length for v in normal))
+                        self.faces.extend((a, b, center, sign) for a, b in zip(face, face[1:]+face[:1]))
 
     def finish(self):
         return OrbitalSurface(tuple(self.vertices), tuple(self.faces), self.clipped, tuple(self.normals))
@@ -259,7 +339,7 @@ def _check_settings(level, quality):
         raise ValueError("Unknown surface quality.")
 
 
-def make_orbital_surface(wave, index, level=.05, cancel=None, *, quality="smooth"):
+def make_orbital_surface(wave, index, level=.05, cancel=None, *, quality="standard"):
     _check_settings(level, quality)
     expansion = orbital_expansion(wave.shells, wave.orbitals[index].coefficients)
     axes = _orbital_axes(expansion, level, quality)
@@ -272,12 +352,32 @@ def make_orbital_surface(wave, index, level=.05, cancel=None, *, quality="smooth
     return _surface(sample_grid(expansion, axes, cancel), lattice, level, cancel)
 
 
-def _slope(a, b):
+def _slope(a, b, estimate=None):
     if (a > 0 and b > 0) or (a < 0 and b < 0):
         # A centered slope resolves smooth curvature. The monotonicity limiter
         # keeps the Hermite segment within the original Cube samples.
-        return math.copysign(min(abs(.5*a + .5*b), 2*min(abs(a), abs(b))), a)
+        slope = .5*a + .5*b if estimate is None else estimate
+        if (slope > 0) == (a > 0):
+            return math.copysign(min(abs(slope), 2*min(abs(a), abs(b))), a)
     return 0.
+
+
+def _hermite_crossing(target, a, b):
+    """Invert a monotone cubic on a grid edge with bracketed Newton iterations."""
+    x, lo, hi = target, 0., 1.
+    c, d = a+b-2, 3-2*a-b
+    for _ in range(6):
+        error = ((c*x+d)*x+a)*x-target
+        if abs(error) < 1e-9:
+            break
+        if error > 0:
+            hi = x
+        else:
+            lo = x
+        derivative = (3*c*x+2*d)*x+a
+        next_x = x-error/derivative if derivative > 1e-10 else lo
+        x = next_x if lo < next_x < hi else (lo+hi)*.5
+    return x
 
 
 def _interpolator(values, shape, factor):
@@ -289,6 +389,19 @@ def _interpolator(values, shape, factor):
         weights.append((t*t*(3-2*t), t*(1-t)**2, t*t*(t-1)))
 
     def axis_sampler(count, previous):
+        @lru_cache(maxsize=8192)
+        def derivative(i, j, k):
+            v = previous(i, j, k)
+            if k == 0:
+                return previous(i, j, 1)-v
+            if k == count-1:
+                return v-previous(i, j, k-1)
+            a, b = v-previous(i, j, k-1), previous(i, j, k+1)-v
+            estimate = None
+            if 2 <= k < count-2:
+                estimate = (8*(a+b) - (previous(i, j, k+2)-previous(i, j, k-2)))/12
+            return _slope(a, b, estimate)
+
         @lru_cache(maxsize=32768)
         def sample(i, j, refined):
             a, part = divmod(refined, factor)
@@ -297,10 +410,8 @@ def _interpolator(values, shape, factor):
                 return left
             right = previous(i, j, a+1)
             delta = right-left
-            slope_a = _slope(left-previous(i, j, a-1), delta) if a else delta
-            slope_b = _slope(delta, previous(i, j, a+2)-right) if a+2 < count else delta
             blend, wa, wb = weights[part]
-            return left + blend*delta + wa*slope_a + wb*slope_b
+            return left + blend*delta + wa*derivative(i, j, a) + wb*derivative(i, j, a+1)
         return sample
 
     z_value = axis_sampler(nz, lambda x, y, z: values[(x*ny+y)*nz+z])
@@ -309,12 +420,14 @@ def _interpolator(values, shape, factor):
     return lambda rx, ry, rz: x_value(ry, rz, rx)
 
 
-def make_cube_surface(cube, index, level=.05, cancel=None, *, quality="smooth"):
+def make_cube_surface(cube, index, level=.05, cancel=None, *, quality="standard"):
     _check_settings(level, quality)
     grid, field = cube.grid, cube.fields[index]
     if not any(field.minimum < iso <= field.maximum for iso in (level, -level)):
         return OrbitalSurface((), (), False)
-    factor = SURFACE_QUALITIES[quality].cube_subdivisions
+    preset = SURFACE_QUALITIES[quality]
+    native_spacing = max(math.hypot(*step) for step in grid.steps)
+    factor = min(preset.cube_subdivisions, max(1, math.ceil(native_spacing/(preset.spacing_bohr*BOHR_IN_ANGSTROM))))
     if factor == 1:
         return _surface(field.values, grid, level, cancel)
     shape = tuple((n-1)*factor+1 for n in grid.shape)

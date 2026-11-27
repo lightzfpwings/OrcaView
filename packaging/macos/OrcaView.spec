@@ -30,7 +30,12 @@ notices = [
     (str(Path(sysconfig.get_path("stdlib")) / "LICENSE.txt"), "ThirdParty/CPython"),
     (str(bootloader_license), "ThirdParty/PyInstaller"),
     (str(ffmpeg_license), "ThirdParty/imageio-ffmpeg"),
+    (str(repo / "packaging/licenses/wgpu-native-MIT.txt"), "ThirdParty/wgpu-native"),
 ]
+for package in ("numpy", "wgpu", "rendercanvas", "cffi", "pycparser", "rubicon-objc"):
+    dist = distribution(package)
+    metadata = next(path for path in dist.files if path.name == "METADATA")
+    notices.append((str(dist.locate_file(metadata.parent / "licenses")), f"ThirdParty/{package}"))
 
 analysis = Analysis(
     [str(packaging_dir / "launcher.py")],

@@ -5,12 +5,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
-    from PySide6.QtCore import QPoint, QRect, Qt, QTimer
+    from PySide6.QtCore import QAbstractAnimation, QPoint, QRect, Qt, QTimer
     from PySide6.QtGui import QColor, QImage
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QColorDialog, QDialogButtonBox, QFileDialog, QStyle, QStyleOptionComboBox
@@ -69,8 +70,7 @@ class OrbitalWorkspaceTests(unittest.TestCase):
 
         if choice:
             QTimer.singleShot(0, choose)
-        with patch.object(QFileDialog, "getOpenFileName", return_value=(str(path), "")), \
-             patch("orcaview.gui.gbw_dialog.find_converter", return_value=Path("orca_2mkl")):
+        with patch.object(QFileDialog, "getOpenFileName", return_value=(str(path), "")):
             self.w.open_file_action.trigger()
 
     def finish_open(self):
@@ -210,22 +210,46 @@ class OrbitalWorkspaceTests(unittest.TestCase):
         self.finish_open()
         panel = self.w.orbital_panel
         panel.finish_for_capture()
-        self.assertEqual(panel.quality.currentData(), "smooth")
-        smooth = panel.viewport.surface
-        panel.palette_choice.setCurrentIndex(2)
-        self.assertIs(panel.viewport.surface, smooth)
+        self.assertEqual(panel.quality.currentData(), "standard")
+        standard = panel.viewport.surface
+        menu = panel.palette_choice
+        custom = menu.count()-1
+        self.assertEqual(custom, 9)
+        self.assertEqual((menu.itemText(custom), menu.itemData(custom)), ("Custom", "custom"))
+        pairs = set()
+        for row in range(custom):
+            menu.setCurrentIndex(row)
+            swatch = menu.itemIcon(row).pixmap(menu.iconSize()).toImage()
+            pair = (panel.colors[1], panel.colors[-1])
+            self.assertEqual(tuple(swatch.pixelColor(x, 6).name() for x in (6, 20)), pair)
+            pairs.add(pair)
+            self.assertIs(panel.viewport.surface, standard)
+        self.assertEqual(len(pairs), custom)
+        menu.setCurrentIndex(2)
+        menu.setCurrentIndex(custom)
+        self.assertIs(panel.viewport.surface, standard)
         self.assertEqual(panel.colors, {1: "#2c926b", -1: "#8855b5"})
+        menu.setCurrentIndex(2)
+        with patch.object(QColorDialog, "getColor", return_value=QColor()):
+            panel.color_buttons[1].click()
+        self.assertEqual(menu.currentIndex(), 2)
         with patch.object(QColorDialog, "getColor", return_value=QColor("#18b632")):
             panel.color_buttons[1].click()
         with patch.object(QColorDialog, "getColor", return_value=QColor()):
             panel.color_buttons[-1].click()
         self.assertEqual(panel.colors, {1: "#18b632", -1: "#8855b5"})
-        self.assertEqual(panel.palette_choice.currentIndex(), -1)
-        self.assertIs(panel.viewport.surface, smooth)
+        self.assertEqual(menu.currentIndex(), custom)
+        menu.setCurrentIndex(4)
+        menu.setCurrentIndex(custom)
+        self.assertEqual(panel.colors, {1: "#18b632", -1: "#8855b5"})
+        self.assertIs(panel.viewport.surface, standard)
         self.assertIsNone(panel.future)
         panel.quality.setCurrentIndex(panel.quality.findData("fine"))
         panel.finish_for_capture()
-        self.assertGreater(len(panel.viewport.surface.faces), len(smooth.faces))
+        self.assertGreater(len(panel.viewport.surface.faces), len(standard.faces))
+        panel.quality.setCurrentIndex(panel.quality.findData("standard"))
+        self.assertIs(panel.viewport.surface, standard)
+        panel.quality.setCurrentIndex(panel.quality.findData("fine"))
         self.assertTrue(self.w.structure_image_action.isEnabled())
         view = panel.viewport
         image_file = self.root / "colored.png"
@@ -242,11 +266,72 @@ class OrbitalWorkspaceTests(unittest.TestCase):
         another = OrbitalPanel()
         try:
             self.assertEqual(another.colors, panel.colors)
+            self.assertEqual(another.palette_choice.currentData(), "custom")
             self.assertEqual(another.quality.currentData(), "fine")
             self.assertEqual(another.quality.currentText(), "Best")
         finally:
             another.shutdown()
             another.close()
+
+    def test_legacy_custom_pair_survives_switching_to_a_preset_and_restarting(self):
+        from orcaview.gui.orbital_panel import OrbitalPanel
+        from orcaview.preferences import write_preferences
+
+        write_preferences("orbital-surface", {"positive": "#aa0077", "negative": "#123456"})
+        first = OrbitalPanel()
+        try:
+            self.assertEqual(first.palette_choice.currentData(), "custom")
+            first.palette_choice.setCurrentIndex(first.palette_choice.findData("Charcoal / silver"))
+        finally:
+            first.shutdown()
+            first.close()
+        second = OrbitalPanel()
+        try:
+            menu = second.palette_choice
+            self.assertEqual(menu.currentData(), "Charcoal / silver")
+            menu.setCurrentIndex(menu.count()-1)
+            self.assertEqual(second.colors, {1: "#aa0077", -1: "#123456"})
+        finally:
+            second.shutdown()
+            second.close()
+
+    def test_orbitals_crossfades_from_each_workspace_and_back(self):
+        window, tabs, panel = self.w, self.w.workspace_tabs, self.w.orbital_panel
+        overlay = window.workspace_transition
+        animation = overlay._animation
+        animation.setDuration(60_000)
+        animated = window.style().styleHint(QStyle.StyleHint.SH_Widget_Animate)
+
+        def check_transition(page):
+            self.assertIs(tabs.currentWidget(), page)
+            if animated:
+                self.assertEqual(animation.state(), QAbstractAnimation.State.Running)
+                self.assertFalse(overlay._image.isNull())
+                self.assertTrue(overlay.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+                animation.setCurrentTime(30_000)
+            else:
+                self.assertTrue(overlay.isHidden())
+
+        tabs.setCurrentWidget(panel)
+        self.assertTrue(overlay.isHidden())
+        self.open(self.example.parent / "water-homo.cube")
+        self.finish_open()
+        check_transition(panel)
+        panel.finish_for_capture()
+        mesh, head = panel.viewport.surface, window.session.document.head
+        for page in (window.input_page, window.design_panel, window.foundation_panel):
+            tabs.setCurrentWidget(page)
+            self.app.processEvents()
+            check_transition(page)
+            QTest.mouseClick(tabs.tabBar(), Qt.MouseButton.LeftButton, pos=tabs.tabBar().tabRect(tabs.indexOf(panel)).center())
+            self.app.processEvents()
+            check_transition(panel)
+            self.assertTrue(window.tree_dock.isHidden() and window.bottom_dock.isHidden())
+            self.assertIs(panel.viewport.surface, mesh)
+        animation.setCurrentTime(animation.duration())
+        self.assertTrue(overlay.isHidden())
+        self.assertIsNone(overlay._image)
+        self.assertIs(window.session.document.head, head)
 
     def test_quality_dropdown_fits_all_four_rows_and_selects_by_mouse_and_keyboard(self):
         self.w.resize(self.w.minimumSize())
@@ -255,7 +340,7 @@ class OrbitalWorkspaceTests(unittest.TestCase):
         panel = self.w.orbital_panel
         field = panel.quality
         self.assertEqual([field.itemText(i) for i in range(field.count())], ["Coarse", "Standard", "Smooth", "Best"])
-        self.assertEqual(field.currentData(), "smooth")
+        self.assertEqual(field.currentData(), "standard")
         view = field.view()
 
         def wait_closed():
@@ -296,6 +381,47 @@ class OrbitalWorkspaceTests(unittest.TestCase):
             self.assertEqual(field.currentText(), labels[-1])
         panel.finish_for_capture()
         self.assertEqual(panel._requested[-1], "fine")
+
+    def test_gpu_preference_and_seam_free_phase_rendering_after_rotation(self):
+        from orcaview.gui.orbital_gpu import create_renderer, preferred_adapters
+        from orcaview.gui.orbital_raster import OrbitalRaster
+        from orcaview.results.orbital_surface import OrbitalSurface
+
+        adapters = [SimpleNamespace(info={"adapter_type": t}) for t in ("CPU", "IntegratedGPU", "DiscreteGPU")]
+        self.assertEqual(preferred_adapters(adapters), [adapters[2], adapters[1]])
+        vertices = []
+        faces = []
+        for left, right, z, sign in ((-1, 0, .5, 1), (0, 1, .5, -1), (-1, 1, -.5, 1)):
+            k = len(vertices)
+            vertices.extend(((left, -.5, z), (right, -.5, z), (right, .5, z), (left, .5, z)))
+            faces.extend(((k, k+1, k+2, sign), (k, k+2, k+3, sign)))
+        mesh = OrbitalSurface(tuple(vertices), tuple(faces), False, ((0., 0., 1.),)*len(vertices))
+        viewport = self.w.orbital_panel.viewport
+        viewport.set_phase_colors({1: "#ff0000", -1: "#0000ff"})
+        center = (0., 0., 0.)
+        try:
+            raster = OrbitalRaster(mesh, center)
+        except ImportError:
+            self.skipTest("NumPy not installed")
+        gpu = create_renderer()
+        if gpu is not None:
+            self.addCleanup(gpu.close)
+        for direction in (1, -1):
+            axes = ((direction, 0, 0), (0, direction, 0), (0, 0, 1))
+            camera = (axes, 40, 80, 50, 160, 100, 1.)
+            images = [raster.render(center, *camera, viewport._rgba_table)]
+            if gpu is not None:
+                images.append(gpu.render(mesh, center, 2., *camera, viewport._phase_rgba))
+                if direction == 1:
+                    uploaded = gpu.vertex
+                else:
+                    self.assertIs(gpu.vertex, uploaded)
+            for image in images:
+                for x in range(42, 118):
+                    for y in range(32, 68, 3):
+                        color = image.pixelColor(x, y)
+                        self.assertEqual(color.alpha(), 204, (x, y))
+                        self.assertEqual(color.red() > color.blue(), (x < 80) == (direction == 1))
 
     def test_atomless_cube_can_switch_scalar_fields_and_export(self):
         path = self.root / "two fields.cube"

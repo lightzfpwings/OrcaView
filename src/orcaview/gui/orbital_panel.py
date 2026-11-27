@@ -5,8 +5,8 @@ import math
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QPoint, QRect, QSignalBlocker, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtCore import QPoint, QRect, QSignalBlocker, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QColorDialog, QComboBox, QDoubleSpinBox, QHBoxLayout, QHeaderView,
     QLabel, QPushButton, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -21,16 +21,32 @@ from orcaview.preferences import read_preferences, write_preferences
 from orcaview.results.orbital_surface import SURFACE_QUALITIES, make_cube_surface, make_orbital_surface
 
 
-_PALETTES = (("Blue / orange", (PHASE_COLORS[1], PHASE_COLORS[-1])),
-             ("Red / blue", ("#cf4547", "#386dc4")),
-             ("Green / purple", ("#2c926b", "#8855b5")),
-             ("Teal / gold", ("#11898b", "#cf942f")))
+_PALETTES = {
+    "Blue / orange": (PHASE_COLORS[1], PHASE_COLORS[-1]),
+    "Red / blue": ("#cf4547", "#386dc4"),
+    "Green / purple": ("#2c926b", "#8855b5"),
+    "Teal / gold": ("#11898b", "#cf942f"),
+    "Cyan / magenta": ("#1695a8", "#bf438a"),
+    "Indigo / lime": ("#514fa1", "#91b93b"),
+    "Navy / coral": ("#304d79", "#de7869"),
+    "Violet / amber": ("#8254ac", "#dfa426"),
+    "Charcoal / silver": ("#454b56", "#aeb9c4"),
+}
 
 
-class _SurfaceQualityCombo(QComboBox):
-    def __init__(self):
+def _phase_swatch(positive, negative):
+    swatch = QPixmap(26, 14)
+    swatch.fill(Qt.GlobalColor.transparent)
+    with QPainter(swatch) as painter:
+        painter.fillRect(0, 1, 12, 12, QColor(positive))
+        painter.fillRect(14, 1, 12, 12, QColor(negative))
+    return QIcon(swatch)
+
+
+class _OrbitalCombo(QComboBox):
+    def __init__(self, label):
         super().__init__()
-        self.setAccessibleName(tr("Surface quality"))
+        self.setAccessibleName(label)
         self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.setMinimumContentsLength(6)
         # Use list rows so the macOS menu checkmark does not consume their text area.
@@ -39,8 +55,6 @@ class _SurfaceQualityCombo(QComboBox):
             QAbstractItemView { border: 1px solid #DDD5CB; }
             QAbstractItemView::item { padding: 3px 8px; }
         """)
-        for key, preset in SURFACE_QUALITIES.items():
-            self.addItem(tr(preset.label), key)
 
     def showPopup(self):
         view = self.view()
@@ -78,6 +92,7 @@ class OrbitalPanel(QWidget):
         super().__init__(parent)
         self.source = self.wave = self.future = self._cancel = None
         self._requested = None
+        self._surfaces = {}
         self._rows = []
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="orcaview-orbitals")
         self._timer = QTimer(self)
@@ -124,15 +139,18 @@ class OrbitalPanel(QWidget):
         self.level_unit = QLabel("a<sub>0</sub><sup>−3/2</sup>")
         controls.addWidget(self.level_unit)
         controls.addSpacing(14)
-        self.quality = _SurfaceQualityCombo()
+        self.quality = _OrbitalCombo(tr("Surface quality"))
+        for key, preset in SURFACE_QUALITIES.items():
+            self.quality.addItem(tr(preset.label), key)
         _label(tr("Surface quality"), self.quality, controls)
         controls.addStretch()
         right.addLayout(controls)
         palette_row = QHBoxLayout()
-        self.palette_choice = QComboBox()
-        for label, _ in _PALETTES:
-            self.palette_choice.addItem(tr(label))
-        self.palette_choice.setPlaceholderText(tr("Custom"))
+        self.palette_choice = _OrbitalCombo(tr("Colors"))
+        self.palette_choice.setIconSize(QSize(26, 14))
+        for name, pair in _PALETTES.items():
+            self.palette_choice.addItem(_phase_swatch(*pair), tr(name), name)
+        self.palette_choice.addItem(tr("Custom"), "custom")
         _label(tr("Colors"), self.palette_choice, palette_row)
         self.color_buttons = {}
         for sign, label in ((1, "Positive phase"), (-1, "Negative phase")):
@@ -154,11 +172,24 @@ class OrbitalPanel(QWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         prefs = read_preferences("orbital-surface", {"positive": PHASE_COLORS[1], "negative": PHASE_COLORS[-1],
-                                                    "quality": "smooth"})
+                                                    "quality": "standard", "palette": "",
+                                                    "customPositive": "", "customNegative": ""})
         option = self.quality.findData(prefs["quality"])
-        self.quality.setCurrentIndex(option if option >= 0 else self.quality.findData("smooth"))
+        self.quality.setCurrentIndex(option if option >= 0 else self.quality.findData("standard"))
         self.colors = {s: QColor(prefs[key]).name() if QColor.isValidColorName(prefs[key]) else PHASE_COLORS[s]
                        for s, key in ((1, "positive"), (-1, "negative"))}
+        pair = (self.colors[1], self.colors[-1])
+        # Older preferences contain only the active pair.
+        active = next((name for name, colors in _PALETTES.items() if colors == pair), "custom")
+        if prefs["palette"] == "custom":
+            active = "custom"
+        self.palette_choice.setCurrentIndex(self.palette_choice.findData(active))
+        saved_pair = (prefs["customPositive"], prefs["customNegative"])
+        self._custom_colors = None
+        if active == "custom":
+            self._custom_colors = pair
+        elif all(QColor.isValidColorName(color) for color in saved_pair):
+            self._custom_colors = tuple(QColor(color).name() for color in saved_pair)
         self._show_colors()
         self.spin.currentIndexChanged.connect(self._fill_table)
         self.table.currentCellChanged.connect(self._select_row)
@@ -167,9 +198,8 @@ class OrbitalPanel(QWidget):
         self.palette_choice.currentIndexChanged.connect(self._set_palette)
 
     def _show_colors(self):
-        pair = (self.colors[1], self.colors[-1])
-        with QSignalBlocker(self.palette_choice):
-            self.palette_choice.setCurrentIndex(next((i for i, (_, colors) in enumerate(_PALETTES) if colors == pair), -1))
+        custom = self._custom_colors or (self.colors[1], self.colors[-1])
+        self.palette_choice.setItemIcon(self.palette_choice.findData("custom"), _phase_swatch(*custom))
         for sign, button in self.color_buttons.items():
             swatch = QPixmap(16, 16)
             swatch.fill(QColor(self.colors[sign]))
@@ -178,22 +208,35 @@ class OrbitalPanel(QWidget):
         self.viewport.set_phase_colors(self.colors)
 
     def _save_preferences(self):
+        positive, negative = self._custom_colors or ("", "")
         try:
             write_preferences("orbital-surface", {"positive": self.colors[1], "negative": self.colors[-1],
+                                                  "palette": self.palette_choice.currentData(),
+                                                  "customPositive": positive, "customNegative": negative,
                                                   "quality": self.quality.currentData()})
         except OSError as exc:
             self.status.setText(diagnostic_text(exc))
 
     def _set_palette(self, index):
-        if index >= 0:
-            self.colors = dict(zip((1, -1), _PALETTES[index][1]))
-            self._show_colors()
-            self._save_preferences()
+        if index < 0:
+            return
+        name = self.palette_choice.itemData(index)
+        if name == "custom":
+            pair = self._custom_colors or (self.colors[1], self.colors[-1])
+            self._custom_colors = pair
+        else:
+            pair = _PALETTES[name]
+        self.colors = dict(zip((1, -1), pair))
+        self._show_colors()
+        self._save_preferences()
 
     def _choose_color(self, sign):
         color = QColorDialog.getColor(QColor(self.colors[sign]), self, self.color_buttons[sign].text())
         if color.isValid():
             self.colors[sign] = color.name()
+            self._custom_colors = (self.colors[1], self.colors[-1])
+            with QSignalBlocker(self.palette_choice):
+                self.palette_choice.setCurrentIndex(self.palette_choice.findData("custom"))
             self._show_colors()
             self._save_preferences()
 
@@ -211,10 +254,13 @@ class OrbitalPanel(QWidget):
 
     def shutdown(self):
         self._stop_request()
+        self._surfaces.clear()
+        self.viewport.release_renderer()
         self._pool.shutdown(wait=False, cancel_futures=True)
 
     def set_source(self, source, wave=None, project=None):
         self._stop_request()
+        self._surfaces.clear()
         self.source, self.wave = source, wave
         self._rows = []
         with QSignalBlocker(self.table), QSignalBlocker(self.spin):
@@ -330,6 +376,11 @@ class OrbitalPanel(QWidget):
             return
         self._stop_request()
         self._requested = key
+        if key in self._surfaces:
+            surface = self._surfaces.pop(key)
+            self._surfaces[key] = surface
+            self._show_surface(surface)
+            return
         self.viewport.set_surface(None)
         self.status.setText(tr("Calculating isosurface…"))
         self._cancel = Event()
@@ -355,13 +406,21 @@ class OrbitalPanel(QWidget):
             self.status.clear()
             self.availability_changed.emit(True, "")
         else:
-            self.viewport.set_surface(result)
-            if result.clipped:
-                self.status.setText(tr("The surface reaches the edge of the sampled grid."))
-            elif not result.faces:
-                self.status.setText(tr("No surface at this isovalue."))
-            else:
-                self.status.clear()
+            # Keep recent quality and orbital switches instant, bounded even for big Cube grids.
+            self._surfaces[self._requested] = result
+            while (len(self._surfaces) > 4 or
+                   sum(len(m.vertices)+len(m.faces) for m in self._surfaces.values()) > 150_000):
+                self._surfaces.pop(next(iter(self._surfaces)))
+            self._show_surface(result)
+
+    def _show_surface(self, surface):
+        self.viewport.set_surface(surface)
+        if surface.clipped:
+            self.status.setText(tr("The surface reaches the edge of the sampled grid."))
+        elif not surface.faces:
+            self.status.setText(tr("No surface at this isovalue."))
+        else:
+            self.status.clear()
 
     def finish_for_capture(self):
         self.finish_loading()

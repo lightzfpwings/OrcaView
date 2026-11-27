@@ -10,9 +10,8 @@ from PySide6.QtWidgets import (
 )
 
 from orcaview.i18n import tr
-from orcaview.application.structure_import import find_converter
 from orcaview.orca.gbw import file_state
-from orcaview.preferences import write_preferences
+from orcaview.preferences import read_preferences, write_preferences
 
 
 class GbwOpenDialog(QDialog):
@@ -21,8 +20,7 @@ class GbwOpenDialog(QDialog):
         self.setWindowTitle(tr("Open ORCA wavefunction"))
         self.destination = path.with_suffix(".molden.input")
         self.expected = file_state(self.destination)
-        self.converter = find_converter()
-        self._selected = False
+        self.converter = None
         self.choice = None
         layout = QVBoxLayout(self)
         question = (tr("{name} already exists. Open it or replace it with a new conversion?",
@@ -36,10 +34,10 @@ class GbwOpenDialog(QDialog):
         layout.addWidget(prompt)
         line = QHBoxLayout()
         label = QLabel(tr("ORCA converter"))
-        self.location = QLineEdit(str(self.converter or ""))
+        self.location = QLineEdit()
         self.location.setReadOnly(True)
-        self.location.setPlaceholderText(tr("Select orca_2mkl from your ORCA installation"))
-        self.location.setToolTip(str(self.converter or ""))
+        self.location.setPlaceholderText(tr("Built-in GBW converter"))
+        self.location.setToolTip(tr("Built-in GBW converter"))
         label.setBuddy(self.location)
         browse = QPushButton(tr("Browse…"))
         browse.clicked.connect(self._browse)
@@ -62,8 +60,10 @@ class GbwOpenDialog(QDialog):
         self.resize(540, self.sizeHint().height())
 
     def _browse(self):
+        saved = read_preferences("orca-tools", {"converter": ""})["converter"]
+        directory = Path(saved).parent if saved else Path.home()
         name, _ = QFileDialog.getOpenFileName(self, tr("Select ORCA converter"),
-                                              str(self.converter.parent if self.converter else Path.home()),
+                                              str(self.converter.parent if self.converter else directory),
                                               "orca_2mkl (orca_2mkl orca_2mkl.exe)")
         if name:
             selected = Path(name)
@@ -71,21 +71,17 @@ class GbwOpenDialog(QDialog):
                 QMessageBox.warning(self, tr("ORCA converter"), tr("Select an executable orca_2mkl file."))
                 return
             self.converter = selected.resolve()
-            self._selected = True
             self.location.setText(str(self.converter))
             self.location.setToolTip(str(self.converter))
 
     def _convert(self):
-        if self.converter is None:
-            self._browse()
         if self.converter is not None:
-            if self._selected:
-                try:
-                    write_preferences("orca-tools", {"converter": str(self.converter)})
-                except OSError:
-                    pass  # use the selected converter even if preferences are read-only
-            self.choice = "convert"
-            self.accept()
+            try:
+                write_preferences("orca-tools", {"converter": str(self.converter)})
+            except OSError:
+                pass
+        self.choice = "convert"
+        self.accept()
 
     def _existing(self):
         self.choice = "existing"

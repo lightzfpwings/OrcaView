@@ -2,7 +2,10 @@
 
 import math
 from pathlib import Path
+import struct
 from tempfile import TemporaryDirectory
+from threading import Event
+from concurrent.futures import CancelledError
 import unittest
 from unittest.mock import patch
 
@@ -140,6 +143,43 @@ class GbwSidecarTests(unittest.TestCase):
         self.target.write_bytes(self.raw + b"\n")
         with self.assertRaisesRegex(ValueError, "changed"):
             read_linked_orbitals(opened.source)
+
+    def test_builtin_reads_spherical_gbw_without_discovering_or_running_orca(self):
+        # One Li ECP center and a p shell. Deliberately distinct AO rows and spin blocks.
+        atoms = struct.pack("<i6dii", 1, 0., 0., 0., 1., 0., 7., 3, 0)
+        shell = struct.pack("<4i74d", 1, 0, 1, 0, 1., *([0.]*36), 1., *([0.]*36))
+        basis = struct.pack("<4i", 6, 1, 0, 1)+shell
+        orbitals = struct.pack("<iq", 2, 3)
+        for spin in (0, 1):
+            orbitals += struct.pack("<9d3d3d6i", *(v+spin for v in range(1, 10)),
+                                    1.-spin, 0., 0., -1., .5, 2., 0, 1, 2, 0, 0, 0)
+        header = struct.pack("<2q8s6q", -1, 149839, b"00000000", 72, 80, 80+len(atoms),
+                             80+len(atoms)+len(basis), 0, 0)
+        self.gbw.write_bytes(header+bytes(8)+atoms+basis+orbitals)
+        with patch("orcaview.orca.gbw.subprocess.Popen", side_effect=AssertionError("external tool")), \
+             patch("orcaview.application.structure_import.find_converter", side_effect=AssertionError("discovery")):
+            auto = read_structure_file(self.gbw)
+            self.assertEqual(auto.record.molecule.atoms[0].element, "Li")
+            self.assertEqual(len(read_linked_orbitals(auto.source).orbitals), 6)
+            prepared = prepare_gbw_open(self.gbw, None, None)
+            self.assertFalse(self.target.exists())
+            wave = prepared.publish().orbitals
+        self.assertEqual((wave.molecule.charge, wave.molecule.multiplicity), (0, 2))
+        self.assertEqual([(m.spin, m.number) for m in wave.orbitals],
+                         [(s, i) for s in ("Alpha", "Beta") for i in range(3)])
+        self.assertEqual(tuple(wave.orbitals[0].coefficients), (4., 7., 1.))
+        self.assertEqual(tuple(wave.orbitals[-1].coefficients), (7., 10., 4.))
+        self.assertEqual(wave.orbitals[-1].energy, 2.)
+        original = self.target.read_bytes()
+        cancel = Event()
+        cancel.set()
+        with self.assertRaises(CancelledError):
+            prepare_gbw_open(self.gbw, None, file_state(self.target), cancel)
+        self.gbw.write_bytes(self.gbw.read_bytes()[:-2])
+        with self.assertRaises(ValueError):
+            prepare_gbw_open(self.gbw, None, file_state(self.target))
+        self.assertEqual(self.target.read_bytes(), original)
+        self.assertFalse(list(self.gbw.parent.glob(".orcaview-*")))
 
     def test_new_and_replaced_targets_are_rechecked_at_publish(self):
         prepared = self.prepare()

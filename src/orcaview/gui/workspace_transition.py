@@ -1,4 +1,4 @@
-"""Fade the outgoing layout over the live workspace when entering or leaving Design."""
+"""Fade the outgoing layout when entering or leaving a full-width workspace."""
 
 from PySide6.QtCore import QEasingCurve, QEvent, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QPainter
@@ -28,9 +28,9 @@ class WorkspaceTabs(QTabWidget):
 
 
 class WorkspaceTransition(QWidget):
-    def __init__(self, window, tabs, design, docks):
+    def __init__(self, window, tabs, full_width_pages, docks):
         super().__init__(window)
-        self.tabs, self.design, self.docks = tabs, design, docks
+        self.tabs, self.full_width_pages, self.docks = tabs, full_width_pages, docks
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -54,7 +54,7 @@ class WorkspaceTransition(QWidget):
     def _switching(self, outgoing, destination):
         window = self.parentWidget()
         if (not window.isVisible() or outgoing is None or outgoing is destination
-                or self.design not in (outgoing, destination)
+                or (outgoing not in self.full_width_pages and destination not in self.full_width_pages)
                 or not window.style().styleHint(QStyle.StyleHint.SH_Widget_Animate)):
             self._clear()
             return

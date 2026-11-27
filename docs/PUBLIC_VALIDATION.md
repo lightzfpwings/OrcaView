@@ -1,5 +1,11 @@
 # OrcaView validation history
 
+## 0.1.0a75
+
+For three ORCA 6.1.1 calculations (water, the hydroxyl radical and hydrogen iodide with an effective core potential), the built-in GBW converter reproduced the spin channels, occupations and energies from the matching official converter. Across 186 molecular orbitals, the largest absolute coefficient difference was below 5.1 × 10⁻¹³. The water and hydroxyl orbitals agreed with six ORCA Cube grids to within 4.38 × 10⁻⁶ across 196,608 points. [GBW and Molden tests](../tests/test_molden_orbitals.py) · [Cube and isosurface tests](../tests/test_cube_orbitals.py)
+
+All 812 regression tests passed on Apple Silicon. In a native macOS window, mouse and keyboard input reached all nine color presets and the final Custom row. The crossfade from Input, Design and Result was checked against the outgoing, midpoint and completed frames. The app on the read-only macOS disk image reproduced the checkout's rendered pixels for two presets and a custom pair on both a Molden wavefunction and a Cube grid. [Orbitals workspace tests](../tests/test_orbital_workspace.py) · [Color menu preview](orbital-colors-zh-Hans.png)
+
 ## 0.1.0a73
 
 ORCA 6.1.1 produced water and hydroxyl GBW files and six reference Cube grids. The matching ORCA converter wrote the Molden wavefunctions. OrcaView evaluated the signed orbital amplitudes at all 196,608 grid points. The largest absolute difference from the printed Cube values was 4.38 × 10⁻⁶. The comparison includes occupied and virtual orbitals and both spin channels of the hydroxyl radical. [Water calculation](../examples/orbitals/water.inp) · [Hydroxyl calculation](../examples/orbitals/OH.inp) · [Orbital numerical tests](../tests/test_molden_orbitals.py)

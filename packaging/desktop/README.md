@@ -1,6 +1,6 @@
 # Linux and Windows portable builds
 
-Run this from the repository root with CPython 3.13. Windows builds require Go 1.23 or later on PATH. The launcher uses only the Go standard library and is cross-compiled for Windows x64. The build verifies the checksums of the target-native Python, Qt, Shiboken, Open Babel and imageio-ffmpeg distributions before assembly.
+Run this from the repository root with CPython 3.13. Windows builds require Go 1.23 or later on PATH. The launcher uses only the Go standard library and is cross-compiled for Windows x64. The build verifies the checksums of the target-native Python, Qt, Shiboken, Open Babel, imageio-ffmpeg, NumPy and WebGPU distributions before assembly.
 
 ```shell
 python3.13 packaging/desktop/build.py both

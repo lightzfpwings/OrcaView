@@ -217,8 +217,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(self.resource_hint.text(), 8000)
         self._update_structure_image_action()
         self.columns = WorkspaceColumns(self, self.tree_dock, self.inspector_dock)
-        self.workspace_transition = WorkspaceTransition(self, self.workspace_tabs, self.design_panel,
-                                                       (self.tree_dock, self.inspector_dock, self.bottom_dock))
+        self.workspace_transition = WorkspaceTransition(
+            self, self.workspace_tabs, (self.design_panel, self.orbital_panel),
+            (self.tree_dock, self.inspector_dock, self.bottom_dock),
+        )
         self.resizeDocks([self.bottom_dock], [260], Qt.Orientation.Vertical)
 
     def _action(self, title, slot, shortcut=None):
@@ -773,6 +775,8 @@ class MainWindow(QMainWindow):
         parameters = dict(origin.parameters)
         formats = {"molecular_orbitals": "molden", "cube_fields": "gaussian-cube"}
         supported = {fmt for key, fmt in formats.items() if key in parameters}
+        if "molden" in supported:
+            supported.add("orca-gbw")
         source = next((a for a in origin.parents if a.format in supported and a.sha256 and a.path_hint), None)
         self.orbital_panel.set_source(source, self.session.molden_orbitals or self.session.cube_grid, project_path)
 

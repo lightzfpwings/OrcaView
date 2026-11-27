@@ -1,4 +1,4 @@
-"""Run the matching local ORCA converter on a private copy of a GBW."""
+"""Stage GBW conversions with the built-in reader or an explicitly supplied ORCA tool."""
 
 from concurrent.futures import CancelledError
 import errno
@@ -8,10 +8,12 @@ import subprocess
 from tempfile import TemporaryFile
 from time import monotonic
 
+from orcaview.orca.gbw_molden import write_gbw_molden
+
 
 def run_converter(raw, work, converter, cancel=None):
     if converter is None:
-        raise ValueError("Select orca_2mkl from the matching ORCA installation or open an exported .molden.input file.")
+        return write_gbw_molden(raw, work / "wave.molden.input", cancel)
     (work / "wave.gbw").write_bytes(raw)
     with TemporaryFile() as log:
         with subprocess.Popen([str(converter), "wave", "-molden"], cwd=work, stdin=subprocess.DEVNULL,

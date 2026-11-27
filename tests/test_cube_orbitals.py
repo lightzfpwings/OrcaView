@@ -12,7 +12,7 @@ from concurrent.futures import CancelledError
 from orcaview.application.structure_import import read_linked_orbitals, read_structure_file
 from orcaview.core.units import BOHR_IN_ANGSTROM
 from orcaview.io.cube import read_cube
-from orcaview.results.orbital_surface import _interpolator, make_cube_surface, make_orbital_surface
+from orcaview.results.orbital_surface import _interpolator, _surface, make_cube_surface, make_orbital_surface
 
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -144,6 +144,21 @@ class CubeOrbitalsTests(unittest.TestCase):
                             for j in range(factor):
                                 for k in range(factor):
                                     self.assertTrue(low <= sample(origin[0]+i, origin[1]+j, origin[2]+k) <= high)
+
+    def test_both_cells_share_identical_edges_across_a_face_saddle(self):
+        for saddle in ((3, -2, -2, 4), (1, -4, -3, 2), (2, -1, -1, 2)):
+            values = [-5]*4 + list(saddle) + [6]*4
+            cube = read_cube("saddle.cube", cube_bytes("0 0 0 0", ("-3 1 0 0", "-2 0 1 0", "-2 0 0 1"),
+                                                       " ".join(map(str, values))))
+            mesh = _surface(values, cube.grid, .5, None)
+            common = Counter()
+            for face in mesh.faces:
+                ring = face[:-1]
+                for a, b in zip(ring, ring[1:]+ring[:1]):
+                    if mesh.vertices[a][0] == mesh.vertices[b][0] == 1.:
+                        common[(face[-1], *sorted((a, b)))] += 1
+            self.assertEqual({edge[0] for edge in common}, {1, -1})
+            self.assertEqual(set(common.values()), {2})
 
     def test_incomplete_invalid_and_nonfinite_volumes(self):
         valid = cube_bytes("-1 0 0 0", ("2 1 0 0", "2 0 1 0", "2 0 0 1"), "1 1 0 0 0\n1 7\n0 1 2 3 4 5 6 7")
